@@ -65,6 +65,14 @@ Until the Chrome Web Store listing is published, the extension is installed manu
 
 <br>
 
+## Test build from a PR
+
+For every pull request, GitHub Actions validates the code and attaches an unpacked test build. Open the relevant **PR test build** run on the Actions tab, download the `sensemark-pr-N` artifact, unzip it, and load the resulting folder from `chrome://extensions` → **Load unpacked**.
+
+The artifact is retained for 14 days and contains no API keys or user settings. A separate Chrome profile keeps the test build isolated from the installed release. The workflow can also be started manually with **Run workflow**.
+
+<br>
+
 ## OpenAI key
 
 You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.

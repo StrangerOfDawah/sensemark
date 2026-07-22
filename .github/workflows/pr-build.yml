@@ -1,0 +1,78 @@
+name: PR test build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Validate source and manifest
+        run: |
+          node --check background.js
+          node --check content.js
+          node --check options.js
+          node --test tests/background-prompts.test.js
+          jq empty manifest.json
+
+      - name: Build extension archive
+        run: bash scripts/package-extension.sh
+
+      - name: Prepare unpacked test build
+        run: |
+          archive="$(find dist -maxdepth 1 -type f -name 'sensemark-v*.zip' -print -quit)"
+          test -n "$archive"
+          mkdir -p dist/unpacked
+          unzip -q "$archive" -d dist/unpacked
+          test -f dist/unpacked/manifest.json
+
+      - name: Choose artifact name
+        id: artifact-name
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [[ -n "$PR_NUMBER" ]]; then
+            echo "name=sensemark-pr-$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=sensemark-manual-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload unpacked test build
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}
+          path: dist/unpacked
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Add installation instructions
+        env:
+          ARTIFACT_NAME: ${{ steps.artifact-name.outputs.name }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        run: |
+          {
+            echo "## Sensemark test build"
+            echo
+            echo "Download [**$ARTIFACT_NAME**]($ARTIFACT_URL), unzip it, then open \`chrome://extensions\` and choose **Load unpacked**."
+            echo
+            echo "Use a separate Chrome profile for testing so the development API key and settings do not overlap with the installed release."
+          } >> "$GITHUB_STEP_SUMMARY"
