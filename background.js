@@ -23,12 +23,19 @@ function cacheSet(key, value) {
   cache.set(key, value);
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: MENU_ID,
-    title: "Перевести на русский",
-    contexts: ["selection"]
+chrome.runtime.onInstalled.addListener((details) => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: MENU_ID,
+      title: "Перевести на русский",
+      contexts: ["selection"]
+    });
   });
+
+  // После установки сразу показываем настройку ключа и раскрытие обработки данных.
+  if (details.reason === "install") {
+    chrome.runtime.openOptionsPage();
+  }
 });
 
 chrome.action.onClicked.addListener(() => {

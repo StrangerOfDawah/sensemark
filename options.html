@@ -172,6 +172,11 @@
         margin-top: 2px;
         line-height: 1.45;
       }
+      .text-link {
+        color: var(--a1);
+        text-decoration: none;
+      }
+      .text-link:hover { text-decoration: underline; }
 
       /* ── Поля ───────────────────────────────────────── */
       input[type="password"],
@@ -430,6 +435,25 @@
         <p class="app-sub">Выделите текст на любой странице — и нажмите <span id="kbd"></span></p>
       </header>
 
+      <div class="group-label">Конфиденциальность</div>
+      <section class="group">
+        <div class="row">
+          <div class="row-text">
+            <div class="row-title">Что отправляется в OpenAI</div>
+            <div class="row-cap">
+              Для перевода расширение отправляет выделенный текст и, для короткого фрагмента,
+              предложение вокруг него напрямую в OpenAI. Разработчик не получает и не хранит эти данные.
+              <a
+                class="text-link"
+                href="https://github.com/StrangerOfDawah/quick-translate/blob/main/PRIVACY.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >Политика конфиденциальности</a>.
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div class="group-label">Подключение</div>
       <section class="group">
         <div class="row col">
@@ -456,7 +480,7 @@
         <div class="row">
           <div class="row-text">
             <div class="row-title">Модель</div>
-            <div class="row-cap">gpt-4o-mini — самая дешёвая, для перевода хватает с запасом.</div>
+            <div class="row-cap">gpt-4o-mini — экономичная модель по умолчанию.</div>
           </div>
           <select id="model">
             <option value="gpt-4o-mini">gpt-4o-mini</option>

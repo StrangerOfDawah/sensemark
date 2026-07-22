@@ -8,7 +8,7 @@
 
 <div align="center">
 
-[**Download the latest release**](https://github.com/StrangerOfDawah/quick-translate/releases/latest) · Chrome · Manifest V3 · OpenAI API
+[**Download the latest release**](https://github.com/StrangerOfDawah/quick-translate/releases/latest) · Chrome · Manifest V3 · OpenAI API · [Privacy](PRIVACY.md)
 
 </div>
 
@@ -59,7 +59,7 @@ The whole card scales, not just the font — padding, buttons and icons grow wit
 
 Don't delete or rename the folder afterwards — Chrome loads the extension straight from it. Put it somewhere permanent.
 
-The extension isn't on the Chrome Web Store, hence the manual install. Chrome will remind you about developer mode on startup; that's normal for manually installed extensions.
+Until the Chrome Web Store listing is published, the extension is installed manually. Chrome will remind you about developer mode on startup; that's normal for extensions installed this way.
 
 <br>
 
@@ -71,7 +71,7 @@ You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that
 2. Click the extension icon to open its settings
 3. Paste the key and hit **Проверить ключ** (Test key)
 
-**On cost.** The default model is `gpt-4o-mini`, the cheapest one. A paragraph costs hundredths of a cent, and $5 of credit lasts a long time. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also set a monthly limit.
+**On cost.** The default is the economical `gpt-4o-mini` model. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
 <br>
 
@@ -100,7 +100,7 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 | `options.html` · `options.js` | Settings page |
 | `icons/` | Icons, 16–128 |
 
-The key is stored in `chrome.storage.local` and only ever sent to `api.openai.com`. No analytics, no third-party servers.
+The key is stored in `chrome.storage.local`. Selected text and, for a short selection, its surrounding sentence are sent directly to OpenAI for translation. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.md) for details.
 
 Repeat translations of the same fragment come from an in-memory cache in the service worker (last 200) and cost nothing. Selections are capped at 5000 characters so an accidental <kbd>⌘</kbd><kbd>A</kbd> doesn't send a whole page to the API.
 
@@ -117,3 +117,5 @@ Repeat translations of the same fragment come from an in-memory cache in the ser
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+OpenAI is a trademark of its respective owner. This is an independent project and is not affiliated with or endorsed by OpenAI.
