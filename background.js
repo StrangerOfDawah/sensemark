@@ -200,7 +200,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
 
     const hit = cacheGet(cacheKey);
     if (hit) {
-      const cachedIssue = responseIssue(hit, wordMode, sourceScripts);
+      const cachedIssue = responseIssue(hit, wordMode, sourceScripts, rawText);
       if (!cachedIssue) {
         send({ type: "done", text: hit });
         return;
@@ -213,6 +213,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
         cachedIssue,
         wordMode,
         sourceScripts,
+        rawText,
         abort.signal
       );
       cacheSet(cacheKey, repaired);
@@ -272,7 +273,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
     full = full.trim();
     if (!full) throw new Error("Пустой ответ от API.");
 
-    const issue = responseIssue(full, wordMode, sourceScripts);
+    const issue = responseIssue(full, wordMode, sourceScripts, rawText);
     if (issue) {
       full = await repairResponse(
         settings,
@@ -281,6 +282,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
         issue,
         wordMode,
         sourceScripts,
+        rawText,
         abort.signal
       );
     }
@@ -299,33 +301,131 @@ function normalizeSourceScripts(scripts) {
   return [...new Set(scripts.filter((script) => /^[A-Za-z]+$/.test(script)))];
 }
 
-function responseIssue(text, wordMode, rawSourceScripts = []) {
+function responsePayload(value) {
+  return String(value || "")
+    .split("\n")
+    .filter((line) => !/^\s*\[\[.+\]\]\s*$/.test(line))
+    .join("\n")
+    .trim();
+}
+
+function normalizeComparable(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function repeatsForeignSource(payload, sourceText) {
+  const normalizedPayload = normalizeComparable(payload);
+  const candidates = [sourceText, ...String(sourceText || "").split(/[\n.!?؟؛،]+/u)];
+
+  return candidates.some((candidate) => {
+    const letters = [...String(candidate || "")].filter((char) => /\p{L}/u.test(char));
+    if (letters.length < 4 || letters.every((char) => /[А-Яа-яЁё]/u.test(char))) return false;
+    const normalized = normalizeComparable(candidate);
+    return normalized.length >= 4 && normalizedPayload.includes(normalized);
+  });
+}
+
+function translatedBodies(value) {
+  const sections = [
+    ...String(value || "").matchAll(
+      /^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:[^\]]+\]\]\s*\n([\s\S]*?)(?=^\[\[(?:script\s*:|lang\s*:)|$)/gim
+    )
+  ].map((match) => match[1].trim());
+  return sections.length ? sections : [responsePayload(value)];
+}
+
+function contentIssue(value, sourceText) {
+  const payload = responsePayload(value);
+  if (/полный перевод на язык|перевод фрагмента|без пояснений и исходного текста/i.test(payload)) {
+    return "Ответ повторяет инструкцию вместо перевода.";
+  }
+  if (/^(?:перевод|translation)\s*:/im.test(payload)) {
+    return "Ответ содержит лишнюю подпись «Перевод:» вместо чистого результата.";
+  }
+  if (repeatsForeignSource(payload, sourceText)) {
+    return "Ответ повторяет выделенный иностранный текст вместо чистого перевода.";
+  }
+
+  if (
+    /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u.test(
+      payload
+    )
+  ) {
+    return "Ответ содержит текст исходной письменностью вместо русского перевода.";
+  }
+
+  const nonRussianBody = translatedBodies(value).find(
+    (body) => /\p{L}/u.test(body) && !/[А-Яа-яЁё]/u.test(body)
+  );
+  return nonRussianBody
+    ? "Одна из секций содержит не русский перевод."
+    : "";
+}
+
+function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
   const value = String(text || "").trim();
   if (/^\[\[skip\]\]/i.test(value)) {
     return "Ответ ошибочно содержит запрещённую метку [[skip]].";
   }
-  if (wordMode) return "";
 
-  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  if (sourceScripts.length < 2) return "";
-  if (!/^\[\[multilingual\]\]/i.test(value)) {
-    return "Для выделения с несколькими письменностями отсутствует формат [[multilingual]].";
+  const firstLine = value.split("\n", 1)[0].trim().toLowerCase();
+  if (wordMode) {
+    if (firstLine === "[[reference]]") return "";
+    if (firstLine !== "[[translation]]") {
+      return "Для короткого фрагмента отсутствует формат [[translation]] или [[reference]].";
+    }
+    return contentIssue(value, sourceText);
   }
 
-  const missing = sourceScripts.filter((script) => {
-    const escaped = script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const section = value.match(
-      new RegExp(
-        `\\[\\[script\\s*:\\s*${escaped}\\s*\\|\\s*lang\\s*:[^\\]]+\\]\\]\\s*` +
-          "([\\s\\S]*?)(?=\\n\\[\\[script\\s*:|$)",
-        "i"
-      )
-    );
-    return !section?.[1]?.trim();
-  });
-  return missing.length
-    ? `В ответе отсутствуют секции для письменностей: ${missing.join(", ")}.`
-    : "";
+  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
+  const multilingual = firstLine === "[[multilingual]]";
+  const declaredScripts = [
+    ...value.matchAll(/^\[\[script\s*:\s*([^|\]]+)\s*\|/gim)
+  ].map((match) => match[1].trim());
+  const unexpectedScripts = declaredScripts.filter((script) => !sourceScripts.includes(script));
+  if (unexpectedScripts.length) {
+    return `Ответ добавил отсутствующие в выделении письменности: ${[
+      ...new Set(unexpectedScripts)
+    ].join(", ")}.`;
+  }
+  if (sourceScripts.length > 1 && !multilingual) {
+    return "Для выделения с несколькими письменностями отсутствует формат [[multilingual]].";
+  }
+  if (sourceScripts.length < 2 && multilingual) {
+    const languages = [
+      ...value.matchAll(/^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:\s*([^\]]+)\]\]/gim)
+    ].map((match) => match[1].trim().toLowerCase());
+    if (new Set(languages).size < 2) {
+      return "Для текста на одном языке ошибочно выбран многоязычный формат.";
+    }
+  } else if (!multilingual && firstLine !== "[[text]]") {
+    return "Для обычного текста отсутствует формат [[text]].";
+  }
+
+  if (multilingual && sourceScripts.length > 1) {
+    const missing = sourceScripts.filter((script) => {
+      const escaped = script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const section = value.match(
+        new RegExp(
+          `\\[\\[script\\s*:\\s*${escaped}\\s*\\|\\s*lang\\s*:[^\\]]+\\]\\]\\s*` +
+            "([\\s\\S]*?)(?=\\n\\[\\[script\\s*:|$)",
+          "i"
+        )
+      );
+      return !section?.[1]?.trim();
+    });
+    if (missing.length) {
+      return `В ответе отсутствуют секции для письменностей: ${missing.join(", ")}.`;
+    }
+  }
+
+  return contentIssue(value, sourceText);
 }
 
 async function repairResponse(
@@ -335,6 +435,7 @@ async function repairResponse(
   issue,
   wordMode,
   sourceScripts,
+  sourceText,
   signal
 ) {
   const required = sourceScripts.length > 1
@@ -347,7 +448,8 @@ async function repairResponse(
       role: "user",
       content:
         `Исправь ответ: ${issue}${required} Не пропускай ни один исходный фрагмент и не используй [[skip]]. ` +
-        "Повтори весь ответ целиком строго в требуемом формате."
+        "Все содержательные строки пиши только по-русски. Не повторяй иностранный оригинал, не переводи на третий язык, " +
+        "не копируй текст инструкции и не добавляй подпись «Перевод:». Повтори весь ответ целиком строго в требуемом формате."
     }
   ];
 
@@ -370,7 +472,7 @@ async function repairResponse(
   const repaired = data?.choices?.[0]?.message?.content?.trim();
   if (!repaired) throw new Error("Пустой ответ при исправлении перевода.");
 
-  const remainingIssue = responseIssue(repaired, wordMode, sourceScripts);
+  const remainingIssue = responseIssue(repaired, wordMode, sourceScripts, sourceText);
   if (remainingIssue) {
     throw new Error("Не удалось получить полный перевод всех выделенных языков — попробуйте ещё раз.");
   }
@@ -385,13 +487,14 @@ function buildTextMessages(text, lang, rawSourceScripts = []) {
     ? "В исходном выделении локально обнаружены письменности: " +
       `${scriptList}. Поэтому ответ ОБЯЗАТЕЛЬНО должен иметь формат:\n` +
       "[[multilingual]]\n" +
-      "[[script:Latin|lang:название исходного языка по-русски]]\n" +
-      `перевод фрагмента на язык «${lang}»\n` +
-      "Заменяй Latin на точное значение из списка обнаруженных письменностей. " +
+      "Затем для каждого исходного фрагмента напиши строку [[script:SCRIPT|lang:LANGUAGE]], а со следующей строки — только его русский перевод. " +
+      "SCRIPT замени точным значением из списка, LANGUAGE — названием исходного языка по-русски. " +
+      "Значение SCRIPT описывает источник и НИКОГДА не означает, что результат нужно писать этой письменностью. " +
       "В ответе должна быть хотя бы одна непустая секция для КАЖДОЙ письменности из списка; ничего не пропускай."
-    : `Если весь исходный текст на одном языке, ответь:\n[[text]]\nполный перевод на язык «${lang}» без пояснений и исходного текста\n` +
-      "Только если в самом исходном тексте действительно несколько языков одной письменности, используй формат:\n" +
-      "[[multilingual]]\n[[script:Latin|lang:название исходного языка по-русски]]\nперевод фрагмента";
+    : "Если весь исходный текст на одном языке, первая строка ответа должна быть только [[text]], " +
+      `а начиная со второй строки напиши сам перевод на язык «${lang}». ` +
+      "Только если в самом исходном тексте действительно несколько языков одной письменности, начни с [[multilingual]], " +
+      "затем для каждого языка добавь строку [[script:SCRIPT|lang:LANGUAGE]] и под ней русский перевод.";
 
   return [
     {
@@ -402,6 +505,9 @@ function buildTextMessages(text, lang, rawSourceScripts = []) {
         "Переводи только фрагменты не на целевом языке; фрагменты уже на целевом языке сохраняй дословно. Сохраняй порядок, абзацы, имена собственные и технические термины. " +
         "Определяй количество языков только по исходному пользовательскому тексту: русский язык результата не является вторым исходным языком.\n" +
         "Метка [[skip]] запрещена: проверка русского текста уже выполнена локально до запроса. Служебные метки пиши точно как указано.\n" +
+        "Все содержательные строки ответа пиши только по-русски. Никогда не повторяй иностранный оригинал, не переводи его на третий язык, " +
+        "не копируй формулировки этой инструкции и не добавляй подписи «Перевод:» или «Translation:».\n" +
+        "Классический или коранический арабский переводи непосредственно с арабского с учётом грамматики и доступного контекста; не подменяй перевод толкованием или обратным переводом через другой язык.\n" +
         `${format}\n` +
         "Создавай отдельную секцию для каждого последовательного предложения или блока исходного языка и сохраняй исходный порядок. Соседние фрагменты одного языка можно объединить. Не добавляй никаких пояснений вне секций."
     },
@@ -426,15 +532,15 @@ function buildWordMessages(text, context, lang, rawSourceScripts = []) {
         "Используй режим reference только если по контексту фрагмент употреблён как имя, название, бренд или никнейм либо если это действительно опечатка или придуманное слово без словарного значения. Например, Apple в «Apple released an update» — бренд, а apple в «I ate an apple» — обычное слово. Не выдумывай значения и факты.\n" +
         "Ответь строго в одном из двух форматов. Служебную метку пиши точно как указано.\n" +
         "Метка [[skip]] запрещена. Даже если перевод не требуется, используй [[translation]] и верни фрагмент без изменений.\n" +
-        "Для обычного слова или выражения:\n" +
-        "[[translation]]\n" +
-        `перевод в подходящем по контексту значении на языке «${lang}»\n` +
-        "другие значения: необязательный список через запятую\n" +
+        "Для обычного слова или выражения первая строка должна быть только [[translation]]. " +
+        `Со второй строки напиши сам перевод в подходящем по контексту значении на языке «${lang}». ` +
+        "При необходимости следующей строкой можно написать «другие значения:» и короткий список.\n" +
         `Если фрагмент уже на языке «${lang}», верни его без изменений. Строку «другие значения» не пиши, если их нет.\n` +
-        "Для имени, названия, бренда, никнейма, опечатки или придуманного слова:\n" +
-        "[[reference]]\n" +
-        "одна категория: название, имя, бренд, никнейм, опечатка или неизвестный термин\n" +
-        `одно короткое осторожное объяснение на языке «${lang}» по написанию и контексту; если определить нельзя, напиши, что это, вероятно, имя или название\n` +
+        "Не повторяй иностранный оригинал, не копируй формулировки инструкции и не добавляй отдельную строку «Перевод:».\n" +
+        "Классический или коранический арабский переводи непосредственно с арабского с учётом грамматики и контекста, не через английский и не в виде толкования.\n" +
+        "Для имени, названия, бренда, никнейма, опечатки или придуманного слова первая строка должна быть только [[reference]]. " +
+        "Со второй строки напиши одну категорию: название, имя, бренд, никнейм, опечатка или неизвестный термин. " +
+        `Со следующей строки дай одно короткое осторожное объяснение на языке «${lang}» по написанию и контексту; если определить нельзя, напиши, что это, вероятно, имя или название.\n` +
         "Никакого другого текста в ответе быть не должно."
     },
     {

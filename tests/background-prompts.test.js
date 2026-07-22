@@ -53,6 +53,8 @@ test("text prompt auto-detects the source language", () => {
   assert.match(prompt, /Метка \[\[skip\]\] запрещена/);
   assert.match(prompt, /\[\[text\]\]/);
   assert.match(prompt, /Переводи только фрагменты не на целевом языке/);
+  assert.doesNotMatch(prompt, /полный перевод на язык/);
+  assert.match(prompt, /Классический или коранический арабский переводи непосредственно с арабского/);
 });
 
 test("multiscript prompt requires a section for every detected script", () => {
@@ -62,8 +64,9 @@ test("multiscript prompt requires a section for every detected script", () => {
 
   assert.match(prompt, /Latin, Arabic/);
   assert.match(prompt, /\[\[multilingual\]\]/);
-  assert.match(prompt, /\[\[script:Latin\|lang:/);
+  assert.match(prompt, /\[\[script:SCRIPT\|lang:LANGUAGE\]\]/);
   assert.match(prompt, /для КАЖДОЙ письменности/);
+  assert.match(prompt, /НИКОГДА не означает, что результат нужно писать этой письменностью/);
 });
 
 test("response validation rejects skip and missing script sections", () => {
@@ -100,6 +103,58 @@ test("response validation rejects skip and missing script sections", () => {
   );
 });
 
+test("response validation rejects copied instructions, source echoes, and non-Russian output", () => {
+  const { responseIssue } = loadBackground();
+  const arabic = "ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ فِيهِ";
+
+  assert.match(
+    responseIssue(
+      "[[text]]\nполный перевод на язык «русский» без пояснений и исходного текста",
+      false,
+      ["Arabic"],
+      arabic
+    ),
+    /повторяет инструкцию/
+  );
+  assert.match(
+    responseIssue("[[text]]\nاقترب من الله", false, ["Latin"], "Come Close to Allah."),
+    /исходной письменностью|не русский перевод/
+  );
+  assert.match(
+    responseIssue(
+      "[[multilingual]]\n" +
+        "[[script:Latin|lang:английский]]\nCome Close to Allah.\n" +
+        "[[script:Arabic|lang:арабский]]\nاقترب من الله.",
+      false,
+      ["Latin"],
+      "Come Close to Allah."
+    ),
+    /отсутствующие в выделении письменности: Arabic/
+  );
+  assert.match(
+    responseIssue(
+      "[[text]]\nوَٱجْعَلْهُ رَبِّ رَضِيًّۭا\nПеревод:\nИ сделай его, о Господи, довольным.",
+      false,
+      ["Arabic"],
+      "وَٱجْعَلْهُ رَبِّ رَضِيًّۭا"
+    ),
+    /лишнюю подпись|повторяет выделенный/
+  );
+  assert.match(
+    responseIssue(
+      "[[multilingual]]\n[[script:Arabic|lang:арабский]]\nЭто Писание.",
+      false,
+      ["Arabic"],
+      arabic
+    ),
+    /ошибочно выбран многоязычный формат/
+  );
+  assert.equal(
+    responseIssue("[[text]]\nЭто Писание, в котором нет сомнения.", false, ["Arabic"], arabic),
+    ""
+  );
+});
+
 test("repair request replaces an invalid skip response", async () => {
   const background = loadBackground();
   background.fetch = async () => ({
@@ -116,6 +171,7 @@ test("repair request replaces an invalid skip response", async () => {
     "Запрещённая метка.",
     true,
     ["Arabic"],
+    "لِّلْمُتَّقِينَ",
     new AbortController().signal
   );
 

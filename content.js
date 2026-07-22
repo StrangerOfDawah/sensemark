@@ -109,19 +109,78 @@
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
 
-    const text = selection.toString().trim();
+    const range = selection.getRangeAt(0);
+    const rawText = selection.toString().trim();
+    const visibleText = extractVisibleRangeText(range);
+    const text = detectScripts(visibleText).length ? visibleText : rawText;
     if (text.length < 2) return null;
 
-    const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
     if (!rect || (rect.width === 0 && rect.height === 0)) return null;
 
     // Для коротких фрагментов подтягиваем предложение вокруг — без него
     // многозначные слова переводятся наугад.
     const wordMode = isShort(text) && !hasMultipleScripts(text);
-    const context = wordMode ? extractContext(range, text) : null;
+    const context = wordMode && text === rawText ? extractContext(range, text) : null;
 
     return { text, rect, context, wordMode, sourceScripts: detectScripts(text) };
+  }
+
+  function extractVisibleRangeText(range) {
+    const root = range.commonAncestorContainer;
+    const textNodes = [];
+
+    if (root.nodeType === Node.TEXT_NODE) {
+      textNodes.push(root);
+    } else {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+    }
+
+    const parts = [];
+    for (const node of textNodes) {
+      try {
+        if (!range.intersectsNode(node) || !isVisibleTextNode(node)) continue;
+
+        let start = 0;
+        let end = node.data.length;
+        if (node === range.startContainer) start = range.startOffset;
+        if (node === range.endContainer) end = range.endOffset;
+        const part = node.data.slice(start, end).trim();
+        if (part) parts.push(part);
+      } catch {
+        // Некоторые сложные Range на динамических страницах нельзя пересечь.
+      }
+    }
+    return parts.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  function isVisibleTextNode(node) {
+    let element = node.parentElement;
+    while (element && element !== document.documentElement) {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      if (
+        element.hidden ||
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        style.visibility === "collapse" ||
+        Number(style.opacity) === 0 ||
+        style.clipPath === "inset(50%)" ||
+        (style.position === "absolute" &&
+          style.overflow === "hidden" &&
+          rect.width <= 1 &&
+          rect.height <= 1)
+      ) {
+        return false;
+      }
+      element = element.parentElement;
+    }
+
+    const probe = document.createRange();
+    probe.selectNodeContents(node);
+    return [...probe.getClientRects()].some((rect) => rect.width > 1 && rect.height > 1);
   }
 
   function isShort(text) {

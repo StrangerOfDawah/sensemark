@@ -19,6 +19,16 @@
       .hint { color: #8f99ad; margin: 0 0 42px; }
       .sample { margin: 28px 0; padding: 24px; border: 1px solid #293246; border-radius: 16px; }
       mark { color: #fff; background: #38547d; padding: 2px 5px; border-radius: 4px; }
+      .hidden-copy {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
       .controls {
         position: fixed;
         top: 22px;
@@ -49,12 +59,16 @@
         <button data-case="translation">Обычный перевод</button>
         <button data-case="reference">Объяснение названия</button>
         <button data-case="multilingual">Несколько языков</button>
+        <button data-case="hidden">Скрытый текст</button>
         <button data-case="russian">Только русский</button>
       </div>
 
       <p class="sample" id="translation-sample"><mark id="why">Why</mark> does this happen?</p>
       <p class="sample" id="reference-sample">Use <mark id="sensemark">Sensemark</mark> to translate the selection.</p>
       <p class="sample"><mark id="multilingual">Привет! How are you? مرحبا بك.</mark></p>
+      <p class="sample">
+        <mark id="hidden">Come Close to Allah.<span class="hidden-copy">اقترب من الله.</span></mark>
+      </p>
       <p class="sample"><mark id="russian">Этот текст уже написан на русском языке.</mark></p>
     </main>
 
@@ -127,6 +141,8 @@
           );
         } else if (name === "russian") {
           selectAndTranslate(document.getElementById("russian"), "[[skip]]");
+        } else if (name === "hidden") {
+          selectAndTranslate(document.getElementById("hidden"), "[[text]]\nПриблизься к Аллаху.");
         } else {
           selectAndTranslate(
             document.getElementById("why"),
