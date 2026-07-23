@@ -2,6 +2,8 @@ name: PR test build
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,33 +26,32 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "24"
+          cache: npm
 
-      - name: Validate source and manifest
-        run: |
-          node --check background.js
-          node --check language-detection.js
-          node --check selection-text.js
-          node --check word-response.js
-          node --check text-response.js
-          node --check content.js
-          node --check options.js
-          node --test tests/background-prompts.test.js
-          node --test tests/language-detection.test.js
-          node --test tests/selection-text.test.js
-          node --test tests/text-response.test.js
-          node --test tests/word-response.test.js
-          jq empty manifest.json
+      - name: Install locked test dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate extension structure
+        run: npm run check
+
+      - name: Run required tests with coverage thresholds
+        run: npm run test:coverage
 
       - name: Build extension archive
         run: bash scripts/package-extension.sh
 
-      - name: Prepare unpacked test build
+      - name: Validate and prepare unpacked test build
         run: |
           archive="$(find dist -maxdepth 1 -type f -name 'sensemark-v*.zip' -print -quit)"
           test -n "$archive"
+          node scripts/validate-extension.js "$archive"
           mkdir -p dist/unpacked
           unzip -q "$archive" -d dist/unpacked
           test -f dist/unpacked/manifest.json
+          test -f dist/unpacked/popup.html
+          test -f dist/unpacked/popup.css
+          test -f dist/unpacked/popup.js
+          test -f dist/unpacked/manual-translation.js
 
       - name: Choose artifact name
         id: artifact-name

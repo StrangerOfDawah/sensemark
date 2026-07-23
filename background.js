@@ -46,10 +46,6 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
-chrome.action.onClicked.addListener(() => {
-  chrome.runtime.openOptionsPage();
-});
-
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== MENU_ID || !tab?.id) return;
   ping(tab.id, info.frameId);
@@ -81,6 +77,7 @@ async function ping(tabId, frameId) {
           "selection-text.js",
           "word-response.js",
           "text-response.js",
+          "ui-scale.js",
           "content.js"
         ]
       });

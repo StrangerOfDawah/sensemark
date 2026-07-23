@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sensemark — ручной перевод</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"><i></i><i></i></div>
+
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-orb"><img src="icons/icon-32.png" alt="" /></span>
+          <span>
+            <strong>Sensemark</strong>
+            <small><i class="online-dot"></i> ручной перевод</small>
+          </span>
+        </div>
+        <button class="icon-button" id="settingsButton" type="button" title="Настройки" aria-label="Открыть настройки">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M8.2 2.4h3.6l.55 2.05 1.45.84 2.05-.55 1.8 3.12-1.5 1.5v1.68l1.5 1.5-1.8 3.12-2.05-.55-1.45.84-.55 2.05H8.2l-.55-2.05-1.45-.84-2.05.55-1.8-3.12 1.5-1.5V9.36l-1.5-1.5 1.8-3.12 2.05.55 1.45-.84.55-2.05Z" />
+            <circle cx="10" cy="10.2" r="2.5" />
+          </svg>
+        </button>
+      </header>
+
+      <section class="setup-banner" id="setupBanner" hidden>
+        <span class="setup-icon" aria-hidden="true">!</span>
+        <p id="setupText"></p>
+        <button id="setupButton" type="button">Настроить</button>
+      </section>
+
+      <section class="composer" aria-label="Текст для перевода">
+        <div class="composer-head">
+          <span class="eyebrow">Оригинал</span>
+          <span class="route"><b>Авто</b><i>→</i><b>Русский</b></span>
+        </div>
+
+        <textarea
+          id="sourceText"
+          maxlength="5000"
+          rows="5"
+          placeholder="Введите или вставьте текст на любом языке…"
+          aria-label="Текст для перевода"
+          spellcheck="true"
+        ></textarea>
+
+        <div class="composer-foot">
+          <span class="counter" id="charCount">0 / 5000</span>
+          <span class="shortcut"><kbd>⌘</kbd><kbd>↵</kbd></span>
+          <button class="clear-button" id="clearButton" type="button" hidden>Очистить</button>
+          <button class="translate-button" id="translateButton" type="button" aria-label="Перевести">
+            <span class="translate-label">Перевести</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 10h11m-4.3-4.3L15 10l-4.3 4.3" />
+            </svg>
+            <i class="spinner" aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
+
+      <div class="message" id="message" role="status" aria-live="polite" hidden></div>
+
+      <section class="result" id="result" aria-label="Результат перевода" hidden>
+        <div class="result-head">
+          <span class="eyebrow" id="resultLabel">Перевод</span>
+          <button class="copy-button" id="copyButton" type="button" disabled>
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <rect x="6.1" y="5.4" width="8.4" height="9.3" rx="2" />
+              <path d="M11.8 3.3H5.4a2 2 0 0 0-2 2v6.4" />
+            </svg>
+            <span>Копировать</span>
+          </button>
+        </div>
+        <div class="result-body" id="resultBody" aria-live="polite"></div>
+      </section>
+
+      <footer class="foot">
+        <span id="status">Готов к переводу</span>
+        <span class="privacy">текст → OpenAI API</span>
+      </footer>
+    </main>
+
+    <script src="language-detection.js"></script>
+    <script src="word-response.js"></script>
+    <script src="text-response.js"></script>
+    <script src="manual-translation.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

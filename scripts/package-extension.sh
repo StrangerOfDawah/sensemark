@@ -23,7 +23,12 @@ zip -q -r "$ARCHIVE" \
   selection-text.js \
   word-response.js \
   text-response.js \
+  manual-translation.js \
+  ui-scale.js \
   content.js \
+  popup.html \
+  popup.css \
+  popup.js \
   options.html \
   options.js \
   icons \

@@ -1,48 +1,6 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
-
-function eventStub() {
-  return { addListener() {} };
-}
-
-function loadBackground() {
-  const settings = {
-    apiKey: "test-key",
-    model: "gpt-4o-mini",
-    targetLang: "русский",
-    autoTranslate: false,
-    privacyConsentVersion: 1
-  };
-  const context = {
-    AbortController,
-    TextDecoder,
-    chrome: {
-      runtime: {
-        onInstalled: eventStub(),
-        onMessage: eventStub(),
-        onConnect: eventStub(),
-        openOptionsPage() {}
-      },
-      contextMenus: {
-        onClicked: eventStub(),
-        removeAll() {},
-        create() {}
-      },
-      action: { onClicked: eventStub() },
-      commands: { onCommand: eventStub() },
-      storage: { local: { get: async () => settings } },
-      tabs: { sendMessage: async () => {} },
-      scripting: { executeScript: async () => {} }
-    }
-  };
-  vm.createContext(context);
-  const source = fs.readFileSync(path.join(__dirname, "..", "background.js"), "utf8");
-  vm.runInContext(source, context);
-  return context;
-}
+const { loadBackground } = require("./helpers/background.js");
 
 test("text prompt auto-detects the source language", () => {
   const { buildTextMessages } = loadBackground();

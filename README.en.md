@@ -30,6 +30,14 @@ Close the card mid-translation and the request aborts — unfinished tokens aren
 
 <br>
 
+## When selection does not work
+
+Click the Sensemark toolbar icon to open a compact manual-translation popup. Paste up to 5000 characters and start with the button or <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd>.
+
+Manual mode reuses the same streaming request, local Russian-text guard, multilingual sections, and amber explanation state for names and unknown terms. Results can be copied, and editing the source or pressing stop aborts the unfinished API request immediately.
+
+<br>
+
 ## One word, the right meaning
 
 Selected a single word? The extension picks up the surrounding sentence and asks for the translation that fits *that* sentence. Other common meanings are listed underneath, in case you needed a different one.
@@ -71,7 +79,9 @@ Until the Chrome Web Store listing is published, the extension is installed manu
 
 ## Test build from a PR
 
-For every pull request, GitHub Actions validates the code and attaches an unpacked test build. Open the relevant **PR test build** run on the Actions tab, download the `sensemark-pr-N` artifact, unzip it, and load the resulting folder from `chrome://extensions` → **Load unpacked**.
+For every pull request and every change to `main`, GitHub Actions runs unit and DOM integration tests, enforces coverage thresholds (90% lines, 75% branches, 95% functions), validates the Manifest V3 structure, and checks every packaged runtime file. Any failure stops the job and prevents publication of the test artifact.
+
+After a successful run, open **PR test build** on the Actions tab, download the `sensemark-pr-N` artifact, unzip it, and load the resulting folder from `chrome://extensions` → **Load unpacked**.
 
 The artifact is retained for 14 days and contains no API keys or user settings. A separate Chrome profile keeps the test build isolated from the installed release. The workflow can also be started manually with **Run workflow**.
 
@@ -82,8 +92,8 @@ The artifact is retained for 14 days and contains no API keys or user settings. 
 You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.
 
 1. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and top up your balance
-2. Click the extension icon to open its settings
-3. Paste the key and hit **Проверить ключ** (Test key)
+2. Click the extension icon, then the settings button in the top-right corner
+3. Paste the key in settings and hit **Проверить ключ** (Test key)
 
 **On cost.** The default is the economical `gpt-4o-mini` model. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
@@ -96,6 +106,7 @@ You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that
 | Keyboard shortcut | Select text → <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Mac) or <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Windows) |
 | Context menu | Select text → right-click → «Перевести на русский» |
 | Automatic | Enable the toggle in settings — translates on any mouse selection |
+| Manual | Click the extension icon → paste text → «Перевести» |
 | Scale | <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll over the card |
 
 In the card: the icon button copies the translation, «Оригинал» expands the source text. Close it with <kbd>Esc</kbd>, the ×, a click outside, or by scrolling.
@@ -114,11 +125,14 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 | `selection-text.js` | Selection cleanup and semantic recovery for page-font glyphs |
 | `word-response.js` | Word-response parser: regular translation or name/title explanation |
 | `text-response.js` | Parser for regular and sectioned multilingual translations |
+| `manual-translation.js` | Manual-request planning and response parsing without duplicating API logic |
+| `popup.html` · `popup.css` · `popup.js` | Compact manual streaming-translation popup |
+| `ui-scale.js` | Card scaling step and trackpad rate limiting |
 | `content.js` | On-page card, context extraction, scale and size |
 | `options.html` · `options.js` | Settings page |
 | `icons/` | Icons, 16–128 |
 
-The key is stored in `chrome.storage.local`. Selected text and, for a short selection, its surrounding sentence are sent directly to OpenAI for translation. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
+The key is stored in `chrome.storage.local`. Selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI for translation. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
 
 Repeat translations of the same fragment come from an in-memory cache in the service worker (last 200) and cost nothing. Selections are capped at 5000 characters so an accidental <kbd>⌘</kbd><kbd>A</kbd> doesn't send a whole page to the API.
 

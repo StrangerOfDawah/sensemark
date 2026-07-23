@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sensemark popup preview</title>
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: start center;
+        padding: 32px;
+        background:
+          radial-gradient(circle at 30% 10%, #172245, transparent 42%),
+          #05060c;
+      }
+
+      iframe {
+        width: 380px;
+        height: 680px;
+        border: 0;
+        border-radius: 18px;
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="popup" src="../../popup.html" title="Sensemark popup"></iframe>
+    <script>
+      const frame = document.getElementById("popup");
+      const requestedState = new URLSearchParams(location.search).get("state") || "multilingual";
+
+      frame.addEventListener("load", () => {
+        const document = frame.contentDocument;
+        const source = document.getElementById("sourceText");
+        const result = document.getElementById("result");
+        const resultBody = document.getElementById("resultBody");
+
+        source.value =
+          requestedState === "reference"
+            ? "Sensemark"
+            : "This is the Book about which there is no doubt.\nذَٰلِكَ الْكِتَابُ لَا رَيْبَ فِيهِ";
+        document.getElementById("charCount").textContent = `${source.value.length} / 5000`;
+        document.getElementById("clearButton").hidden = false;
+        document.getElementById("copyButton").disabled = false;
+        document.getElementById("status").textContent = "Готово";
+        result.hidden = false;
+
+        if (requestedState === "reference") {
+          result.className = "result reference";
+          document.getElementById("resultLabel").textContent = "Объяснение";
+          resultBody.innerHTML = `
+            <span class="reference-category">Название</span>
+            <p class="reference-title">Sensemark</p>
+            <p class="reference-note">Не переводится как обычное слово</p>
+            <div class="detail">
+              <div class="detail-label">Возможное значение</div>
+              <p class="detail-text">Вероятно, это имя продукта или проекта, образованное от английских слов sense и mark.</p>
+            </div>
+          `;
+          return;
+        }
+
+        result.className = "result multilingual";
+        document.getElementById("resultLabel").textContent = "Несколько языков";
+        resultBody.innerHTML = `
+          <section class="segment">
+            <div class="segment-language">Английский → русский</div>
+            <p class="segment-text">Это Писание, в котором нет сомнения.</p>
+          </section>
+          <section class="segment">
+            <div class="segment-language">Арабский → русский</div>
+            <p class="segment-text">Это Писание, в котором нет сомнения.</p>
+          </section>
+        `;
+      });
+    </script>
+  </body>
+</html>

@@ -22,6 +22,7 @@
         "selection-text.js",
         "word-response.js",
         "text-response.js",
+        "ui-scale.js",
         "content.js"
       ],
       "run_at": "document_idle",
@@ -33,7 +34,8 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Настройки перевода",
+    "default_title": "Sensemark — ручной перевод",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png"

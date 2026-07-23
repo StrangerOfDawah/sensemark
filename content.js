@@ -11,6 +11,7 @@
   const isQuranGlyphFont = globalThis.SensemarkSelectionText?.isQuranGlyphFont;
   const joinSelectionParts = globalThis.SensemarkSelectionText?.joinSelectionParts;
   const selectArabicAlternative = globalThis.SensemarkSelectionText?.selectArabicAlternative;
+  const createScaleController = globalThis.SensemarkScale?.createScaleController;
   if (
     !parseWordResponse ||
     !parseTextResponse ||
@@ -20,7 +21,8 @@
     !alternativeWord ||
     !isQuranGlyphFont ||
     !joinSelectionParts ||
-    !selectArabicAlternative
+    !selectArabicAlternative ||
+    !createScaleController
   ) {
     console.error("Sensemark: response helpers are unavailable.");
     return;
@@ -41,16 +43,13 @@
 
   // Размеры карточки живут в storage, чтобы держаться на всех страницах.
   const VIEW_DEFAULTS = { uiScale: 1, cardWidth: 0, cardHeight: 0 };
-  const SCALE_MIN = 0.75;
-  const SCALE_MAX = 2.2;
-  const SCALE_STEP = 0.02;
-  const SCALE_INTERVAL_MS = 70;
   const WIDTH_MIN = 230; // совпадает с min-width карточки в CSS
   const HEIGHT_MIN = 120;
 
   // Держим флаги локально, чтобы не будить service worker на каждое выделение.
   let autoTranslate = false;
   let view = { ...VIEW_DEFAULTS };
+  const scaleController = createScaleController();
 
   chrome.storage.local.get({ autoTranslate: false, ...VIEW_DEFAULTS }).then((s) => {
     autoTranslate = s.autoTranslate;
@@ -892,10 +891,9 @@
 
   // Cmd/Ctrl + колесо — масштаб карточки. preventDefault обязателен,
   // иначе браузер зумит всю страницу.
-  let lastScaleAt = -Infinity;
   let scalePositionTimer = null;
   function setupZoom() {
-    lastScaleAt = -Infinity;
+    scaleController.reset();
     card.addEventListener(
       "wheel",
       (event) => {
@@ -906,15 +904,10 @@
         // Трекпад отправляет десятки wheel-событий за одно движение. Раньше
         // каждое из них меняло масштаб сразу на 8%, поэтому карточка улетала.
         // Принимаем не чаще одного небольшого шага за интервал.
-        const now = performance.now();
-        if (now - lastScaleAt < SCALE_INTERVAL_MS) return;
-        lastScaleAt = now;
+        const change = scaleController.next(view.uiScale, event.deltaY, performance.now());
+        if (!change.changed) return;
 
-        const step = event.deltaY > 0 ? -SCALE_STEP : SCALE_STEP;
-        const next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, view.uiScale + step));
-        if (next === view.uiScale) return;
-
-        view.uiScale = Math.round(next * 100) / 100;
+        view.uiScale = change.value;
         applyView();
         showZoom();
         saveView();

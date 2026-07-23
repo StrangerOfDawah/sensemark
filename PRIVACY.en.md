@@ -11,6 +11,7 @@ This policy applies to the **Sensemark** Chrome extension (the “Extension”).
 The Extension handles only the data needed to translate text:
 
 - the text the user explicitly selects for translation;
+- text the user manually types or pastes into the popup for translation;
 - for a short selection, the surrounding sentence used to determine the correct meaning;
 - the user's OpenAI API key;
 - local preferences such as the selected model, automatic translation setting, and card size;
@@ -20,7 +21,7 @@ Before transmission, the Extension locally removes hidden duplicates and interfa
 
 ## How the data is used and shared
 
-Selected text and optional surrounding context are sent directly from the user's browser to the OpenAI API at `https://api.openai.com` solely to generate the requested translation. The API key is sent to OpenAI in the authorization header solely to authenticate that request.
+Selected or manually entered text and optional selection context are sent directly from the user's browser to the OpenAI API at `https://api.openai.com` solely to generate the requested translation. The API key is sent to OpenAI in the authorization header solely to authenticate that request.
 
 Before the first request, the Extension asks the user to explicitly consent to this data transfer. Translation network requests are blocked until consent is provided.
 
