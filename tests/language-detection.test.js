@@ -12,6 +12,26 @@ test("does not suppress mixed Russian and English text", () => {
   assert.equal(hasMultipleScripts("Привет! How are you?"), true);
 });
 
+test("ignores Russian selections with small technical Latin insertions", () => {
+  const englishBiasedDetection = {
+    isReliable: true,
+    languages: [{ language: "en", percentage: 72 }]
+  };
+  assert.equal(
+    isRussianOnly(
+      "Критичный момент: приложение не запустится с dev-секретом, пока не задан APP_ENV.",
+      englishBiasedDetection
+    ),
+    true
+  );
+  assert.equal(isRussianOnly("Для локальной среды задайте APP_ENV=development."), true);
+  assert.equal(isRussianOnly("Откройте URL в ChatGPT и проверьте результат."), true);
+});
+
+test("still translates a real English phrase inside Russian text", () => {
+  assert.equal(isRussianOnly("Подпись на странице: Come close to Allah."), false);
+});
+
 test("does not treat distinct Ukrainian letters as Russian", () => {
   assert.equal(isRussianOnly("Привіт, як справи?"), false);
 });

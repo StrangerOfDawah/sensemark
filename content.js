@@ -405,7 +405,9 @@
     }
     if (id !== requestId) return;
 
-    render(info.rect, { state: "loading" });
+    // Старый результат убираем сразу, но пустую карточку для нового запроса не
+    // создаём. Она появится только вместе с первым содержательным фрагментом.
+    if (host) close({ cancelRequest: false, animate: false });
 
     // Стриминг: перевод печатается по мере генерации, не дожидаясь всего ответа.
     let port;
@@ -428,8 +430,19 @@
       if (id !== requestId) return;
 
       if (message.type === "chunk" || message.type === "done") {
+        if (!started && !hasVisibleStreamContent(message.text, info.wordMode)) {
+          if (message.type === "done") {
+            render(info.rect, {
+              state: "error",
+              message: "Не удалось получить перевод — попробуйте ещё раз."
+            });
+            release();
+            port.disconnect();
+          }
+          return;
+        }
         if (!started) {
-          beginStreamCard(info.text, info.wordMode);
+          beginStreamCard(info.rect, info.text, info.wordMode);
           started = true;
         }
         updateStream(message.text);
@@ -691,22 +704,6 @@
           overflow-wrap: break-word;
           user-select: text;
           -webkit-user-select: text;
-        }
-
-        .sk {
-          height: 0.79em;
-          border-radius: 6px;
-          margin: 0.43em 0 0.57em;
-          background: linear-gradient(90deg,
-            rgba(100, 210, 255, 0.12) 20%,
-            rgba(94, 92, 230, 0.28) 45%,
-            rgba(191, 90, 242, 0.16) 70%);
-          background-size: 220% 100%;
-          animation: shimmer 1.3s ease-in-out infinite;
-        }
-        @keyframes shimmer {
-          from { background-position: 180% 0; }
-          to { background-position: -90% 0; }
         }
 
         .alt {
@@ -989,11 +986,7 @@
     lastRect = rect;
     setCardPresentation("translation");
 
-    if (payload.state === "loading") {
-      bodyEl.innerHTML = `
-        <div class="sk" style="width: 94%"></div>
-        <div class="sk" style="width: 62%"></div>`;
-    } else if (payload.state === "error") {
+    if (payload.state === "error") {
       bodyEl.innerHTML = `
         <div class="err">${ICONS.warn}<p class="err-t"></p></div>
         <div class="acts"><span class="sp"></span><button class="chip accent" data-act="options">Открыть настройки</button></div>`;
@@ -1015,7 +1008,9 @@
   // wordMode — только для коротких фрагментов: там модель отдаёт перевод первой
   // строкой, а ниже — другие значения или объяснение несловарного фрагмента.
   // У обычного текста переносы строк — это просто абзацы, и разбирать их нельзя.
-  function beginStreamCard(source, wordMode) {
+  function beginStreamCard(rect, source, wordMode) {
+    ensureHost();
+    lastRect = rect;
     setCardPresentation("translation");
     bodyEl.innerHTML = `
       <div class="term-kind" hidden></div>
@@ -1071,6 +1066,29 @@
         copyBtn.innerHTML = ICONS.copy;
       }, 1400);
     });
+  }
+
+  function hasVisibleStreamContent(text, wordMode) {
+    if (!wordMode) {
+      const parsed = parseTextResponse(text);
+      if (parsed.mode === "pending" || parsed.mode === "skip") return false;
+      if (parsed.mode === "multilingual") {
+        return parsed.sections.some((section) => Boolean(section.text));
+      }
+      return Boolean(parsed.text);
+    }
+
+    const parsed = parseWordResponse(text);
+    if (parsed.mode === "pending" || parsed.mode === "skip") return false;
+    if (parsed.mode === "reference") {
+      const content = String(text || "")
+        .split("\n")
+        .slice(1)
+        .join("\n")
+        .trim();
+      return Boolean(content);
+    }
+    return Boolean(parsed.main);
   }
 
   function updateStream(text) {
@@ -1212,11 +1230,13 @@
     });
   }
 
-  function close() {
+  function close({ cancelRequest = true, animate = true } = {}) {
     if (!host) return;
-    requestId++; // отменяем ответ на текущий запрос
-    currentPort?.disconnect(); // background оборвёт fetch и не будет жечь токены
-    currentPort = null;
+    if (cancelRequest) {
+      requestId++; // отменяем ответ на текущий запрос
+      currentPort?.disconnect(); // background оборвёт fetch и не будет жечь токены
+      currentPort = null;
+    }
     streamState = null;
 
     document.removeEventListener("mousedown", onOutsideClick, true);
@@ -1224,8 +1244,12 @@
     window.removeEventListener("resize", close);
 
     const dying = host;
-    card.classList.add("out");
-    setTimeout(() => dying.remove(), 170);
+    if (animate) {
+      card.classList.add("out");
+      setTimeout(() => dying.remove(), 170);
+    } else {
+      dying.remove();
+    }
 
     host = null;
     shadow = null;

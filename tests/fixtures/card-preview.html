@@ -63,6 +63,8 @@
         <button data-case="quran-glyph">Глифы Quran.com</button>
         <button data-case="image-text">Текст-картинка</button>
         <button data-case="russian">Только русский</button>
+        <button data-case="russian-technical">Русский + dev</button>
+        <button data-case="delayed">Отложенный стрим</button>
       </div>
 
       <p class="sample" id="translation-sample"><mark id="why">Why</mark> does this happen?</p>
@@ -99,11 +101,17 @@
         <span>Благословен</span>
       </div>
       <p class="sample"><mark id="russian">Этот текст уже написан на русском языке.</mark></p>
+      <p class="sample">
+        <mark id="russian-technical">
+          Критичный момент: приложение не запустится с dev-секретом, пока не задан APP_ENV.
+        </mark>
+      </p>
     </main>
 
     <script>
       let runtimeListener = null;
       let previewResponse = "";
+      let previewStream = null;
       window.lastPreviewRequest = null;
       window.previewRequestCount = 0;
 
@@ -144,7 +152,13 @@
                 document.documentElement.dataset.previewRequestCount = String(
                   window.previewRequestCount
                 );
-                messageListener?.({ type: "done", text: previewResponse });
+                if (previewStream) {
+                  for (const item of previewStream) {
+                    setTimeout(() => messageListener?.(item.message), item.delay);
+                  }
+                } else {
+                  messageListener?.({ type: "done", text: previewResponse });
+                }
               },
               disconnect() { disconnectListener?.(); }
             };
@@ -152,8 +166,9 @@
         }
       };
 
-      function selectAndTranslate(element, response) {
+      function selectAndTranslate(element, response, stream = null) {
         previewResponse = response;
+        previewStream = stream;
         const selection = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -178,6 +193,20 @@
           );
         } else if (name === "russian") {
           selectAndTranslate(document.getElementById("russian"), "[[skip]]");
+        } else if (name === "russian-technical") {
+          selectAndTranslate(document.getElementById("russian-technical"), "[[skip]]");
+        } else if (name === "delayed") {
+          selectAndTranslate(document.getElementById("why"), "", [
+            { delay: 180, message: { type: "chunk", text: "[[translation]]\n" } },
+            { delay: 650, message: { type: "chunk", text: "[[translation]]\nпо" } },
+            {
+              delay: 850,
+              message: {
+                type: "done",
+                text: "[[translation]]\nпочему\nдругие значения: зачем"
+              }
+            }
+          ]);
         } else if (name === "hidden") {
           selectAndTranslate(document.getElementById("hidden"), "[[text]]\nПриблизься к Аллаху.");
         } else if (name === "quran-glyph") {
@@ -206,7 +235,11 @@
       });
       window.addEventListener(
         "load",
-        () => requestAnimationFrame(() => window.showPreviewCase("translation")),
+        () => {
+          if (!new URLSearchParams(location.search).has("manual")) {
+            requestAnimationFrame(() => window.showPreviewCase("translation"));
+          }
+        },
         { once: true }
       );
     </script>

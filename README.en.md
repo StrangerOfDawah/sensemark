@@ -14,7 +14,7 @@
 
 > The interface is in Russian and the extension translates **into** Russian — the source language is detected automatically. To target another language, change `targetLang` in `DEFAULTS` inside `background.js` and `options.js`.
 
-A Russian-only selection is ignored without opening the card or calling the API. When one selection mixes Russian, English, Arabic, or other languages, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
+A Russian selection is ignored without opening the card or calling the API, including small technical insertions such as `dev-секрет`, `APP_ENV`, a URL, or the ChatGPT name. When a selection contains genuinely separate Russian and foreign-language sentences, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
 
 Before a request, Sensemark locally removes hidden duplicates, controls, interface labels, and Unicode direction markers. On Quran.com, page-font glyph codes are replaced with the simple Arabic copy already embedded in the page. The model receives real text rather than visual codes, and DOM noise does not waste tokens.
 
@@ -22,7 +22,7 @@ Before a request, Sensemark locally removes hidden duplicates, controls, interfa
 
 ## No waiting for the translation
 
-The response streams over SSE: the first words show up in about half a second while the model is still writing the rest. On a long paragraph that's the difference between staring at a spinner and reading right away.
+The response streams over SSE: the card opens together with the first translated characters while the model is still writing the rest. No empty loading card is shown before the response begins.
 
 <img src="docs/feature-stream.png" alt="Three stages of a translation appearing as it is generated">
 
