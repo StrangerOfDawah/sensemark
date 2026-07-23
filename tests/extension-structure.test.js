@@ -26,15 +26,28 @@ test("toolbar action opens the manual popup with only packaged scripts", () => {
   assert.equal([...document.querySelectorAll("script")].some((script) => !script.src), false);
   assert.equal(document.getElementById("translateButton"), null);
   assert.ok(document.getElementById("activity"));
+  assert.equal(document.getElementById("clearButton").getAttribute("aria-label"), "Очистить текст");
+  assert.match(document.querySelector(".route").getAttribute("aria-label"), /автоматически/);
 
   const popupRuntime = read("popup.js");
   assert.match(popupRuntime, /insertFromPaste/);
   assert.match(popupRuntime, /autoTranslateDelayMs/);
 
   const popupStyles = read("popup.css");
+  assert.match(popupStyles, /--secondary-label:/);
   assert.match(popupStyles, /border-radius:\s*28px/);
+  assert.match(popupStyles, /corner-shape:\s*squircle/);
   assert.match(popupStyles, /\.clear-button\[hidden\]\s*{\s*display:\s*none/);
+  assert.match(popupStyles, /@media \(prefers-contrast:\s*more\)/);
+  assert.match(popupStyles, /@media \(prefers-reduced-transparency:\s*reduce\)/);
   assert.doesNotMatch(popupStyles, /min-height:\s*470px/);
+  assert.doesNotMatch(popupStyles, /text-transform:\s*uppercase/);
+
+  const fontSizes = [...popupStyles.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)].map(
+    (match) => Number(match[1])
+  );
+  assert.ok(fontSizes.length > 0);
+  assert.ok(fontSizes.every((size) => size >= 10), "Popup text must stay at least 10px");
 });
 
 test("content runtime declares every helper in manifest and fallback injection", () => {

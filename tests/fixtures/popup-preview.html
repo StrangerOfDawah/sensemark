@@ -21,10 +21,10 @@
       }
 
       iframe {
-        width: 368px;
+        width: 360px;
         height: 240px;
         border: 0;
-        border-radius: 30px;
+        border-radius: 27px;
         box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
         transition: height 180ms ease;
       }
@@ -55,6 +55,7 @@
         document.getElementById("clearButton").hidden = false;
         document.getElementById("copyButton").disabled = false;
         document.getElementById("status").textContent = "Готово";
+        document.getElementById("activity").className = "activity success";
         result.hidden = false;
 
         if (requestedState === "reference") {

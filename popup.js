@@ -249,7 +249,10 @@
           if (view.visible) {
             visible = true;
             renderView(view);
-            setStatus(message.type === "done" ? "Готово" : "Перевод поступает…", message.type === "done" ? "" : "busy");
+            setStatus(
+              message.type === "done" ? "Готово" : "Перевод поступает…",
+              message.type === "done" ? "success" : "busy"
+            );
           }
 
           if (message.type === "done") {
@@ -366,7 +369,7 @@
       updateCount();
       clearResult();
       showMessage("");
-      setStatus("Вставьте текст");
+      setStatus("Перевод начнётся автоматически");
       elements.source.focus();
     }
 
@@ -374,7 +377,7 @@
       clearScheduled();
       const expectedText = elements.source.value.trim();
       if (!expectedText) {
-        setStatus("Вставьте текст");
+        setStatus("Перевод начнётся автоматически");
         return;
       }
       if (setupIssue) {
@@ -383,7 +386,7 @@
       }
 
       const delay = fromPaste ? pasteTranslateDelayMs : autoTranslateDelayMs;
-      setStatus(fromPaste ? "Вставка получена…" : "Жду окончания ввода…");
+      setStatus(fromPaste ? "Начинаю перевод…" : "Переведу после паузы…");
       autoTimer = scheduleTimeout(() => {
         autoTimer = null;
         if (elements.source.value.trim() !== expectedText) return;
@@ -440,7 +443,10 @@
       try {
         settings = await chrome.storage.local.get(manual.SETTINGS_DEFAULTS);
         applySetupState();
-        setStatus(setupIssue ? "Требуется настройка" : "Вставьте текст", setupIssue ? "error" : "");
+        setStatus(
+          setupIssue ? "Требуется настройка" : "Перевод начнётся автоматически",
+          setupIssue ? "error" : ""
+        );
       } catch {
         setupIssue = {
           code: "storage",

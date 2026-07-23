@@ -15,7 +15,7 @@
           <span class="brand-orb"><img src="icons/icon-32.png" alt="" /></span>
           <span>
             <strong>Sensemark</strong>
-            <small><i class="online-dot"></i> переводит автоматически</small>
+            <small>Перевод на русский</small>
           </span>
         </div>
         <button class="icon-button" id="settingsButton" type="button" title="Настройки" aria-label="Открыть настройки">
@@ -34,24 +34,27 @@
 
       <section class="composer" aria-label="Текст для перевода">
         <div class="composer-head">
-          <span class="eyebrow">Оригинал</span>
-          <span class="route"><b>Авто</b><i>→</i><b>Русский</b></span>
+          <span class="field-label">Текст для перевода</span>
+          <span class="route" aria-label="Язык определяется автоматически, перевод на русский">
+            <b>Авто</b>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h7m-2.5-2.5L9 6 6.5 8.5" /></svg>
+            <b>Русский</b>
+          </span>
         </div>
 
         <textarea
           id="sourceText"
           maxlength="5000"
           rows="3"
-          placeholder="Введите или вставьте текст на любом языке…"
+          placeholder="Введите или вставьте текст…"
           aria-label="Текст для перевода"
           spellcheck="true"
         ></textarea>
 
         <div class="composer-foot">
-          <span class="activity" id="activity"><i aria-hidden="true"></i><span id="status">Вставьте текст</span></span>
+          <span class="activity" id="activity"><i aria-hidden="true"></i><span id="status">Перевод начнётся автоматически</span></span>
           <span class="counter" id="charCount">0 / 5000</span>
-          <button class="clear-button" id="clearButton" type="button" hidden>
-            <span>Очистить</span>
+          <button class="clear-button" id="clearButton" type="button" title="Очистить" aria-label="Очистить текст" hidden>
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path d="m5 5 6 6m0-6-6 6" />
             </svg>
