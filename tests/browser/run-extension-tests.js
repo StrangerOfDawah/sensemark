@@ -10,6 +10,7 @@ const evidenceDirectory = path.join(root, "dist", "browser-evidence");
 const startedAt = Date.now();
 const results = [];
 const consoleErrors = [];
+const evidenceWarnings = [];
 const providerRequests = [];
 
 const fixture = `<!doctype html>
@@ -64,6 +65,25 @@ async function check(name, action) {
     });
     console.error(`FAIL ${name}: ${error?.stack || error}`);
   }
+}
+
+async function captureEvidence(subject, filename) {
+  const destination = path.join(evidenceDirectory, filename);
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await subject.screenshot({ path: destination });
+      return true;
+    } catch (error) {
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        continue;
+      }
+      const warning = `${filename}: ${error?.message || error}`;
+      evidenceWarnings.push(warning);
+      console.warn(`WARN screenshot evidence unavailable: ${warning}`);
+    }
+  }
+  return false;
 }
 
 async function selectText(page, selector, value) {
@@ -243,7 +263,7 @@ async function setSelectionMode(optionsPage, page, mode, stableDelayMs = 250) {
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`);
       assert.equal(await popup.locator("#translate").count(), 1);
-      await popup.screenshot({ path: path.join(evidenceDirectory, "popup.png") });
+      await captureEvidence(popup, "popup.png");
       await popup.close();
     });
 
@@ -270,7 +290,7 @@ async function setSelectionMode(optionsPage, page, mode, stableDelayMs = 250) {
           .shadowRoot.querySelector(".translation")
           .textContent.includes("Потоковый")
       );
-      await card.screenshot({ path: path.join(evidenceDirectory, "streaming-card.png") });
+      await captureEvidence(card, "streaming-card.png");
     });
 
     await check("card drag and Escape work", async () => {
@@ -482,6 +502,7 @@ async function setSelectionMode(optionsPage, page, mode, stableDelayMs = 250) {
       scenarios: results,
       providerRequestCount: providerRequests.length,
       consoleErrors,
+      evidenceWarnings,
       durationMs: Date.now() - startedAt
     };
     fs.mkdirSync(path.join(root, "dist"), { recursive: true });
@@ -492,6 +513,7 @@ async function setSelectionMode(optionsPage, page, mode, stableDelayMs = 250) {
     console.log(`Browser tests: passed ${passed}, failed ${failed}, skipped 0`);
     console.log(`Duration: ${report.durationMs}ms`);
     console.log(`Console errors: ${consoleErrors.length}`);
+    console.log(`Evidence warnings: ${evidenceWarnings.length}`);
     if (failed) process.exitCode = 1;
   } catch (error) {
     console.error(error?.stack || error);
