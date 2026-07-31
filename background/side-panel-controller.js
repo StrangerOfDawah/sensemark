@@ -21,6 +21,7 @@
     sidePanel,
     state,
     handoff,
+    configurator,
     detectLanguage,
     randomId = dependencies.contracts.cryptoRandomId
   }) {
@@ -50,40 +51,74 @@
       // retries instead of reporting an empty panel.
       handoff?.announce(pending);
 
-      // Start every extension API call while the originating user gesture is still
-      // on the stack. Awaiting anything before open can consume Chrome's transient
-      // user activation on protected pages and in the built-in PDF viewer.
-      const optionsPromise = Promise.resolve(
-        sidePanel.setOptions({ tabId, enabled: true, path: SIDE_PANEL_PATH })
-      );
+      // `sidePanel.open()` is the ONLY extension API on the user-action path. Panel
+      // configuration happens on tab lifecycle events, so setOptions() is never raced
+      // against open() and can never turn a successful open into a reported failure.
       let openPromise;
       try {
         openPromise = Promise.resolve(sidePanel.open({ tabId }));
       } catch (error) {
         openPromise = Promise.reject(error);
       }
-      const storePromise = Promise.resolve(state.store(pending)).then(async (stored) => {
-        // Newest-wins: drop this tab's older unclaimed requests before advertising.
-        if (state.supersede) await state.supersede(stored);
-        handoff?.publish(stored);
-        return stored;
+
+      // Atomic newest-wins replacement. Never store-then-supersede: two overlapping
+      // requests in one tab used to delete each other and leave nothing claimable.
+      const replacePromise = Promise.resolve(
+        state.replace ? state.replace(pending) : state.store(pending).then((p) => ({ stored: true, pending: p }))
+      ).then((outcome) => {
+        // A newer request already owns this tab; publishing this one would hand the
+        // panel stale text.
+        if (outcome.stored !== false) handoff?.publish(outcome.pending || pending);
+        return outcome;
       });
 
-      return Promise.all([storePromise, optionsPromise, openPromise])
-        .then(() => ({ status: "opened", pending }))
-        .catch(async (error) => {
-          await Promise.allSettled([storePromise, optionsPromise, openPromise]);
-          handoff?.abandon(pending);
-          await state.clear(pending);
+      // Best-effort repair for a tab that was never configured. Deliberately not part
+      // of the result: its failure must not affect request delivery.
+      let configurationError = null;
+      const configurePromise = Promise.resolve(configurator?.configure?.(tabId))
+        .then((result) => {
+          if (result?.status === "configuration-failed") configurationError = result.error;
+        })
+        .catch((error) => {
+          configurationError = String(error?.message || error || "setOptions failed");
+        });
+
+      return Promise.all([replacePromise, openPromise])
+        .then(async ([outcome]) => {
+          await configurePromise;
           return {
-            status: "open-failed",
-            error: String(error?.message || error || "Side panel failed to open.")
+            status: outcome.stored === false ? "superseded" : "opened",
+            pending,
+            superseded: outcome.superseded || [],
+            configurationError
           };
+        })
+        .catch(async (error) => {
+          const [replaceResult] = await Promise.allSettled([replacePromise, openPromise]);
+          await configurePromise;
+          const openFailure = String(error?.message || error || "Side panel failed to open.");
+
+          // If a panel for this scope is already connected it can still claim the
+          // request, so a rejected open() must not destroy valid pending state.
+          if (handoff?.hasPanelFor?.({ tabId, windowId: pending.windowId })) {
+            return {
+              status: "open-failed-panel-available",
+              pending,
+              error: openFailure,
+              configurationError
+            };
+          }
+          handoff?.abandon(pending);
+          if (replaceResult.status !== "fulfilled" || replaceResult.value?.stored !== false) {
+            await state.clear(pending);
+          }
+          return { status: "open-failed", error: openFailure, configurationError };
         });
     }
 
     function open(tabId, value = {}) {
-      if (!Number.isInteger(tabId) || !sidePanel?.open || !sidePanel?.setOptions) {
+      // Only open() is required now: configuration is a separate lifecycle concern.
+      if (!Number.isInteger(tabId) || !sidePanel?.open) {
         return Promise.resolve({ status: "unavailable" });
       }
       const text = String(value.text || "").trim();

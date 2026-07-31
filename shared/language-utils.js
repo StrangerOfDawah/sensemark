@@ -104,17 +104,70 @@
     "tg"
   ]);
 
-  // Letters that Russian uses and the neighbouring Cyrillic languages we care about
-  // do not. "ъ" is deliberately absent: Bulgarian relies on it heavily.
-  const RUSSIAN_EXCLUSIVE_LETTERS = /[ыэё]/iu;
-  // Function words that are Russian rather than Ukrainian, Bulgarian, Serbian,
-  // Macedonian or Belarusian ("что" vs "що"/"какво"/"шта"/"што", "это" vs "це"/"това").
-  const RUSSIAN_FUNCTION_WORDS =
-    /(?:^|[^\p{L}])(?:что|это|этот|эта|чтобы|который|которая|очень|если|сейчас|нужно|надо|только|может|потому|здесь|сегодня|всегда)(?=$|[^\p{L}])/giu;
-  const MIN_CYRILLIC_FOR_WORD_EVIDENCE = 12;
+  /**
+   * Function words that are Russian rather than Ukrainian, Bulgarian, Serbian,
+   * Macedonian, Belarusian, Kazakh or Kyrgyz — "что" vs "що"/"какво"/"шта"/"што",
+   * "это" vs "це"/"това"/"гэта", "который" vs "який"/"който"/"који".
+   *
+   * This is a discriminator, not a classifier: it is only ever consulted to raise
+   * confidence, never to lower it, and it can only fire alongside the length and
+   * word-count floors below.
+   */
+  const RUSSIAN_FUNCTION_WORDS = new Set([
+    "что",
+    "это",
+    "этот",
+    "эта",
+    "эти",
+    "этого",
+    "чтобы",
+    "который",
+    "которая",
+    "которое",
+    "которые",
+    "очень",
+    "если",
+    "сейчас",
+    "нужно",
+    "надо",
+    "только",
+    "может",
+    "потому",
+    "здесь",
+    "сегодня",
+    "всегда",
+    "ещё",
+    "еще",
+    "уже",
+    "были",
+    "было",
+    "была",
+    "будет",
+    "есть",
+    "должен",
+    "должна",
+    "также",
+    "тоже",
+    "почему",
+    "когда",
+    "теперь"
+  ]);
+
+  // A confident verdict needs a real sentence, not a fragment. Kazakh, Belarusian and
+  // Kyrgyz words such as "сынып", "добры" or "кыргыз" contain letters Russian also
+  // uses, so length and word evidence — never individual characters — decide.
+  const MIN_CYRILLIC_CODE_POINTS_FOR_RUSSIAN = 16;
+  const MIN_CYRILLIC_WORDS_FOR_RUSSIAN = 3;
+  const MIN_RUSSIAN_FUNCTION_WORDS = 2;
 
   function cyrillicLength(value) {
     return (String(value || "").match(/\p{Script=Cyrillic}/gu) || []).length;
+  }
+
+  function cyrillicWords(value) {
+    return String(value || "")
+      .toLowerCase()
+      .match(/\p{Script=Cyrillic}+/gu) || [];
   }
 
   /**
@@ -122,9 +175,12 @@
    *
    * This runs on the user-gesture call stack, so it must never await: Chrome drops
    * transient user activation across an await and `sidePanel.open()` then fails.
-   * It is deliberately biased towards "uncertain" — a wrong "russian" verdict silently
-   * loses a translation the user asked for, while a wrong "uncertain" verdict only
-   * costs an extra panel that reports the text is already Russian.
+   *
+   * It is deliberately biased towards "uncertain". A wrong "russian" verdict silently
+   * destroys a translation the user asked for; a wrong "uncertain" verdict only costs
+   * an extra panel that reports the text is already Russian. There is deliberately no
+   * rule where a single character or a tiny character class yields "russian": "ы", "э"
+   * and "ё" all occur in Kazakh, Belarusian, Kyrgyz and Mongolian text.
    *
    * @returns {"russian"|"uncertain"|"not-russian"}
    */
@@ -136,15 +192,13 @@
     if (NON_RUSSIAN_SIGNALS.test(text)) return "not-russian";
     // Mixed-script selections are a multilingual request, not a Russian one.
     if (hasMultipleIndependentLanguageGroups(text)) return "uncertain";
-    if (RUSSIAN_EXCLUSIVE_LETTERS.test(text)) return "russian";
-    const distinctWords = new Set(
-      (text.match(RUSSIAN_FUNCTION_WORDS) || []).map((match) =>
-        match.replace(/[^\p{L}]/gu, "").toLowerCase()
-      )
-    );
-    if (distinctWords.size >= 2 && cyrillicLength(text) >= MIN_CYRILLIC_FOR_WORD_EVIDENCE) {
-      return "russian";
-    }
+
+    const words = cyrillicWords(text);
+    if (cyrillicLength(text) < MIN_CYRILLIC_CODE_POINTS_FOR_RUSSIAN) return "uncertain";
+    if (words.length < MIN_CYRILLIC_WORDS_FOR_RUSSIAN) return "uncertain";
+
+    const evidence = new Set(words.filter((word) => RUSSIAN_FUNCTION_WORDS.has(word)));
+    if (evidence.size >= MIN_RUSSIAN_FUNCTION_WORDS) return "russian";
     return "uncertain";
   }
 

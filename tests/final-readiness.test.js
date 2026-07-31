@@ -84,7 +84,7 @@ test("readiness: coverage command discloses its exact targeted critical scope", 
   const packageJson = JSON.parse(read("package.json"));
   assert.equal(packageJson.scripts["test:coverage"], "node scripts/run-targeted-coverage.js");
   assert.deepEqual(THRESHOLDS, { lines: 80, functions: 85, branches: 70 });
-  assert.equal(INCLUDED_FIRST_PARTY_FILES.length, 16);
+  assert.equal(INCLUDED_FIRST_PARTY_FILES.length, 17);
   const scope = coverageScope();
   assert.equal(scope.label, "Targeted core-module coverage");
   assert.deepEqual(scope.included, [...INCLUDED_FIRST_PARTY_FILES]);

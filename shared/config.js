@@ -8,6 +8,9 @@
   const PRIVACY_CONSENT_VERSION = 2;
   const CACHE_KEY = "sensemarkTranslationCache";
   const SIDE_PANEL_PENDING_PREFIX = "sensemarkSidePanelPending:";
+  // window -> tab the panel was opened for; persisted so a worker restart does not
+  // fall back to guessing from the currently active tab.
+  const SIDE_PANEL_BINDING_PREFIX = "sensemarkSidePanelBinding:";
   const MAX_SOURCE_CODE_POINTS = 5000;
   const TARGET_LANGUAGE = "ru";
   const PROMPT_VERSION = "2026-07-31.1";
@@ -84,6 +87,7 @@
     SETTINGS_KEY,
     SETTINGS_VERSION,
     SIDE_PANEL,
+    SIDE_PANEL_BINDING_PREFIX,
     SIDE_PANEL_CLAIM_RETRY_MS,
     SIDE_PANEL_HANDOFF_TIMEOUT_MS,
     SIDE_PANEL_PENDING_PREFIX,

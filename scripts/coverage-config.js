@@ -2,6 +2,7 @@ const INCLUDED_FIRST_PARTY_FILES = Object.freeze([
   "background/providers/openai-provider.js",
   "background/translation-service.js",
   "background/request-coordinator.js",
+  "background/side-panel-configurator.js",
   "background/side-panel-controller.js",
   "background/side-panel-handoff.js",
   "background/side-panel-state.js",

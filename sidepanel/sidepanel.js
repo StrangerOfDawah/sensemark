@@ -25,7 +25,14 @@ source.addEventListener("input", () => controller.cancel());
 // Request identity deliberately does not come from the URL. The panel claims its
 // pending request over the handoff port, so it does not matter whether the panel
 // loaded before or after the worker stored the request.
+//
+// The only thing read from the URL is this panel's own tab id, assigned by the
+// configurator on tab lifecycle events. It is stable for the life of the tab, it is
+// never per-request, and the worker works without it.
+const tabToken = new URLSearchParams(location.search).get("tab");
+
 const handoff = SensemarkSidePanelHandoffClient.createSidePanelHandoffClient({
+  tabToken,
   onRequest(pending) {
     source.value = pending.text;
     controller.translate();

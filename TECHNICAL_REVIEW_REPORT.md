@@ -73,34 +73,98 @@ Restricted schemes and PDF URLs still use the context-menu selection text
 directly, and pending state is removed on failed opening, tab closure, expiry,
 or successful claim.
 
+### Same-tab request concurrency (fixed after the 3d991f7 review)
+
+Replacement was `state.store()` followed by an independent `supersede()` scan.
+Two concurrent opens in one tab interleaved as store(A), store(B), A-removes-B,
+B-removes-A and left session storage **empty** — both translations lost. This
+reproduced reliably.
+
+Replacement is now a single atomic `state.replace()` behind a per-tab lock, and
+every record carries a monotonic `sequence` assigned synchronously in
+`prepare()`. Inside the lock an older request that has already lost the race
+declines to store rather than deleting the winner, so the outcome follows the
+order the user actually acted — not the order storage writes happen to resolve.
+Verified for both interleavings, three rapid requests, and cross-tab
+independence.
+
+### Panel configuration model
+
+Sensemark uses a **tab-specific** side panel. Tabs are configured from
+`tabs.onActivated`, `tabs.onUpdated`, `runtime.onInstalled` and
+`runtime.onStartup` — never from the context-menu handler. `sidePanel.open()`
+is now the only extension API on the user-action path.
+
+`setOptions()` therefore cannot race `open()`, and a configuration failure is
+reported separately from an opening failure: a rejected `setOptions()` after a
+successful `open()` no longer produces `open-failed` and no longer deletes
+pending state. A rejected `open()` where a panel for that scope is already
+connected returns `open-failed-panel-available` and keeps the request
+claimable.
+
+### Side-panel tab identity
+
+Identity previously resolved through `tabs.query({active: true, windowId})`,
+which returns whichever tab is active at claim time — not necessarily the tab
+that originated the request.
+
+Identity now resolves through a deterministic ladder, heuristics last:
+
+1. `port.sender.tab` when Chrome supplies it (never assumed).
+2. The stable per-tab token the configurator places in the panel URL. This is
+   tab identity, assigned on tab lifecycle events, never request identity, and
+   never varying between requests for a tab.
+3. The worker's open binding for that window, recorded at `open()` time and
+   persisted in `chrome.storage.session` so it survives a worker restart.
+4. The active tab — accepted only when it actually owns a pending record.
+
+If no step positively identifies a tab, the panel is told it is idle. A request
+is never claimed by window alone, so a tab switch during handoff cannot
+misroute it and two panel ports in one window stay isolated.
+
 ### Side-panel user activation
 
-The reviewed commit awaited `chrome.i18n.detectLanguage()` before
-`sidePanel.open()` for every Cyrillic selection. That await drops Chrome's
-transient user activation, which would fail Ukrainian, Bulgarian, Serbian and
-Kazakh requests — the exact case the language policy exists to serve.
+The Cyrillic path awaited `chrome.i18n.detectLanguage()` before
+`sidePanel.open()`. That await drops Chrome's transient user activation, which
+would fail Ukrainian, Bulgarian, Serbian and Kazakh requests.
 
-**Option A (synchronous conservative preflight) was implemented.** Only a
-confident synchronous Russian verdict skips opening; every other selection
-reaches `open()` on the gesture stack with no awaited work in front of it. The
-full asynchronous policy still runs in the translation service, so Russian text
-that passes the sync check opens a panel reporting "Текст уже на русском."
-without a provider call.
+**Option A (synchronous conservative preflight) was implemented**, then
+tightened after review. The first version treated a single character (`ы`, `э`,
+`ё`) as confident Russian, which wrongly skipped Kazakh, Belarusian and Kyrgyz
+text — "Сынып", "Добры дзень", "Кыргыз тили", "Бул жакшы", "Энэ текст" and
+"Мына сынып" were all classified Russian and their requests destroyed.
 
-This tradeoff was chosen because real-Chrome verification could not be
-performed in this environment, and the stated decision priority puts never
-losing a valid non-Russian request above avoiding an unnecessary Russian panel.
-Unit tests assert call ordering only and are **not** presented as proof of real
-Chrome activation.
+There is now no rule where a single character or a small character class yields
+a confident verdict. "russian" requires all of: no non-Russian Cyrillic signal,
+no mixed independent language groups, at least 16 Cyrillic code points, at
+least 3 Cyrillic words, and at least 2 distinct Russian-only function words.
+Everything else is "uncertain" and opens the panel. The full asynchronous
+policy still runs in the translation service, so Russian text that passes the
+sync check opens a panel reporting "Текст уже на русском." without a provider
+call. No provider or network call is used for the preflight.
+
+Real-Chrome verification could not be performed in this environment. Unit tests
+assert call ordering only and are **not** presented as proof of real Chrome
+activation.
 
 ### Honest coverage scope
 
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
-whole-runtime coverage. `npm run coverage:scope` prints the resolved 16-file
+whole-runtime coverage. `npm run coverage:scope` prints the resolved 17-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 3,368 of 5,446 runtime JavaScript lines (61.84%, including
-comments and blank lines). Measured targeted coverage is 91.33% lines, 88.17%
-functions, and 74.47% branches, against 80/85/70 thresholds.
+physical-line scope is 3,757 of 5,868 runtime JavaScript lines (64.03%, including
+comments and blank lines). Measured targeted coverage is 92.31% lines, 88.71%
+functions, and 74.50% branches, against 80/85/70 thresholds.
+
+### Verification boundary
+
+Three distinct levels, never conflated:
+
+| Level | Command | Result |
+| --- | --- | --- |
+| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 158 passed, 0 failed |
+| Automated Chromium smoke (Playwright, intercepted provider) | `npm run test:browser:auto` | 18 passed, 0 failed, 0 skipped, 0 console errors |
+| Real Chrome 119+ manual acceptance | `BROWSER_ACCEPTANCE.md` | **Not executed — every row `Not tested`** |
 
 ### Deterministic production ZIP
 

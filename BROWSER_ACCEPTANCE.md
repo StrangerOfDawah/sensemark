@@ -31,18 +31,21 @@ card display/drag/resize/scale/Escape, replacement cancellation/stale-output
 protection, duplicate suppression and cache reuse.
 
 Local automated result on 2026-07-31: **18 passed, 0 failed, 0 skipped** in
-7.391 seconds with Chrome for Testing 151 on macOS (`darwin 25.5.0`); service
+7.347 seconds with Chrome for Testing 151 on macOS (`darwin 25.5.0`); service
 worker/page console errors: **0**. The final CI run repeats the suite on the
 documented Linux/Node 24 environment. Machine-readable results and screenshots
 are recorded in `dist/browser-results.json` and `dist/browser-evidence/` in the
 CI verification artifact because generated `dist/` output is intentionally
 excluded from the source archive.
 
-`setOptions()` and `sidePanel.open()` are now invoked synchronously for **every**
-script, including Cyrillic, with no awaited work in front of them; the storage
-write is deliberately allowed to settle afterwards and the panel claims its
-request over the `sensemark.sidepanel` port. The Russian preflight is
-synchronous and conservative.
+Unit/integration result on the same commit: **158 passed, 0 failed**.
+
+`sidePanel.open()` is the only extension API on the user-action path, for every
+script including Cyrillic, with no awaited work in front of it. Panel
+configuration happens on tab lifecycle events. The storage write is deliberately
+allowed to settle afterwards and the panel claims its request over the
+`sensemark.sidepanel` port. The Russian preflight is synchronous and
+conservative.
 
 This ordering is asserted by unit tests, but **Node and mocked Chrome APIs
 cannot model Chrome's transient user activation**. Whether `sidePanel.open()`
@@ -62,7 +65,12 @@ output and screenshots for every row. `Not tested` blocks store publication.
 | Non-Russian Cyrillic — Ukrainian | Select Ukrainian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
 | Non-Russian Cyrillic — Bulgarian | Select Bulgarian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
 | Non-Russian Cyrillic — Serbian | Select Serbian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
-| Non-Russian Cyrillic — Kazakh | Select Kazakh text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Kazakh | Select Kazakh text (`Сынып`, `Сәлем`), invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Belarusian | Select `Добры дзень`, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Kyrgyz | Select `Кыргыз тили`, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Rapid same-tab requests | Trigger two translations rapidly in one tab | The newer request wins and is delivered once; neither request is deleted | Not executed | Not tested | None |
+| Tab switch during handoff | Trigger in tab A, immediately switch to tab B | A's request is never delivered to B | Not executed | Not tested | None |
+| Closed originating tab | Close the tab between request and claim | Pending request is removed; nothing stale is delivered later | Not executed | Not tested | None |
 | Russian | Select confidently Russian text | Documented Option A behaviour: no panel for a confident synchronous verdict, otherwise a panel reporting "Текст уже на русском." with no provider call | Not executed | Not tested | None |
 | Protected/unavailable overlay | Trigger context-menu translation where a content overlay cannot run | Direct fallback opens the correct panel without a provider call before open | Not executed | Not tested | None |
 | Two-tab isolation | Trigger different selections in two tabs | Each panel claims only its own tab's request | Not executed | Not tested | None |

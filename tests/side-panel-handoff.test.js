@@ -6,6 +6,9 @@ const config = require("../shared/config.js");
 const language = require("../shared/language-utils.js");
 const { createSidePanelState } = require("../background/side-panel-state.js");
 const { createSidePanelHandoff } = require("../background/side-panel-handoff.js");
+const {
+  createSidePanelConfigurator
+} = require("../background/side-panel-configurator.js");
 const { createSidePanelController } = require("../background/side-panel-controller.js");
 const {
   createSidePanelHandoffClient
@@ -125,17 +128,15 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
   const clock = createClock();
   const storage = memoryStorage();
   const state = createSidePanelState(storage, { now: clock.now });
-  const releases = [];
   const slowState = {
     ...state,
-    async store(value) {
+    async replace(value) {
       if (storeDelay > 0) {
         await new Promise((resolve) => {
-          releases.push(resolve);
           clock.api.setTimeout(resolve, storeDelay);
         });
       }
-      return state.store(value);
+      return state.replace(value);
     }
   };
   const handoff = createSidePanelHandoff({
@@ -144,10 +145,18 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
     resolveActiveTab
   });
   const opened = [];
+  const configured = [];
+  let requestCounter = 0;
   const controller = createSidePanelController({
     state: slowState,
     handoff,
-    randomId: () => `request-${opened.length + 1}`,
+    configurator: {
+      async configure(tabId) {
+        configured.push(tabId);
+        return { status: "configured" };
+      }
+    },
+    randomId: () => `request-${(requestCounter += 1)}`,
     detectLanguage: async () => ({ isReliable: false, languages: [] }),
     sidePanel: {
       async setOptions(options) {
@@ -160,7 +169,7 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
   });
 
   const panels = [];
-  function attachPanel({ windowId = 1 } = {}) {
+  function attachPanel({ windowId = 1, tabToken = null } = {}) {
     const pair = createPortPair(config.PORTS.SIDE_PANEL, senderTab ? { tab: senderTab } : undefined);
     const translated = [];
     const outcomes = [];
@@ -172,6 +181,7 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
         }
       },
       windows: { getCurrent: async () => ({ id: windowId }) },
+      tabToken,
       timers: clock.api,
       now: clock.now,
       onRequest: (pending) => translated.push(pending),
@@ -186,6 +196,7 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
   return {
     attachPanel,
     clock,
+    configured,
     controller,
     handoff,
     opened,
@@ -237,65 +248,128 @@ test("handoff: storage landing before the panel is ready hands off exactly once"
   assert.deepEqual(harness.storage.values, {});
 });
 
-test("handoff: request identity never travels in the side-panel URL", async () => {
-  // Race B. With a per-request query string, an open() that beat setOptions() opened
-  // the manifest default path and the panel could not identify its request at all.
+test("handoff: request delivery does not depend on per-request setOptions timing", async () => {
+  // Race B. Configuration is now a tab-lifecycle concern, so the user-action path
+  // touches exactly one extension API.
   const harness = createHarness();
   await harness.controller.open(4, { text: "static path", windowId: 2, requestId: "abc" });
-  const options = harness.opened.find((entry) => entry.type === "setOptions");
-  assert.equal(options.path, "sidepanel/sidepanel.html");
-  assert.doesNotMatch(options.path, /[?&]/, "no query string may be assigned");
+  const apiCalls = harness.opened.map((entry) => entry.type);
+  assert.deepEqual(apiCalls, ["open"], "only open() may run on the user-action path");
+  assert.ok(
+    !harness.opened.some((entry) => entry.type === "setOptions"),
+    "setOptions must not be raced against open"
+  );
 
-  const manifest = JSON.parse(read("manifest.json"));
-  assert.equal(options.path, manifest.side_panel.default_path, "must equal the manifest default");
-
-  // The panel page must not read identity out of its own location.
-  const panelSource = read("sidepanel/sidepanel.js");
-  assert.doesNotMatch(panelSource, /location\.search|URLSearchParams/);
-  assert.doesNotMatch(read("extension/side-panel-handoff-client.js"), /location\.search|URLSearchParams/);
+  // A controller with no setOptions available at all must still deliver.
+  const storage = memoryStorage();
+  const state = createSidePanelState(storage);
+  const handoff = createSidePanelHandoff({ state });
+  const controller = createSidePanelController({
+    state,
+    handoff,
+    randomId: () => "no-set-options",
+    sidePanel: {
+      async open() {},
+      setOptions() {
+        throw new Error("setOptions must never be called during a handoff");
+      }
+    }
+  });
+  const result = await controller.open(9, { text: "no configuration needed", windowId: 4 });
+  assert.equal(result.status, "opened");
+  assert.equal(Object.keys(storage.values).length, 1);
 });
 
-test("handoff: open resolving before setOptions still delivers the request", async () => {
+test("handoff: the configured panel path carries tab identity but never request identity", () => {
+  const configurator = createSidePanelConfigurator({
+    sidePanel: { async setOptions() {} },
+    tabs: { async query() { return []; } }
+  });
+  const manifest = JSON.parse(read("manifest.json"));
+  const path = configurator.pathForTab(77);
+
+  assert.equal(path.split("?")[0], "sidepanel/sidepanel.html");
+  assert.equal(path.split("?")[0], manifest.side_panel.default_path);
+  assert.equal(path, "sidepanel/sidepanel.html?tab=77");
+  // Tab identity is stable for the life of the tab; request identity never appears.
+  assert.doesNotMatch(path, /requestId|frameId|sequence/);
+  assert.equal(configurator.pathForTab(77), path, "the path is stable across requests");
+
+  const panelSource = read("sidepanel/sidepanel.js");
+  assert.doesNotMatch(panelSource, /requestId/, "the panel must not read a request id");
+  assert.match(panelSource, /get\("tab"\)/, "the panel reads only its own tab id");
+});
+
+test("handoff: a late setOptions rejection does not turn a successful open into a failure", async () => {
   const clock = createClock();
   const storage = memoryStorage();
   const state = createSidePanelState(storage, { now: clock.now });
   const handoff = createSidePanelHandoff({ state, now: clock.now });
-  const order = [];
-  let releaseOptions;
-  const optionsGate = new Promise((resolve) => {
-    releaseOptions = resolve;
-  });
   const controller = createSidePanelController({
     state,
     handoff,
-    randomId: () => "out-of-order",
-    sidePanel: {
-      async setOptions() {
-        await optionsGate;
-        order.push("setOptions");
-      },
-      async open() {
-        order.push("open");
+    // Configuration fails after open() has already succeeded.
+    configurator: {
+      async configure() {
+        throw new Error("No tab with id 6");
       }
+    },
+    randomId: () => "late-options",
+    sidePanel: {
+      async open() {}
     }
   });
-  const opening = controller.open(6, { text: "out of order", windowId: 3 });
-  await flush();
-  assert.deepEqual(order, ["open"], "open must settle first in this scenario");
-  releaseOptions();
-  assert.equal((await opening).status, "opened");
-  assert.deepEqual(order, ["open", "setOptions"]);
+
+  const result = await controller.open(6, { text: "still delivered", windowId: 3 });
+  assert.equal(result.status, "opened", "configuration failure is not an opening failure");
+  assert.match(result.configurationError, /No tab with id/);
+  assert.equal(Object.keys(storage.values).length, 1, "pending state must survive");
 
   const pair = createPortPair(config.PORTS.SIDE_PANEL);
   handoff.connect(pair.workerPort);
   const received = [];
   pair.clientPort.onMessage.addListener((message) => received.push(message));
-  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 3 });
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 3, tabId: 6 });
   await flush();
 
-  assert.equal(received.length, 1);
   assert.equal(received[0].type, config.SIDE_PANEL.REQUEST);
-  assert.equal(received[0].pending.text, "out of order");
+  assert.equal(received[0].pending.text, "still delivered");
+});
+
+test("handoff: an already-open panel keeps its pending request when open() rejects", async () => {
+  const clock = createClock();
+  const storage = memoryStorage();
+  const state = createSidePanelState(storage, { now: clock.now });
+  const handoff = createSidePanelHandoff({ state, now: clock.now });
+
+  // A panel for tab 8 is already connected and has resolved its scope.
+  const pair = createPortPair(config.PORTS.SIDE_PANEL);
+  handoff.connect(pair.workerPort);
+  const received = [];
+  pair.clientPort.onMessage.addListener((message) => received.push(message));
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 5, tabId: 8 });
+  await flush();
+  assert.equal(received[0].type, config.SIDE_PANEL.IDLE);
+  assert.ok(handoff.hasPanelFor({ tabId: 8 }));
+
+  const controller = createSidePanelController({
+    state,
+    handoff,
+    randomId: () => "already-open",
+    sidePanel: {
+      async open() {
+        throw new Error("Side panel is already open");
+      }
+    }
+  });
+  const result = await controller.open(8, { text: "claimable anyway", windowId: 5 });
+  assert.equal(result.status, "open-failed-panel-available");
+  assert.equal(Object.keys(storage.values).length, 1, "a claimable request must not be deleted");
+
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.CLAIM, windowId: 5, tabId: 8 });
+  await flush();
+  const delivered = received.find((message) => message.type === config.SIDE_PANEL.REQUEST);
+  assert.equal(delivered.pending.text, "claimable anyway");
 });
 
 test("handoff: concurrent ready and claim events produce exactly one consumer", async () => {
@@ -350,7 +424,11 @@ test("handoff: a service-worker restart keeps the request claimable exactly once
 
   // Worker generation 1 stores the request, then dies before the panel claims it.
   const firstState = createSidePanelState(storage, { now: clock.now });
-  const firstHandoff = createSidePanelHandoff({ state: firstState, now: clock.now });
+  const firstHandoff = createSidePanelHandoff({
+    state: firstState,
+    bindingStore: storage,
+    now: clock.now
+  });
   const controller = createSidePanelController({
     state: firstState,
     handoff: firstHandoff,
@@ -358,11 +436,19 @@ test("handoff: a service-worker restart keeps the request claimable exactly once
     sidePanel: { async setOptions() {}, async open() {} }
   });
   await controller.open(8, { text: "survives restart", windowId: 4 });
-  assert.equal(Object.keys(storage.values).length, 1);
+  const pendingKeys = () =>
+    Object.keys(storage.values).filter((key) =>
+      key.startsWith(config.SIDE_PANEL_PENDING_PREFIX)
+    );
+  assert.equal(pendingKeys().length, 1);
 
   // Worker generation 2: fresh in-memory registry, same session storage.
   const secondState = createSidePanelState(storage, { now: clock.now });
-  const secondHandoff = createSidePanelHandoff({ state: secondState, now: clock.now });
+  const secondHandoff = createSidePanelHandoff({
+    state: secondState,
+    bindingStore: storage,
+    now: clock.now
+  });
   assert.equal(secondHandoff.intentFor({ windowId: 4 }), null, "intents do not survive a restart");
 
   const pair = createPortPair(config.PORTS.SIDE_PANEL);
@@ -374,7 +460,7 @@ test("handoff: a service-worker restart keeps the request claimable exactly once
 
   assert.equal(received[0].type, config.SIDE_PANEL.REQUEST);
   assert.equal(received[0].pending.text, "survives restart");
-  assert.deepEqual(storage.values, {}, "the record is consumed, not duplicated");
+  assert.deepEqual(pendingKeys(), [], "the record is consumed, not duplicated");
 
   pair.clientPort.postMessage({ type: config.SIDE_PANEL.CLAIM, windowId: 4 });
   await flush();
@@ -646,39 +732,94 @@ test("activation adapter: no awaited work precedes sidePanel.open() for any scri
       }
     });
     const opening = controller.open(1, { text, windowId: 1 });
-    // Synchronously after the call, open() has already been reached.
+    // Synchronously after the call, open() has already been reached, and it is the
+    // only extension API touched on that stack.
     assert.deepEqual(
       order,
-      ["announce", "setOptions", "open", "store"],
+      ["announce", "open", "store"],
       `unexpected ordering for: ${text}`
     );
     assert.ok(!order.includes("detect"), `${text} must not await detection before open`);
+    assert.ok(!order.includes("setOptions"), `${text} must not configure during handoff`);
     await opening;
   }
 });
 
-test("activation adapter: only a confident synchronous Russian verdict skips opening", () => {
+test("non-Russian Cyrillic is never synchronously skipped as Russian", () => {
+  // Every one of these was classified "russian" by the single-letter heuristic and
+  // its translation request was silently destroyed.
+  const mustTranslate = [
+    "Сынып",
+    "Добры дзень",
+    "Кыргыз тили",
+    "Бул жакшы",
+    "Энэ текст",
+    "Мына сынып",
+    "Як справи?",
+    "Доброго дня",
+    "Добар дан",
+    "Как си",
+    "Сәлем",
+    "Кароткі тэкст",
+    "Жақсы студент сынып бөлмесінде отыр",
+    "Беларуская мова вельмі прыгожая"
+  ];
+  for (const text of mustTranslate) {
+    assert.notEqual(
+      language.synchronousRussianVerdict(text),
+      "russian",
+      `${text} must never be skipped as Russian`
+    );
+  }
+});
+
+test("short Cyrillic remains uncertain", () => {
+  for (const text of ["Мы", "Ты", "Это", "Мир", "Да", "Нет", "Привет"]) {
+    assert.equal(
+      language.synchronousRussianVerdict(text),
+      "uncertain",
+      `${text} must follow translate-on-uncertainty`
+    );
+  }
+});
+
+test("a confident Russian verdict requires length and multiple function words", () => {
   for (const text of [
-    "Это русский текст",
-    "APP_ENV должен быть production",
-    "Сейчас нужно проверить очень внимательно"
+    "Это очень длинный русский текст, который нужно проверить.",
+    "Если сейчас нужно проверить, то это уже сделано.",
+    "Сегодня нужно понять, почему это всегда происходит."
   ]) {
     assert.equal(language.synchronousRussianVerdict(text), "russian", text);
   }
+  // Real Russian that is simply too short or too sparse stays uncertain, which costs
+  // an extra panel rather than a lost translation.
   for (const text of [
-    "Як справи",
-    "Как си",
-    "Добар дан",
-    "Сәлем",
-    "Кароткі тэкст",
-    "Короткий текст",
-    "Привет hello world together"
+    "Привет, как дела?",
+    "APP_ENV должен быть production",
+    "Открой URL в браузере"
   ]) {
-    assert.notEqual(language.synchronousRussianVerdict(text), "russian", text);
+    assert.equal(language.synchronousRussianVerdict(text), "uncertain", text);
   }
-  for (const text of ["foreign text", "こんにちは", ""]) {
-    assert.equal(language.synchronousRussianVerdict(text), "not-russian", text);
+  // Non-Cyrillic and empty input never reach the Russian branch at all.
+  for (const text of ["foreign text", "こんにちは", "", "   ", "!!! ???"]) {
+    assert.equal(language.synchronousRussianVerdict(text), "not-russian", JSON.stringify(text));
   }
+  // Mixed independent language groups are a multilingual request.
+  assert.equal(language.synchronousRussianVerdict("Привет hello world together"), "uncertain");
+});
+
+test("no provider or network call is used for the synchronous language preflight", () => {
+  const verdict = language.synchronousRussianVerdict.toString();
+  assert.doesNotMatch(verdict, /await|fetch|async|detectLanguage/);
+  assert.notEqual(
+    language.synchronousRussianVerdict.constructor.name,
+    "AsyncFunction",
+    "the preflight must not be async"
+  );
+  // It returns a plain string, never a thenable.
+  const result = language.synchronousRussianVerdict("Привет");
+  assert.equal(typeof result, "string");
+  assert.doesNotMatch(read("shared/language-utils.js"), /openai|api\.openai\.com/i);
 });
 
 test("activation adapter: a confident Russian selection never opens the panel", async () => {
@@ -702,8 +843,11 @@ test("activation adapter: a confident Russian selection never opens the panel", 
       open: async () => events.push("open")
     }
   });
-  assert.deepEqual(await controller.open(7, { text: "Это русский текст" }), {
-    status: "skipped-russian"
-  });
+  assert.deepEqual(
+    await controller.open(7, {
+      text: "Это очень длинный русский текст, который нужно проверить."
+    }),
+    { status: "skipped-russian" }
+  );
   assert.deepEqual(events, [], "no extension API call and no detection round-trip");
 });

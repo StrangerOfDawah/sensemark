@@ -141,23 +141,24 @@ before scoring while paragraph-boundary differences remain distinct.
 
 ### Handoff protocol
 
-The panel never learns its request from its URL. `sidePanel.setOptions()` always
-assigns the single static path `sidepanel/sidepanel.html`, identical to the
-manifest default, so it does not matter whether `setOptions()` or `open()`
-settles first.
+The panel never learns its **request** from its URL. The only thing the URL
+carries is the panel's own tab id, assigned on tab lifecycle events.
 
 Delivery is a ready/claim handshake over the long-lived
 `sensemark.sidepanel` port:
 
-1. The context-menu handler validates the selection and prepares a request.
-2. `handoff.announce()` records the intent **synchronously**, before any await.
-3. `sidePanel.setOptions()` and `sidePanel.open({tabId})` are started on the
-   user-gesture stack; the storage write is started in the same task and
-   deliberately allowed to settle last.
-4. The panel resolves its own window with `chrome.windows.getCurrent()` and
-   sends `sidepanel.ready`.
+1. The context-menu handler validates the selection and prepares a request,
+   assigning a monotonic `sequence` synchronously.
+2. `handoff.announce()` records the intent and the window→tab binding
+   **synchronously**, before any await.
+3. `sidePanel.open({tabId})` is started on the user-gesture stack. It is the
+   only extension API on that path. The atomic storage replacement is started
+   in the same task and deliberately allowed to settle last.
+4. The panel resolves its own window with `chrome.windows.getCurrent()`, reads
+   its tab token, and sends `sidepanel.ready`.
 5. The worker answers `sidepanel.request` (claimed), `sidepanel.request.waiting`
-   (announced but not yet stored), or `sidepanel.idle` (a manual open).
+   (announced but not yet stored), or `sidepanel.idle` (a manual open, or a tab
+   that could not be positively identified).
 6. When the write lands, the worker pushes `sidepanel.request.available` and the
    panel claims immediately.
 7. The panel independently retries every 150 ms for at most 2 s. Retries are
@@ -168,24 +169,68 @@ Delivery is a ready/claim handshake over the long-lived
    than a blank panel.
 
 Because the intent is registered synchronously and the panel retries, **no
-ordering between `state.store()`, `setOptions()`, `open()` and panel
-initialisation can lose or duplicate a request**.
+ordering between the storage write, `open()` and panel initialisation can lose
+or duplicate a request**, and `setOptions()` is not in that ordering at all.
 
-### Scope and isolation
+### Panel model: tab-specific
 
-Records carry `tabId`, `frameId`, `requestId` and `windowId`, and have a
-five-minute TTL. A panel claims by scope: the sender tab when Chrome supplies
-it, otherwise the active tab of the panel's own window, otherwise the window
-itself. A panel in one window can never claim another window's request.
+Sensemark uses a **tab-specific** side panel, never a global one. Every tab is
+configured with the same document, `sidepanel/sidepanel.html`, carrying one
+stable query parameter: the tab's own id.
 
-Two requests in one tab follow a **newest-wins** policy: storing a request
-supersedes that tab's older unclaimed records, and an already-running
-translation is superseded through the existing request coordinator, so a stale
-result can never replace a newer one.
+Configuration happens on `tabs.onActivated`, `tabs.onUpdated`,
+`runtime.onInstalled` and `runtime.onStartup` — never in the context-menu
+handler. `sidePanel.open()` is consequently the only extension API on the
+user-action path, so `setOptions()` cannot race it.
+
+The three failure kinds are distinct:
+
+- **configuration failed** — reported as `configurationError`, never fatal,
+  never deletes pending state;
+- **opening failed** — `open-failed`; pending state is cleaned, unless a panel
+  for that scope is already connected, in which case the result is
+  `open-failed-panel-available` and the request stays claimable;
+- **handoff failed** — the panel's bounded retry expires and it shows a typed
+  error.
+
+### Tab identity
+
+A panel cannot read its own tab id, and "whichever tab is active right now" is
+not that tab: the user can switch tabs between `open()` and READY, and two
+panel documents can briefly coexist in one window. Identity resolves through a
+deterministic ladder, heuristics last:
+
+1. `port.sender.tab` when Chrome supplies it — never assumed to exist.
+2. The stable per-tab token in the panel URL. Tab identity only, assigned on
+   tab lifecycle events, never request identity.
+3. The worker's open binding for that window, recorded at `open()` time and
+   persisted in `chrome.storage.session` so it survives a worker restart.
+4. The active tab — accepted only when it actually owns a pending record.
+
+If nothing positively identifies a tab, the panel is told it is idle. A request
+is never claimed by window alone.
+
+### Same-tab replacement
+
+Records carry `tabId`, `frameId`, `requestId`, `windowId`, a monotonic
+`sequence` and a five-minute TTL.
+
+Replacement is a single atomic `state.replace()` behind a per-tab lock. It is
+never `store()` followed by an independent `supersede()` scan: two concurrent
+opens could interleave as store(A), store(B), A-removes-B, B-removes-A and
+leave the tab with nothing claimable at all.
+
+The policy is **newest-wins by sequence**, not by promise completion order. The
+sequence is assigned synchronously in `prepare()`, in the order the user acted.
+Inside the lock, an older request that has already lost declines to store
+rather than deleting the winner. An already-running translation is superseded
+through the existing request coordinator, so a stale result can never replace a
+newer one.
 
 A service-worker restart is safe: intents are in-memory only, but the pending
-record lives in `chrome.storage.session`, so the panel still claims it exactly
-once. A panel reload finds nothing left to claim and stays idle.
+record and the window binding both live in `chrome.storage.session`, so the
+panel still claims exactly once. A panel reload finds nothing left to claim and
+stays idle.
 
 ### User activation and the Russian preflight
 
@@ -195,13 +240,27 @@ which drops Chrome's transient activation and would fail Ukrainian, Bulgarian,
 Serbian and Kazakh requests.
 
 The preflight is now **synchronous and conservative**
-(`synchronousRussianVerdict`). Only confidently Russian text — a
-Russian-exclusive letter (`ы`, `э`, `ё`; `ъ` is excluded because Bulgarian uses
-it) or two distinct Russian-only function words with no non-Russian Cyrillic
-signal — skips opening. Everything else opens immediately. The full
-asynchronous `chrome.i18n` policy still runs inside the translation service, so
-Russian text that slips past the sync check opens a panel that reports
-"Текст уже на русском." without any provider call.
+(`synchronousRussianVerdict`). There is deliberately **no rule where a single
+character or a small character class yields a confident verdict**: `ы`, `э` and
+`ё` all occur in Kazakh, Belarusian, Kyrgyz and Mongolian, and an earlier
+version that trusted them wrongly skipped "Сынып", "Добры дзень", "Кыргыз
+тили", "Бул жакшы", "Энэ текст" and "Мына сынып".
+
+"russian" now requires **all** of:
+
+- no known non-Russian Cyrillic signal;
+- no mixed independent language groups;
+- at least 16 Cyrillic code points;
+- at least 3 Cyrillic words;
+- at least 2 distinct Russian-only function words
+  (`что`/`это`/`который`/`если`/`сейчас`/… — words the neighbouring languages
+  render differently).
+
+Everything else is "uncertain" and opens the panel. Short Cyrillic always stays
+uncertain. The full asynchronous `chrome.i18n` policy still runs inside the
+translation service, so Russian text that slips past the sync check opens a
+panel that reports "Текст уже на русском." without any provider call. No
+provider or network call is used for the preflight.
 
 This is the documented tradeoff: an occasional unnecessary panel for Russian
 text is accepted in exchange for never losing a valid non-Russian request.
@@ -240,7 +299,7 @@ be claimed from Node/jsdom results.
   root-path shell assertions.
 - Production packaging is deterministic on the documented Ubuntu 24.04 /
   Info-ZIP 3.0 environment and verified from two independent source copies.
-- Coverage is explicitly targeted to the 16 critical modules printed by
+- Coverage is explicitly targeted to the 17 critical modules printed by
   `npm run coverage:scope`; its percentage is never described as whole-runtime.
 - Playwright is pinned as a development-only Apache-2.0 dependency. Browser
   smoke responses are intercepted locally and never contact OpenAI.

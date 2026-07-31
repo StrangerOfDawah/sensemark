@@ -13,6 +13,44 @@
     const now = options.now || Date.now;
     const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
     const consuming = new Set();
+    // Monotonic within a worker generation and assigned synchronously in prepare(),
+    // so replacement order follows the order the user actually made the requests —
+    // never the order in which storage writes happen to resolve.
+    let sequenceCounter = Number(options.startSequence) || 0;
+    // One promise chain per tab. Replacement must be read-modify-write, and two
+    // concurrent context-menu clicks in one tab must not interleave inside it.
+    const tabLocks = new Map();
+
+    function nextSequence() {
+      sequenceCounter += 1;
+      return sequenceCounter;
+    }
+
+    /** Serialize `task` against every other locked task for the same tab. */
+    function withTabLock(tabId, task) {
+      const previous = tabLocks.get(tabId) || Promise.resolve();
+      const current = previous.then(task, task);
+      // Keep the chain alive but never let a rejection poison the next waiter.
+      tabLocks.set(
+        tabId,
+        current.then(
+          () => undefined,
+          () => undefined
+        )
+      );
+      return current;
+    }
+
+    /** Higher sequence wins; createdAt breaks ties across worker generations. */
+    function isNewerThan(candidate, existing) {
+      if (!existing) return true;
+      const candidateSequence = Number(candidate?.sequence);
+      const existingSequence = Number(existing?.sequence);
+      if (Number.isFinite(candidateSequence) && Number.isFinite(existingSequence)) {
+        if (candidateSequence !== existingSequence) return candidateSequence > existingSequence;
+      }
+      return Number(candidate?.createdAt || 0) >= Number(existing?.createdAt || 0);
+    }
 
     function normalizedIdentity(value = {}) {
       const tabId = Number(value.tabId);
@@ -39,6 +77,7 @@
         windowId: Number.isInteger(Number(value.windowId)) ? Number(value.windowId) : null,
         text: String(value.text || "").trim(),
         context: String(value.context || "").trim() || null,
+        sequence: Number.isFinite(value.sequence) ? value.sequence : nextSequence(),
         createdAt: Number.isFinite(value.createdAt) ? value.createdAt : now()
       };
     }
@@ -65,6 +104,52 @@
 
     async function set(value) {
       return store(prepare(value));
+    }
+
+    /**
+     * Atomically make `pending` the one claimable request for its tab.
+     *
+     * Replacing used to be `store()` followed by an independent `supersede()` scan.
+     * Two concurrent opens could interleave as store(A), store(B), A-removes-B,
+     * B-removes-A and leave the tab with nothing at all. Everything now happens
+     * inside one per-tab lock, and an older request that loses the race simply
+     * declines to store rather than deleting the winner.
+     *
+     * @returns {Promise<{stored: boolean, pending: object, superseded: string[], winner: object}>}
+     */
+    async function replace(value) {
+      const pending = value?.sequence === undefined ? prepare(value) : value;
+      const identity = normalizedIdentity(pending);
+      const key = keyFor(identity);
+      return withTabLock(identity.tabId, async () => {
+        await clearExpired();
+        const stored = await storageArea.get(null);
+        const siblings = Object.entries(stored || {}).filter(
+          ([entryKey, record]) =>
+            entryKey.startsWith(config.SIDE_PANEL_PENDING_PREFIX) &&
+            record &&
+            record.tabId === identity.tabId
+        );
+        const newest = siblings
+          .map(([, record]) => record)
+          .sort(
+            (left, right) =>
+              Number(right.sequence || 0) - Number(left.sequence || 0) ||
+              Number(right.createdAt || 0) - Number(left.createdAt || 0)
+          )[0];
+
+        // A newer request already won this tab. Leave it completely alone.
+        if (newest && newest.requestId !== identity.requestId && !isNewerThan(pending, newest)) {
+          return { stored: false, pending, superseded: [], winner: newest };
+        }
+
+        const stale = siblings
+          .map(([entryKey]) => entryKey)
+          .filter((entryKey) => entryKey !== key);
+        if (stale.length) await storageArea.remove(stale);
+        await storageArea.set({ [key]: pending });
+        return { stored: true, pending, superseded: stale, winner: pending };
+      });
     }
 
     async function consumePending(identity) {
@@ -180,6 +265,7 @@
       keyFor,
       peek,
       prepare,
+      replace,
       set,
       store,
       supersede

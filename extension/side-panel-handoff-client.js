@@ -21,6 +21,11 @@
   function createSidePanelHandoffClient({
     runtime = globalThis.chrome?.runtime,
     windows = globalThis.chrome?.windows,
+    // Stable per-tab token assigned by the configurator on tab lifecycle events.
+    // This is tab identity, never request identity, and it never changes between
+    // requests for a tab. Absent tokens are fine: the worker falls back to its own
+    // open binding.
+    tabToken = null,
     timers = { setTimeout, clearTimeout },
     now = Date.now,
     timeoutMs = config.SIDE_PANEL_HANDOFF_TIMEOUT_MS,
@@ -31,6 +36,13 @@
   } = {}) {
     let port = null;
     let windowId = null;
+    // Guard the coercion explicitly: Number(null) and Number("") are both 0, which
+    // would make every untokenised panel claim to be tab 0.
+    const resolvedTabId = () => {
+      if (tabToken === null || tabToken === undefined || tabToken === "") return null;
+      const value = Number(tabToken);
+      return Number.isInteger(value) && value >= 0 ? value : null;
+    };
     let stopped = false;
     let claimWindow = null;
     let lastOutcome = "starting";
@@ -60,7 +72,7 @@
     }
 
     function claimNow() {
-      send({ type: config.SIDE_PANEL.CLAIM, windowId });
+      send({ type: config.SIDE_PANEL.CLAIM, windowId, tabId: resolvedTabId() });
     }
 
     function scheduleRetry() {
@@ -135,7 +147,7 @@
         // panel reachable for a selection made later, without any polling.
         if (!stopped) timers.setTimeout(() => reconnect(), 0);
       });
-      send({ type: config.SIDE_PANEL.READY, windowId });
+      send({ type: config.SIDE_PANEL.READY, windowId, tabId: resolvedTabId() });
     }
 
     function reconnect() {
@@ -169,6 +181,7 @@
       outcome: () => lastOutcome,
       start,
       stop,
+      tabId: resolvedTabId,
       windowId: () => windowId
     };
   }

@@ -12,6 +12,7 @@ importScripts(
   "./request-coordinator.js",
   "./side-panel-state.js",
   "./side-panel-handoff.js",
+  "./side-panel-configurator.js",
   "./side-panel-controller.js",
   "./providers/openai-provider.js",
   "./translation-service.js"
@@ -33,19 +34,35 @@ const coordinator = SensemarkRequestCoordinator.createRequestCoordinator();
 const sidePanelState = SensemarkSidePanelState.createSidePanelState(chrome.storage.session);
 const sidePanelHandoff = SensemarkSidePanelHandoff.createSidePanelHandoff({
   state: sidePanelState,
-  // Resolving the active tab of the panel's window keeps two tabs isolated even when
-  // Chrome does not populate sender.tab for the side panel. Works without the "tabs"
-  // permission: only the tab id is read.
+  bindingStore: chrome.storage.session,
+  // Last-resort identity only, and only when the active tab actually owns a pending
+  // request. Works without the "tabs" permission: only the tab id is read.
   async resolveActiveTab(windowId) {
     const [tab] = await chrome.tabs.query({ active: true, windowId });
     return tab?.id;
   }
 });
+const sidePanelConfigurator =
+  SensemarkSidePanelConfigurator.createSidePanelConfigurator({
+    sidePanel: chrome.sidePanel,
+    tabs: chrome.tabs
+  });
 const sidePanelController = SensemarkSidePanelController.createSidePanelController({
   sidePanel: chrome.sidePanel,
   state: sidePanelState,
   handoff: sidePanelHandoff,
+  configurator: sidePanelConfigurator,
   detectLanguage: languageDetector
+});
+
+// Tab-specific panel model: configure tabs on lifecycle events so the context-menu
+// path only ever needs sidePanel.open().
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  sidePanelConfigurator.configure(tabId).catch(() => {});
+});
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (!changeInfo.url && changeInfo.status !== "loading") return;
+  sidePanelConfigurator.configure(tabId).catch(() => {});
 });
 
 const CONTEXT_MENU_ID = "sensemark-translate-selection";
@@ -65,11 +82,13 @@ function createContextMenu() {
 chrome.runtime.onInstalled.addListener(async () => {
   createContextMenu();
   await settingsService.getPrivate();
+  await sidePanelConfigurator.configureAll();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   createContextMenu();
   SensemarkSettingsService.restrictLocalStorageToTrustedContexts(chrome);
+  sidePanelConfigurator.configureAll().catch(() => {});
 });
 
 async function openSidePanel(tabId, value = {}) {
@@ -262,7 +281,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  // A closed originating tab must not leave a claimable request behind.
   sidePanelState.clearTab(tabId).catch(() => {});
+  sidePanelHandoff.forgetTab(tabId);
+  sidePanelConfigurator.forget(tabId);
 });
 
 chrome.runtime.onConnect.addListener((port) => {
