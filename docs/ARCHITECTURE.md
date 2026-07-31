@@ -49,8 +49,15 @@ CommonJS.
   pre-stream retry.
 - `background/translation-cache.js` — TTL/LRU cache в session storage:
   максимум 200 записей, 2 MiB и 6 часов.
+- `background/side-panel-state.js` — pending-записи handoff в session storage:
+  scope, TTL, одноразовый claim и newest-wins вытеснение.
+- `background/side-panel-handoff.js` — worker-половина протокола: синхронный
+  intent, ready/claim handshake и push доступности по порту
+  `sensemark.sidepanel`.
 - `content/selection/` — чтение выделения, контекст и intent state machine.
 - `content/ui/` — Shadow DOM-карточка, placement, drag и resize.
+- `extension/side-panel-handoff-client.js` — половина панели: разрешение окна,
+  ограниченные повторы и видимая ошибка при потерянном handoff.
 - `extension/` — общие контроллеры popup/side panel и доверенный клиент
   настроек.
 - `popup/`, `options/`, `sidepanel/` — тонкие страницы интерфейса.

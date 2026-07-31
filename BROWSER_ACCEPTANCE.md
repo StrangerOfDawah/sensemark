@@ -31,20 +31,25 @@ card display/drag/resize/scale/Escape, replacement cancellation/stale-output
 protection, duplicate suppression and cache reuse.
 
 Local automated result on 2026-07-31: **18 passed, 0 failed, 0 skipped** in
-6.746 seconds with Chrome for Testing 151 on macOS (`darwin 25.5.0`); service
+7.391 seconds with Chrome for Testing 151 on macOS (`darwin 25.5.0`); service
 worker/page console errors: **0**. The final CI run repeats the suite on the
 documented Linux/Node 24 environment. Machine-readable results and screenshots
 are recorded in `dist/browser-results.json` and `dist/browser-evidence/` in the
 CI verification artifact because generated `dist/` output is intentionally
 excluded from the source archive.
 
-For non-Cyrillic direct fallbacks, pending storage, `setOptions()`, and
-`sidePanel.open()` are invoked synchronously and in order before any of their
-promises is awaited. Cyrillic text deliberately waits for trusted
-`chrome.i18n.detectLanguage()` preflight so confident Russian never opens a
-panel. Whether Chrome retains user activation across that unavoidable
-preflight remains part of the manual gate and is not claimed by the automated
-suite.
+`setOptions()` and `sidePanel.open()` are now invoked synchronously for **every**
+script, including Cyrillic, with no awaited work in front of them; the storage
+write is deliberately allowed to settle afterwards and the panel claims its
+request over the `sensemark.sidepanel` port. The Russian preflight is
+synchronous and conservative.
+
+This ordering is asserted by unit tests, but **Node and mocked Chrome APIs
+cannot model Chrome's transient user activation**. Whether `sidePanel.open()`
+actually succeeds from the context menu in the built-in PDF viewer remains a
+manual gate and is not claimed by the automated suite. Playwright cannot drive
+native context menus or the side panel, so the automated suite does not cover
+the handoff end to end in a real browser either.
 
 ## Manual Chrome 119+ acceptance
 
@@ -53,14 +58,20 @@ output and screenshots for every row. `Not tested` blocks store publication.
 
 | Scenario | Steps | Expected | Actual | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| Built-in PDF Viewer side panel | Open a text PDF in Chrome, select foreign text, choose Sensemark from the context menu | Correct tab panel opens; selected text is consumed once; one translation starts | Not executed | Not tested | None |
+| Built-in PDF Viewer side panel | Open a text PDF in Chrome, select non-Cyrillic foreign text, choose Sensemark from the context menu | Correct tab panel opens; selected text appears; one translation starts; no stale pending record | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Ukrainian | Select Ukrainian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Bulgarian | Select Bulgarian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Serbian | Select Serbian text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Non-Russian Cyrillic — Kazakh | Select Kazakh text, invoke Sensemark | Panel opens and translation starts | Not executed | Not tested | None |
+| Russian | Select confidently Russian text | Documented Option A behaviour: no panel for a confident synchronous verdict, otherwise a panel reporting "Текст уже на русском." with no provider call | Not executed | Not tested | None |
 | Protected/unavailable overlay | Trigger context-menu translation where a content overlay cannot run | Direct fallback opens the correct panel without a provider call before open | Not executed | Not tested | None |
-| Two-tab isolation | Trigger different selections in two tabs | Each panel consumes only its own tab/frame/request state | Not executed | Not tested | None |
+| Two-tab isolation | Trigger different selections in two tabs | Each panel claims only its own tab's request | Not executed | Not tested | None |
 | Failed panel opening | Cause a controlled real `sidePanel.open()` failure, then issue a valid request | Failed pending state is deleted; stale text never appears; later request works | Not executed | Not tested | None |
-| Russian direct fallback | Select confidently Russian text in the PDF/protected path | No panel, pending state, cache entry or provider request | Not executed | Not tested | None |
-| Worker restart between store and consume | Terminate/restart the worker before panel consumption | Request is translated at most once | Not executed | Not tested | None |
-| User-activation timing | Inspect context-menu → language preflight → storage → setOptions → open in real Chrome | `sidePanel.open()` succeeds without a user-gesture error | Not executed | Not tested | None |
-| Console audit | Inspect service-worker and side-panel consoles for all scenarios | No critical errors | Not executed | Not tested | None |
+| Worker restart between store and claim | Terminate/restart the worker before the panel claims | Request is translated at most once | Not executed | Not tested | None |
+| Handoff timeout | Force a handoff that never completes | Panel shows "Не удалось получить выделенный текст. Попробуйте ещё раз."; no blank panel; retries stop | Not executed | Not tested | None |
+| Panel reload | Reload the side panel after a successful translation | The consumed request is not translated again | Not executed | Not tested | None |
+| User-activation timing | Invoke from the context menu in the built-in PDF viewer and in an ordinary page, for Latin and Cyrillic text | `sidePanel.open()` succeeds without a user-gesture error | Not executed | Not tested | None |
+| Console audit | Inspect service-worker and side-panel consoles for all scenarios | No unhandled rejection or runtime error | Not executed | Not tested | None |
 
 ## Provider/account checks
 

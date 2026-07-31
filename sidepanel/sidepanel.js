@@ -22,21 +22,28 @@ source.addEventListener("keydown", (event) => {
 });
 source.addEventListener("input", () => controller.cancel());
 
-const sidePanelParameters = new URLSearchParams(location.search);
-const sidePanelIdentity = {
-  tabId: Number(sidePanelParameters.get("tabId")),
-  frameId: Number(sidePanelParameters.get("frameId") || 0),
-  requestId: sidePanelParameters.get("requestId") || ""
-};
-
-chrome.runtime
-  .sendMessage({
-    type: SensemarkConfig.MESSAGE.SIDE_PANEL_PENDING_GET,
-    identity: sidePanelIdentity
-  })
-  .then(async (response) => {
-    if (!response?.pending?.text) return;
-    source.value = response.pending.text;
+// Request identity deliberately does not come from the URL. The panel claims its
+// pending request over the handoff port, so it does not matter whether the panel
+// loaded before or after the worker stored the request.
+const handoff = SensemarkSidePanelHandoffClient.createSidePanelHandoffClient({
+  onRequest(pending) {
+    source.value = pending.text;
     controller.translate();
-  })
-  .catch(() => {});
+  },
+  onTimeout() {
+    view.failed(
+      {
+        message: "Не удалось получить выделенный текст. Попробуйте ещё раз.",
+        code: "SIDE_PANEL_HANDOFF_TIMEOUT",
+        action: "retry"
+      },
+      () => {
+        view.clear();
+        handoff.openClaimWindow({ expecting: true });
+        handoff.claimNow();
+      }
+    );
+  }
+});
+
+handoff.start();

@@ -42,33 +42,65 @@ longer validates obsolete root-level popup or manual-translation paths.
 Regression coverage: `tests/final-readiness.test.js` reads the workflow and
 fails if obsolete paths return or required v1.4.2 commands disappear.
 
-### Side-panel user-action path
+### Side-panel handoff race (fixed after the e3f5384 review)
 
-Restricted schemes and PDF URLs use the context-menu selection text directly;
-they do not attempt a content-script round trip first and no provider request
-occurs before opening. Pending state remains tab/frame/request scoped and is
-removed on failed opening, tab closure, expiry, or successful consume.
+Two reproducible races were confirmed in the reviewed commit and are now fixed.
 
-For non-Cyrillic text, session storage, tab-specific `setOptions()`, and
-`sidePanel.open()` are invoked synchronously in that order before any promise
-is awaited. This removes avoidable async gaps from the user-action stack.
-Cyrillic text first performs trusted browser language preflight so reliable
-Russian does not open a panel, write pending/cache state, or call a provider.
-That necessary preflight leaves a real-Chrome activation question and is why
-the manual gate remains blocked.
+**Race A — panel loaded before pending state was stored.** The controller started
+`state.store()`, `setOptions()` and `open()` concurrently, and the panel then
+performed exactly one pending lookup with no retry. When the panel won, it
+received `null`, no translation started, and the record was orphaned in session
+storage while the controller still reported `status: "opened"`.
 
-Regression coverage includes Russian skip, non-Russian Cyrillic/doubt, sync
-open invocation before setup settles, failed-open cleanup, two-tab/request
-state identity, and consume-once semantics.
+**Race B — `open()` beat `setOptions()`.** Request identity lived in a
+dynamically assigned side-panel query string, so a panel opened at the manifest
+default path could not identify its request at all.
+
+Both are removed structurally rather than by tuning timing:
+
+- `setOptions()` always assigns the static path `sidepanel/sidepanel.html`;
+  request identity never appears in the URL.
+- The handoff intent is registered synchronously before any await, so a panel
+  that is ready first is told to wait instead of concluding it is empty.
+- The panel claims over the `sensemark.sidepanel` port, driven by both a worker
+  push and a bounded 2 s / 150 ms retry.
+- Claims are single-use, scoped by sender tab → active tab of the panel's window
+  → window, so two tabs and two windows stay isolated.
+- Newest-wins supersession for repeat requests in one tab.
+- A lost handoff ends in a visible typed error, never a blank panel.
+
+Restricted schemes and PDF URLs still use the context-menu selection text
+directly, and pending state is removed on failed opening, tab closure, expiry,
+or successful claim.
+
+### Side-panel user activation
+
+The reviewed commit awaited `chrome.i18n.detectLanguage()` before
+`sidePanel.open()` for every Cyrillic selection. That await drops Chrome's
+transient user activation, which would fail Ukrainian, Bulgarian, Serbian and
+Kazakh requests — the exact case the language policy exists to serve.
+
+**Option A (synchronous conservative preflight) was implemented.** Only a
+confident synchronous Russian verdict skips opening; every other selection
+reaches `open()` on the gesture stack with no awaited work in front of it. The
+full asynchronous policy still runs in the translation service, so Russian text
+that passes the sync check opens a panel reporting "Текст уже на русском."
+without a provider call.
+
+This tradeoff was chosen because real-Chrome verification could not be
+performed in this environment, and the stated decision priority puts never
+losing a valid non-Russian request above avoiding an unnecessary Russian panel.
+Unit tests assert call ordering only and are **not** presented as proof of real
+Chrome activation.
 
 ### Honest coverage scope
 
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
-whole-runtime coverage. `npm run coverage:scope` prints the resolved 14-file
+whole-runtime coverage. `npm run coverage:scope` prints the resolved 16-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 2,883 of 4,918 runtime JavaScript lines (58.62%, including
-comments and blank lines). Measured targeted coverage is 91.26% lines, 88.70%
-functions, and 74.89% branches, against 80/85/70 thresholds.
+physical-line scope is 3,368 of 5,446 runtime JavaScript lines (61.84%, including
+comments and blank lines). Measured targeted coverage is 91.33% lines, 88.17%
+functions, and 74.47% branches, against 80/85/70 thresholds.
 
 ### Deterministic production ZIP
 

@@ -104,6 +104,50 @@
     "tg"
   ]);
 
+  // Letters that Russian uses and the neighbouring Cyrillic languages we care about
+  // do not. "ъ" is deliberately absent: Bulgarian relies on it heavily.
+  const RUSSIAN_EXCLUSIVE_LETTERS = /[ыэё]/iu;
+  // Function words that are Russian rather than Ukrainian, Bulgarian, Serbian,
+  // Macedonian or Belarusian ("что" vs "що"/"какво"/"шта"/"што", "это" vs "це"/"това").
+  const RUSSIAN_FUNCTION_WORDS =
+    /(?:^|[^\p{L}])(?:что|это|этот|эта|чтобы|который|которая|очень|если|сейчас|нужно|надо|только|может|потому|здесь|сегодня|всегда)(?=$|[^\p{L}])/giu;
+  const MIN_CYRILLIC_FOR_WORD_EVIDENCE = 12;
+
+  function cyrillicLength(value) {
+    return (String(value || "").match(/\p{Script=Cyrillic}/gu) || []).length;
+  }
+
+  /**
+   * Decide, without any asynchronous work, whether text is confidently Russian.
+   *
+   * This runs on the user-gesture call stack, so it must never await: Chrome drops
+   * transient user activation across an await and `sidePanel.open()` then fails.
+   * It is deliberately biased towards "uncertain" — a wrong "russian" verdict silently
+   * loses a translation the user asked for, while a wrong "uncertain" verdict only
+   * costs an extra panel that reports the text is already Russian.
+   *
+   * @returns {"russian"|"uncertain"|"not-russian"}
+   */
+  function synchronousRussianVerdict(value) {
+    const text = String(value || "").trim();
+    if (!text) return "not-russian";
+    if (!SCRIPT_TESTS.Cyrillic.test(text)) return "not-russian";
+    // Ukrainian, Bulgarian, Serbian, Kazakh, Belarusian and friends: never skip these.
+    if (NON_RUSSIAN_SIGNALS.test(text)) return "not-russian";
+    // Mixed-script selections are a multilingual request, not a Russian one.
+    if (hasMultipleIndependentLanguageGroups(text)) return "uncertain";
+    if (RUSSIAN_EXCLUSIVE_LETTERS.test(text)) return "russian";
+    const distinctWords = new Set(
+      (text.match(RUSSIAN_FUNCTION_WORDS) || []).map((match) =>
+        match.replace(/[^\p{L}]/gu, "").toLowerCase()
+      )
+    );
+    if (distinctWords.size >= 2 && cyrillicLength(text) >= MIN_CYRILLIC_FOR_WORD_EVIDENCE) {
+      return "russian";
+    }
+    return "uncertain";
+  }
+
   async function detectLanguagePolicy(value, { detectLanguage } = {}) {
     const text = String(value || "").trim();
     const scripts = detectScripts(text);
@@ -161,6 +205,7 @@
     detectScripts,
     hasMultipleIndependentLanguageGroups,
     hasMultipleScripts,
-    isTechnicalLatinMix
+    isTechnicalLatinMix,
+    synchronousRussianVerdict
   };
 });

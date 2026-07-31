@@ -19,8 +19,15 @@
   const SELECTION_COOLDOWN_MS = 1500;
   const LOADING_THRESHOLD_MS = 150;
 
+  // The side panel waits this long for a handoff it was told to expect before it
+  // reports a visible failure. Retries are bounded by this budget: the panel never
+  // polls indefinitely.
+  const SIDE_PANEL_HANDOFF_TIMEOUT_MS = 2000;
+  const SIDE_PANEL_CLAIM_RETRY_MS = 150;
+
   const PORTS = Object.freeze({
-    TRANSLATION: "sensemark.translation"
+    TRANSLATION: "sensemark.translation",
+    SIDE_PANEL: "sensemark.sidepanel"
   });
 
   const MESSAGE = Object.freeze({
@@ -32,6 +39,19 @@
     TRANSLATE_SELECTION: "selection.translate",
     SIDE_PANEL_PENDING_GET: "sidepanel.pending.get",
     SIDE_PANEL_PENDING_CLEAR: "sidepanel.pending.clear"
+  });
+
+  // Side-panel handoff protocol. The panel announces readiness and claims a pending
+  // request by scope; the worker pushes availability when storage lands after the
+  // panel is already listening.
+  const SIDE_PANEL = Object.freeze({
+    READY: "sidepanel.ready",
+    CLAIM: "sidepanel.claim",
+    REQUEST: "sidepanel.request",
+    AVAILABLE: "sidepanel.request.available",
+    EMPTY: "sidepanel.request.empty",
+    WAITING: "sidepanel.request.waiting",
+    IDLE: "sidepanel.idle"
   });
 
   const TRANSLATION_MODE = Object.freeze({
@@ -63,6 +83,9 @@
     SELECTION_COOLDOWN_MS,
     SETTINGS_KEY,
     SETTINGS_VERSION,
+    SIDE_PANEL,
+    SIDE_PANEL_CLAIM_RETRY_MS,
+    SIDE_PANEL_HANDOFF_TIMEOUT_MS,
     SIDE_PANEL_PENDING_PREFIX,
     TARGET_LANGUAGE,
     TRANSLATION_MODE

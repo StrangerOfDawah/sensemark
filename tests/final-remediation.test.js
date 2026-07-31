@@ -156,20 +156,17 @@ test("final: side-panel Russian preflight skips reliable Russian without provide
   assert.equal(providerCalls, 0);
 });
 
-test("final: side-panel user-action flow opens on doubt and for non-Russian Cyrillic", async () => {
-  for (const [text, result] of [
-    ["Короткий текст", { isReliable: false, languages: [{ language: "ru", percentage: 30 }] }],
-    ["Как си", reliable("bg")],
-    ["Як справи", reliable("uk")],
-    ["Добар дан", reliable("sr")],
-    ["Сәлем", reliable("kk")]
-  ]) {
+test("final: non-Russian Cyrillic opens without awaiting language detection", async () => {
+  // v1.4.2 awaited chrome.i18n.detectLanguage before sidePanel.open() for every
+  // Cyrillic selection, which drops Chrome's transient user activation. Ukrainian,
+  // Bulgarian, Serbian and Kazakh text must now reach open() on the gesture stack.
+  for (const text of ["Короткий текст", "Как си", "Як справи", "Добар дан", "Сәлем"]) {
     const events = [];
     const controller = createSidePanelController({
       randomId: () => "request",
       detectLanguage: async () => {
         events.push("detect");
-        return result;
+        return reliable("uk");
       },
       state: {
         prepare(value) {
@@ -187,7 +184,7 @@ test("final: side-panel user-action flow opens on doubt and for non-Russian Cyri
         async setOptions(options) {
           events.push("setOptions");
           assert.equal(options.tabId, 9);
-          assert.match(options.path, /tabId=9/);
+          assert.equal(options.path, "sidepanel/sidepanel.html");
         },
         async open(options) {
           events.push("open");
@@ -196,11 +193,12 @@ test("final: side-panel user-action flow opens on doubt and for non-Russian Cyri
       }
     });
     assert.equal((await controller.open(9, { text, frameId: 3 })).status, "opened");
-    assert.deepEqual(events, ["detect", "store", "setOptions", "open"]);
+    assert.deepEqual(events, ["setOptions", "open", "store"]);
+    assert.ok(!events.includes("detect"), `${text} must not await detection before open`);
   }
 });
 
-test("final: non-Cyrillic side-panel open is invoked before asynchronous setup settles", async () => {
+test("final: side-panel open is invoked before asynchronous setup settles", async () => {
   const events = [];
   let releaseStore;
   let releaseOptions;
@@ -240,7 +238,8 @@ test("final: non-Cyrillic side-panel open is invoked before asynchronous setup s
     }
   });
   const opening = controller.open(9, { text: "foreign text" });
-  assert.deepEqual(events, ["store", "setOptions", "open"]);
+  // open() is reached synchronously, and never behind the storage write.
+  assert.deepEqual(events, ["setOptions", "open", "store"]);
   releaseStore();
   releaseOptions();
   assert.equal((await opening).status, "opened");

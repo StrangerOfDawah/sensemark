@@ -139,22 +139,76 @@ before scoring while paragraph-boundary differences remain distinct.
 
 ## Side panel
 
-Pending handoff entries are keyed by tab/frame/request, have a five-minute TTL,
-use remove-on-read plus an in-memory consume guard, and are cleared after a
-failed open or tab closure.
-For non-Cyrillic context-menu text, session storage, tab-specific
-`sidePanel.setOptions({tabId, enabled: true, path})`, and
-`sidePanel.open({tabId})` are all invoked synchronously in that order before any
-promise is awaited. This keeps `open()` on the originating user-action stack;
-completion and cleanup remain asynchronous. Cyrillic text first uses the
-trusted language preflight so confident Russian can be rejected without
-opening a panel; the unavoidable activation tradeoff is part of the manual
-Chrome gate. Restricted schemes and PDF URLs take the direct context-menu
-fallback path. Delivery distinguishes `accepted`,
-`skipped-russian`, `unsupported`, `no-selection`, `duplicate`, and
-`content-script-unavailable`. Before direct fallback, the trusted service worker
-uses the same `chrome.i18n` language policy; confident Russian selection never
-stores state or opens the side panel.
+### Handoff protocol
+
+The panel never learns its request from its URL. `sidePanel.setOptions()` always
+assigns the single static path `sidepanel/sidepanel.html`, identical to the
+manifest default, so it does not matter whether `setOptions()` or `open()`
+settles first.
+
+Delivery is a ready/claim handshake over the long-lived
+`sensemark.sidepanel` port:
+
+1. The context-menu handler validates the selection and prepares a request.
+2. `handoff.announce()` records the intent **synchronously**, before any await.
+3. `sidePanel.setOptions()` and `sidePanel.open({tabId})` are started on the
+   user-gesture stack; the storage write is started in the same task and
+   deliberately allowed to settle last.
+4. The panel resolves its own window with `chrome.windows.getCurrent()` and
+   sends `sidepanel.ready`.
+5. The worker answers `sidepanel.request` (claimed), `sidepanel.request.waiting`
+   (announced but not yet stored), or `sidepanel.idle` (a manual open).
+6. When the write lands, the worker pushes `sidepanel.request.available` and the
+   panel claims immediately.
+7. The panel independently retries every 150 ms for at most 2 s. Retries are
+   always bounded.
+8. A claim is single-use; the record is removed on read behind an in-memory
+   guard, so exactly one translation starts.
+9. A `waiting` handoff that never arrives ends in a visible typed error rather
+   than a blank panel.
+
+Because the intent is registered synchronously and the panel retries, **no
+ordering between `state.store()`, `setOptions()`, `open()` and panel
+initialisation can lose or duplicate a request**.
+
+### Scope and isolation
+
+Records carry `tabId`, `frameId`, `requestId` and `windowId`, and have a
+five-minute TTL. A panel claims by scope: the sender tab when Chrome supplies
+it, otherwise the active tab of the panel's own window, otherwise the window
+itself. A panel in one window can never claim another window's request.
+
+Two requests in one tab follow a **newest-wins** policy: storing a request
+supersedes that tab's older unclaimed records, and an already-running
+translation is superseded through the existing request coordinator, so a stale
+result can never replace a newer one.
+
+A service-worker restart is safe: intents are in-memory only, but the pending
+record lives in `chrome.storage.session`, so the panel still claims it exactly
+once. A panel reload finds nothing left to claim and stays idle.
+
+### User activation and the Russian preflight
+
+`sidePanel.open()` must run on the user-gesture stack. v1.4.2 awaited
+`chrome.i18n.detectLanguage()` before opening for every Cyrillic selection,
+which drops Chrome's transient activation and would fail Ukrainian, Bulgarian,
+Serbian and Kazakh requests.
+
+The preflight is now **synchronous and conservative**
+(`synchronousRussianVerdict`). Only confidently Russian text — a
+Russian-exclusive letter (`ы`, `э`, `ё`; `ъ` is excluded because Bulgarian uses
+it) or two distinct Russian-only function words with no non-Russian Cyrillic
+signal — skips opening. Everything else opens immediately. The full
+asynchronous `chrome.i18n` policy still runs inside the translation service, so
+Russian text that slips past the sync check opens a panel that reports
+"Текст уже на русском." without any provider call.
+
+This is the documented tradeoff: an occasional unnecessary panel for Russian
+text is accepted in exchange for never losing a valid non-Russian request.
+
+Restricted schemes and PDF URLs take the direct context-menu fallback path.
+Delivery distinguishes `accepted`, `skipped-russian`, `unsupported`,
+`no-selection`, `duplicate`, and `content-script-unavailable`.
 
 The minimum supported Chrome version is 119.
 
@@ -186,7 +240,7 @@ be claimed from Node/jsdom results.
   root-path shell assertions.
 - Production packaging is deterministic on the documented Ubuntu 24.04 /
   Info-ZIP 3.0 environment and verified from two independent source copies.
-- Coverage is explicitly targeted to the 14 critical modules printed by
+- Coverage is explicitly targeted to the 16 critical modules printed by
   `npm run coverage:scope`; its percentage is never described as whole-runtime.
 - Playwright is pinned as a development-only Apache-2.0 dependency. Browser
   smoke responses are intercepted locally and never contact OpenAI.

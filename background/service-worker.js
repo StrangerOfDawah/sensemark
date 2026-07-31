@@ -11,6 +11,7 @@ importScripts(
   "./translation-cache.js",
   "./request-coordinator.js",
   "./side-panel-state.js",
+  "./side-panel-handoff.js",
   "./side-panel-controller.js",
   "./providers/openai-provider.js",
   "./translation-service.js"
@@ -30,9 +31,20 @@ const translationService = SensemarkTranslationService.createTranslationService(
 });
 const coordinator = SensemarkRequestCoordinator.createRequestCoordinator();
 const sidePanelState = SensemarkSidePanelState.createSidePanelState(chrome.storage.session);
+const sidePanelHandoff = SensemarkSidePanelHandoff.createSidePanelHandoff({
+  state: sidePanelState,
+  // Resolving the active tab of the panel's window keeps two tabs isolated even when
+  // Chrome does not populate sender.tab for the side panel. Works without the "tabs"
+  // permission: only the tab id is read.
+  async resolveActiveTab(windowId) {
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    return tab?.id;
+  }
+});
 const sidePanelController = SensemarkSidePanelController.createSidePanelController({
   sidePanel: chrome.sidePanel,
   state: sidePanelState,
+  handoff: sidePanelHandoff,
   detectLanguage: languageDetector
 });
 
@@ -105,18 +117,19 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== CONTEXT_MENU_ID) return;
   const text = String(info.selectionText || "").trim();
   if (!text) return;
+  const handoffValue = { text, frameId: info.frameId, windowId: tab?.windowId };
   if (overlayKnownUnavailable(tab?.url)) {
-    await openSidePanel(tab?.id, { text, frameId: info.frameId });
+    await openSidePanel(tab?.id, handoffValue);
     return;
   }
   const delivery = await deliverSelection(tab?.id, info.frameId, text);
   if (delivery.status === "content-script-unavailable") {
-    await openSidePanel(tab?.id, { text, frameId: info.frameId });
+    await openSidePanel(tab?.id, handoffValue);
   } else if (
     delivery.status === "unsupported" &&
     delivery.reason !== "password-field"
   ) {
-    await openSidePanel(tab?.id, { text, frameId: info.frameId });
+    await openSidePanel(tab?.id, handoffValue);
   }
 });
 
@@ -175,11 +188,11 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (selected.status === "selected") {
     const delivery = await deliverSelection(tab?.id, selected.frameId, selected.text);
     if (delivery.status !== "content-script-unavailable") return;
-    await openSidePanel(tab?.id, selected);
+    await openSidePanel(tab?.id, { ...selected, windowId: tab?.windowId });
     return;
   }
   if (selected.status === "content-script-unavailable") {
-    await openSidePanel(tab?.id);
+    await openSidePanel(tab?.id, { windowId: tab?.windowId });
   }
 });
 
@@ -253,6 +266,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === SensemarkConfig.PORTS.SIDE_PANEL) {
+    sidePanelHandoff.connect(port);
+    return;
+  }
   if (port.name !== SensemarkConfig.PORTS.TRANSLATION) return;
   const scope = {
     surface: port.sender?.tab ? "content" : "extension",
