@@ -317,10 +317,9 @@ test("a failed binding write is typed, not silently swallowed or trusted", async
   assert.equal(result.bindingStatus, "failed");
   assert.match(handoff.bindingFailure(8), /storage unavailable/);
 
-  // The stale on-disk binding is not trusted, but the in-memory one still resolves
-  // identity for this generation.
+  // Identity never comes from a binding, so a binding failure cannot affect it.
   const scope = await handoff.resolveScope({ sender: undefined }, { windowId: 8 });
-  assert.equal(scope.tabId, 40);
+  assert.equal(scope.tabId, null, "an untokenized port resolves to nothing");
 
   // Delivery still works through the deterministic tab token.
   const panel = connectPanel(handoff, { windowId: 8, tabId: 40 });
@@ -349,9 +348,9 @@ test("a new request while binding persistence is pending still resolves the newe
   const newer = controller.open(51, { text: "second", windowId: 9 });
   await Promise.all([older, newer]);
 
-  const scope = await handoff.resolveScope({ sender: undefined }, { windowId: 9 });
-  assert.equal(scope.tabId, 51, "the newest binding decides");
+  // The binding is metadata only; it must still be ordered correctly.
   assert.equal(storage.values[`${config.SIDE_PANEL_BINDING_PREFIX}9`].tabId, 51);
+  assert.equal(storage.values[`${config.SIDE_PANEL_BINDING_PREFIX}9`].requestId, "second");
 });
 
 // --------------------------------------------------- configuration lifecycle

@@ -233,17 +233,15 @@
       return null;
     }
 
-    /** Is a panel that could still claim this scope already connected? */
+    /**
+     * Is a panel that could still claim this scope already connected?
+     * Tab identity only — an untokenized panel can never claim, so it must not
+     * make a rejected open() look recoverable.
+     */
     function hasPanelFor(scope) {
+      if (!Number.isInteger(scope?.tabId)) return false;
       for (const entry of panels) {
-        if (Number.isInteger(scope?.tabId) && entry.scope?.tabId === scope.tabId) return true;
-        if (
-          !Number.isInteger(scope?.tabId) &&
-          Number.isInteger(scope?.windowId) &&
-          entry.scope?.windowId === scope.windowId
-        ) {
-          return true;
-        }
+        if (entry.scope?.tabId === scope.tabId) return true;
       }
       return false;
     }
@@ -258,14 +256,11 @@
       }
     }
 
+    // Tab identity only. A port whose tab could not be resolved is never notified:
+    // matching it on window would hand a global panel another tab's request.
     function scopeMatchesPending(scope, pending) {
-      if (Number.isInteger(scope?.tabId) && Number.isInteger(pending?.tabId)) {
-        return scope.tabId === pending.tabId;
-      }
-      if (Number.isInteger(scope?.windowId) && Number.isInteger(pending?.windowId)) {
-        return scope.windowId === pending.windowId;
-      }
-      return false;
+      if (!Number.isInteger(scope?.tabId) || !Number.isInteger(pending?.tabId)) return false;
+      return scope.tabId === pending.tabId;
     }
 
     /**
@@ -285,15 +280,20 @@
     /**
      * Resolve which tab a connected panel speaks for.
      *
-     * Deterministic sources first, heuristics last. "Whichever tab is active right
-     * now" is never trusted on its own: the user can switch tabs between open() and
-     * READY, and two panel documents can briefly coexist in one window.
+     * Only two sources are authoritative, and both identify the panel document
+     * itself:
      *
      *   1. `port.sender.tab` — used when Chrome supplies it, never assumed to exist.
      *   2. the stable per-tab token the configurator put in the panel URL.
-     *   3. the worker's open binding for that window (persisted, restart-safe).
-     *   4. the active tab — only when it actually has a pending record, otherwise
-     *      the panel is told it is idle rather than handed someone else's text.
+     *
+     * Nothing else. A panel with neither is a legacy or global default instance: it
+     * is not bound to any tab, and inferring one from the window binding or the
+     * active tab is exactly what let a global panel opened for tab A go on to look
+     * like tab B's panel. Such an instance is rejected outright.
+     *
+     * The window binding is retained as defensive metadata (diagnostics, and
+     * cross-checking a token) but never turns an untokenized panel into a supported
+     * one.
      */
     async function resolveScope(port, message) {
       const windowId = Number.isInteger(message?.windowId) ? message.windowId : null;
@@ -307,38 +307,25 @@
         };
       }
 
-      if (Number.isInteger(message?.tabId)) {
+      if (Number.isInteger(message?.tabId) && message.tabId >= 0) {
         return { tabId: message.tabId, windowId, source: "tab-token" };
       }
 
-      const binding = await readBinding(windowId);
-      if (binding && Number.isInteger(binding.tabId)) {
-        return { tabId: binding.tabId, windowId, source: "open-binding" };
-      }
-
-      if (windowId !== null && typeof resolveActiveTab === "function") {
-        try {
-          const active = await resolveActiveTab(windowId);
-          if (Number.isInteger(active)) {
-            // Only accept the active tab when it genuinely owns a pending request.
-            const candidate = state.peek ? await state.peek({ tabId: active }) : null;
-            if (candidate) return { tabId: active, windowId, source: "active-tab" };
-          }
-        } catch {}
-      }
-
-      return { tabId: null, windowId, source: "unresolved" };
+      return { tabId: null, windowId, source: "untokenized" };
     }
 
     async function handleClaim(entry, message) {
       const scope = await resolveScope(entry.port, message);
       entry.scope = scope;
-      // A tab must be positively identified before anything is handed over. Claiming
-      // by window alone would let a panel whose tab could not be resolved take another
-      // tab's text — the misroute this ladder exists to prevent. Refusing costs a
-      // visible timeout at worst; guessing corrupts the result.
+      // An untokenized panel can never be bound to a tab, so it is told so once and
+      // never receives a request. This is the difference between a strict
+      // tab-specific model and one that quietly tolerates the global default panel.
       if (!Number.isInteger(scope.tabId)) {
-        post(entry, { type: config.SIDE_PANEL.IDLE, reason: "unresolved-tab" });
+        post(entry, {
+          type: config.SIDE_PANEL.UNSUPPORTED,
+          code: config.SIDE_PANEL_ERROR.NOT_CONFIGURED,
+          reason: scope.source
+        });
         return;
       }
       const intent = intentFor(scope);

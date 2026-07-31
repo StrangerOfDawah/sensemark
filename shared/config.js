@@ -58,7 +58,14 @@
     AVAILABLE: "sidepanel.request.available",
     EMPTY: "sidepanel.request.empty",
     WAITING: "sidepanel.request.waiting",
-    IDLE: "sidepanel.idle"
+    IDLE: "sidepanel.idle",
+    // A panel instance that cannot be bound to a tab — a legacy or global default
+    // panel with no tab token. It can never claim tab-scoped requests.
+    UNSUPPORTED: "sidepanel.unsupported"
+  });
+
+  const SIDE_PANEL_ERROR = Object.freeze({
+    NOT_CONFIGURED: "PANEL_NOT_CONFIGURED"
   });
 
   const TRANSLATION_MODE = Object.freeze({
@@ -92,6 +99,7 @@
     SETTINGS_VERSION,
     SIDE_PANEL,
     SIDE_PANEL_BINDING_PREFIX,
+    SIDE_PANEL_ERROR,
     SIDE_PANEL_CLAIM_RETRY_MS,
     SIDE_PANEL_GENERATION_KEY,
     SIDE_PANEL_HANDOFF_TIMEOUT_MS,

@@ -38,11 +38,14 @@ are recorded in `dist/browser-results.json` and `dist/browser-evidence/` in the
 CI verification artifact because generated `dist/` output is intentionally
 excluded from the source archive.
 
-Unit/integration result on the same commit: **177 passed, 0 failed**.
+Unit/integration result on the same commit: **191 passed, 0 failed**.
 
-`sidePanel.open()` is the only extension API on the user-action path, for every
-script including Cyrillic, with no awaited work in front of it. Panel
-configuration happens on tab lifecycle events. The storage write is deliberately
+The panel model is **strictly tab-specific**. `sidePanel.open()` is the only
+extension API on the user-action path, for every script including Cyrillic, with
+no awaited work in front of it. Panel configuration happens only on tab
+lifecycle events and at service-worker module initialisation; an unconfigured
+tab is rejected with `PANEL_NOT_CONFIGURED` before any handoff state is created,
+and untokenized panel instances can never claim a request. The storage write is deliberately
 allowed to settle afterwards and the panel claims its request over the
 `sensemark.sidepanel` port. The Russian preflight is synchronous and
 conservative.
@@ -78,7 +81,10 @@ output and screenshots for every row. `Not tested` blocks store publication.
 | Worker restart between store and claim | Terminate/restart the worker before the panel claims | Request is translated at most once | Not executed | Not tested | None |
 | New request after worker restart | Leave a pending request, terminate the worker, then make a fresh request in the same tab | The fresh request replaces the stale one and is the text that appears | Not executed | Not tested | None |
 | Rapid same-tab requests after restart | Restart the worker, then trigger A, B and C rapidly in one tab | C wins; no empty state; no duplicate translation | Not executed | Not tested | None |
-| Tab-specific instance | Inspect the opened panel and the service-worker call log | The instance is tab-specific and no `setOptions()` runs at request time | Not executed | Not tested | None |
+| Tab-specific instance | Inspect the opened panel URL and the service-worker call log | The document carries the correct `?tab=<id>` token, no global untokenized panel is used, and no `setOptions()` runs at request time | Not executed | Not tested | None |
+| Hydration after worker start | Restart the service worker, then invoke from an existing tab without switching tabs first | Existing tabs are configured by module-init hydration; the request is delivered | Not executed | Not tested | None |
+| Unconfigured tab | Invoke before hydration reaches a tab | `PANEL_NOT_CONFIGURED` retry hint; no global panel opens; no pending record remains | Not executed | Not tested | None |
+| Untokenized panel | Open a legacy/global panel instance and trigger a request from a tab | The untokenized panel shows a typed configuration error and claims nothing; the tab's own panel receives the request | Not executed | Not tested | None |
 | Ordinary-page content-script failure | Trigger on a page where the content script cannot respond | Documented policy: a retry hint appears and the panel is NOT silently opened after the awaited round trip | Not executed | Not tested | None |
 | Handoff timeout | Force a handoff that never completes | Panel shows "Не удалось получить выделенный текст. Попробуйте ещё раз."; no blank panel; retries stop | Not executed | Not tested | None |
 | Panel reload | Reload the side panel after a successful translation | The consumed request is not translated again | Not executed | Not tested | None |

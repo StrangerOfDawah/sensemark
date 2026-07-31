@@ -64,8 +64,8 @@ Both are removed structurally rather than by tuning timing:
   that is ready first is told to wait instead of concluding it is empty.
 - The panel claims over the `sensemark.sidepanel` port, driven by both a worker
   push and a bounded 2 s / 150 ms retry.
-- Claims are single-use, scoped by sender tab → active tab of the panel's window
-  → window, so two tabs and two windows stay isolated.
+- Claims are single-use and scoped strictly by tab identity, so two tabs and two
+  windows stay isolated.
 - Newest-wins supersession for repeat requests in one tab.
 - A lost handoff ends in a visible typed error, never a blank panel.
 
@@ -106,21 +106,51 @@ claimable.
 
 Identity previously resolved through `tabs.query({active: true, windowId})`,
 which returns whichever tab is active at claim time — not necessarily the tab
-that originated the request.
+that originated the request. It then briefly resolved through the persisted
+window binding, which still let an untokenized instance look tab-bound.
 
-Identity now resolves through a deterministic ladder, heuristics last:
+Sensemark uses a **strictly tab-specific** side panel. A panel document may be
+bound to a tab by exactly two things, both of which identify the document itself:
 
-1. `port.sender.tab` when Chrome supplies it (never assumed).
-2. The stable per-tab token the configurator places in the panel URL. This is
-   tab identity, assigned on tab lifecycle events, never request identity, and
-   never varying between requests for a tab.
-3. The worker's open binding for that window, recorded at `open()` time and
-   persisted in `chrome.storage.session` so it survives a worker restart.
-4. The active tab — accepted only when it actually owns a pending record.
+1. `port.sender.tab` — used when Chrome supplies it, never assumed to exist.
+2. The stable per-tab token the configurator placed in the panel URL.
 
-If no step positively identifies a tab, the panel is told it is idle. A request
-is never claimed by window alone, so a tab switch during handoff cannot
-misroute it and two panel ports in one window stay isolated.
+There is no third source. A panel with neither is a legacy or global default
+instance: it is **not** bound to any tab, it can never claim a tab-scoped
+request, and it is told so with a typed `PANEL_NOT_CONFIGURED` error. Inferring
+a tab from the window binding or the active tab is precisely what allowed a
+global panel opened for tab A to look like tab B's panel and strand tab B's
+request.
+
+The persisted window→tab binding remains as defensive metadata — it is ordered
+and restart-safe — but it never promotes an untokenized panel into a supported
+one.
+
+If neither source identifies a tab, the panel is rejected. A request is never
+claimed by window, never by the active tab, and never by a binding.
+
+### Strict tab-specific model
+
+`chrome.sidePanel.open()` on an **unconfigured** tab can succeed by opening
+Chrome's global default panel from the manifest. That instance escapes the
+tab-scoped protocol: it stays bound to whichever tab it first served, so a
+later request from another tab is never notified and remains pending forever.
+
+The request controller therefore checks `isConfigured(tabId)` **before**
+`state.prepare`/`state.replace`, before `handoff.announce`, and before
+`sidePanel.open()`. An unconfigured tab returns
+`{status: "not-configured", code: PANEL_NOT_CONFIGURED, retryable: true}` and
+creates no pending record, no binding, no notification and no provider call.
+
+Configuration hydration (`configureAll()`) starts during service-worker **module
+initialisation**, not only in `runtime.onStartup` — that event fires once per
+browser session, while the worker restarts many times within one. It is never
+awaited on the user-action path, because awaiting it before `open()` would drop
+transient user activation. `isConfigured(tabId)` is true only after Chrome
+actually accepted `setOptions()` for the current stable path; "configuring" is
+not "configured", and a failure leaves the tab unconfigured.
+
+Global default panels are not supported for request delivery.
 
 ### Side-panel user activation
 
@@ -152,9 +182,9 @@ activation.
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
 whole-runtime coverage. `npm run coverage:scope` prints the resolved 18-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 3,983 of 6,156 runtime JavaScript lines (64.7%, including
-comments and blank lines). Measured targeted coverage is 92.49% lines, 88.82%
-functions, and 75.24% branches, against 80/85/70 thresholds.
+physical-line scope is 4,040 of 6,252 runtime JavaScript lines (64.62%, including
+comments and blank lines). Measured targeted coverage is 92.43% lines, 88.92%
+functions, and 74.29% branches, against 80/85/70 thresholds.
 
 ### Verification boundary
 
@@ -162,7 +192,7 @@ Three distinct levels, never conflated:
 
 | Level | Command | Result |
 | --- | --- | --- |
-| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 177 passed, 0 failed |
+| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 191 passed, 0 failed |
 | Automated Chromium smoke (Playwright, intercepted provider) | `npm run test:browser:auto` | 18 passed, 0 failed, 0 skipped, 0 console errors |
 | Real Chrome 119+ manual acceptance | `BROWSER_ACCEPTANCE.md` | **Not executed — every row `Not tested`** |
 
@@ -222,10 +252,10 @@ Current values. This report intentionally describes only the final
 implementation; earlier snapshots (111 tests, a 14-file coverage scope, 91.26%
 lines) are superseded and are not reproduced here.
 
-- `npm test`: 177 passed, 0 failed, 0 skipped; exit 0.
+- `npm test`: 191 passed, 0 failed, 0 skipped; exit 0.
 - `npm run check`: 59 runtime files and extension metadata validated; exit 0.
-- `npm run test:coverage`: 177 passed; 92.49% lines, 88.82% functions,
-  75.24% branches in the disclosed 18-file scope; exit 0.
+- `npm run test:coverage`: 191 passed; 92.43% lines, 88.92% functions,
+  74.29% branches in the disclosed 18-file scope; exit 0.
 - `npm run test:browser:auto`: 18 passed, 0 failed, 0 skipped; console errors 0;
   exit 0.
 - `npm run verify:reproducible`: two independent builds matched; exit 0.
@@ -248,9 +278,14 @@ These are the single current answers; no alternative design is in force.
 - **Persisted window bindings are ordered.** Writes are serialized per window
   and refuse to overwrite a newer binding; a failed write is typed and the
   stale stored binding is not trusted.
-- **Identity order:** `port.sender.tab` → stable per-tab URL token → persisted
-  window→tab open binding → active tab, and only when it owns a pending record.
-  A request is never claimed by window alone.
+- **Identity order:** `port.sender.tab` → stable per-tab URL token. Nothing
+  else. Untokenized panel instances cannot claim requests and receive a typed
+  `PANEL_NOT_CONFIGURED` error.
+- **Panel model is strictly tab-specific.** The request controller checks tab
+  configuration before creating any handoff state; unconfigured tabs return
+  `PANEL_NOT_CONFIGURED`. Global default panels are not supported for request
+  delivery. Configuration hydration runs on every service-worker
+  initialisation.
 - **Ordinary-page asynchronous content-script failure is not guaranteed to
   retain user activation**, so it does not silently fall back to
   `sidePanel.open()`. It returns `CONTENT_SCRIPT_UNAVAILABLE` and asks the user

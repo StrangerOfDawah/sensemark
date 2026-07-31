@@ -175,7 +175,9 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
   });
 
   const panels = [];
-  function attachPanel({ windowId = 1, tabToken = null } = {}) {
+  // Every configured tab-specific panel carries its tab token; that is the only
+  // identity a panel is allowed to have.
+  function attachPanel({ windowId = 1, tabToken = 1 } = {}) {
     const pair = createPortPair(config.PORTS.SIDE_PANEL, senderTab ? { tab: senderTab } : undefined);
     const translated = [];
     const outcomes = [];
@@ -462,14 +464,14 @@ test("handoff: a service-worker restart keeps the request claimable exactly once
   secondHandoff.connect(pair.workerPort);
   const received = [];
   pair.clientPort.onMessage.addListener((message) => received.push(message));
-  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 4 });
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 4, tabId: 8 });
   await flush();
 
   assert.equal(received[0].type, config.SIDE_PANEL.REQUEST);
   assert.equal(received[0].pending.text, "survives restart");
   assert.deepEqual(pendingKeys(), [], "the record is consumed, not duplicated");
 
-  pair.clientPort.postMessage({ type: config.SIDE_PANEL.CLAIM, windowId: 4 });
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.CLAIM, windowId: 4, tabId: 8 });
   await flush();
   assert.equal(received[1].type, config.SIDE_PANEL.IDLE, "no duplicate translation after restart");
 });
@@ -501,7 +503,7 @@ test("handoff: a failed panel opening cleans pending state and leaks nothing lat
   handoff.connect(pair.workerPort);
   const received = [];
   pair.clientPort.onMessage.addListener((message) => received.push(message));
-  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 5 });
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 5, tabId: 3 });
   await flush();
   assert.equal(received[0].type, config.SIDE_PANEL.IDLE);
 });
@@ -527,6 +529,7 @@ test("handoff: a lost handoff times out visibly with bounded retries", async () 
   const client = createSidePanelHandoffClient({
     runtime: { connect: () => pair.clientPort },
     windows: { getCurrent: async () => ({ id: 7 }) },
+    tabToken: "2",
     timers: clock.api,
     now: clock.now,
     onRequest: () => outcomes.push("request"),
@@ -580,7 +583,7 @@ test("handoff: a panel never claims another window's request", async () => {
   handoff.connect(pair.workerPort);
   const received = [];
   pair.clientPort.onMessage.addListener((message) => received.push(message));
-  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 200 });
+  pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 200, tabId: 31 });
   await flush();
 
   assert.equal(received[0].type, config.SIDE_PANEL.IDLE, "window 200 must not see window 100's text");
@@ -664,12 +667,16 @@ test("handoff: sender.tab identity is preferred over the reported window", async
   assert.equal(received[0].pending.text, "from sender tab");
 });
 
-test("handoff: the active tab of the panel's window resolves the claim scope", async () => {
+test("handoff: the active tab never resolves the claim scope", async () => {
   const storage = memoryStorage();
   const state = createSidePanelState(storage);
+  let lookups = 0;
   const handoff = createSidePanelHandoff({
     state,
-    resolveActiveTab: async (windowId) => (windowId === 12 ? 90 : null)
+    resolveActiveTab: async () => {
+      lookups += 1;
+      return 90;
+    }
   });
   await state.set({ tabId: 90, frameId: 0, windowId: null, requestId: "active", text: "active tab" });
 
@@ -679,8 +686,9 @@ test("handoff: the active tab of the panel's window resolves the claim scope", a
   pair.clientPort.onMessage.addListener((message) => received.push(message));
   pair.clientPort.postMessage({ type: config.SIDE_PANEL.READY, windowId: 12 });
   await flush();
-  assert.equal(received[0].type, config.SIDE_PANEL.REQUEST);
-  assert.equal(received[0].pending.text, "active tab");
+
+  assert.equal(received[0].type, config.SIDE_PANEL.UNSUPPORTED);
+  assert.equal(lookups, 0, "the active tab is never consulted");
 });
 
 test("handoff: a selection made while the panel is already open is pushed to it", async () => {

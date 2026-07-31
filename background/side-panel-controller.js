@@ -26,9 +26,12 @@
     // Read-only view of the tab-lifecycle configurator. The controller NEVER calls
     // setOptions(): configuring a tab-specific panel while open() is already in
     // flight can leave Chrome showing a different instance than the one the identity
-    // protocol expects. It only asks whether the tab was prepared, to classify a
-    // failure correctly.
-    isTabConfigured,
+    // protocol expects.
+    //
+    // Defaults to "configured" only so unit tests can construct a controller without
+    // a configurator; the service worker always supplies the real check, and a test
+    // asserts that wiring.
+    isTabConfigured = () => true,
     detectLanguage,
     randomId = dependencies.contracts.cryptoRandomId
   }) {
@@ -141,6 +144,25 @@
       if (!Number.isInteger(tabId) || !sidePanel?.open) {
         return Promise.resolve({ status: "unavailable" });
       }
+
+      // Strict tab-specific model. `sidePanel.open()` on an unconfigured tab can
+      // succeed by opening Chrome's GLOBAL default panel from the manifest, which
+      // silently escapes the tab-scoped identity protocol: that panel stays bound to
+      // whichever tab it first served, so a later request from another tab is never
+      // notified and is stranded pending forever.
+      //
+      // Rejecting here — before prepare/replace, before announce, before open — is
+      // what makes the model strict rather than aspirational. Nothing is created for
+      // a tab that cannot show its own panel.
+      if (!isTabConfigured(tabId)) {
+        return Promise.resolve({
+          status: "not-configured",
+          code: dependencies.errors.ERROR_CODE.PANEL_NOT_CONFIGURED,
+          retryable: true,
+          message: "Панель перевода ещё готовится. Попробуйте ещё раз."
+        });
+      }
+
       const text = String(value.text || "").trim();
       // Synchronous verdict only. Awaiting chrome.i18n.detectLanguage here would drop
       // Chrome's transient user activation and sidePanel.open() would be rejected for

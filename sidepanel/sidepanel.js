@@ -37,6 +37,19 @@ const handoff = SensemarkSidePanelHandoffClient.createSidePanelHandoffClient({
     source.value = pending.text;
     controller.translate();
   },
+  onUnsupported() {
+    // A legacy or global default panel: it has no tab token, so it cannot receive
+    // translations. Reopening from the tab gets a properly configured instance.
+    view.failed(
+      {
+        message:
+          "Эта панель не привязана к вкладке. Закройте её и повторите перевод из нужной вкладки.",
+        code: "PANEL_NOT_CONFIGURED",
+        action: null
+      },
+      () => {}
+    );
+  },
   onTimeout() {
     view.failed(
       {

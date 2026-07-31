@@ -58,8 +58,21 @@ const sidePanelController = SensemarkSidePanelController.createSidePanelControll
   detectLanguage: languageDetector
 });
 
-// Tab-specific panel model. Configuration happens ONLY here, on tab lifecycle
-// events, so the context-menu path never races setOptions() against open().
+// Strict tab-specific panel model. Hydration starts during module initialisation,
+// which is every service-worker start — runtime.onStartup only fires once per
+// browser session, so a worker revived later would otherwise have no configured
+// tabs and every request would be rejected until the user switched tabs.
+const sidePanelConfigurationReady = sidePanelConfigurator
+  .configureAll()
+  .catch(() => ({ status: "failed", configured: 0 }));
+
+// Deliberately never awaited on the user-action path: awaiting it before
+// sidePanel.open() would drop Chrome's transient user activation. An early request
+// on a not-yet-configured tab returns PANEL_NOT_CONFIGURED and the user retries.
+void sidePanelConfigurationReady;
+
+// Configuration happens ONLY on lifecycle events, so the context-menu path never
+// races setOptions() against open().
 chrome.tabs.onCreated.addListener((tab) => {
   if (Number.isInteger(tab?.id)) sidePanelConfigurator.configure(tab.id).catch(() => {});
 });
@@ -166,7 +179,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (routing.route === SensemarkSelectionRoute.ROUTE.DIRECT_SIDE_PANEL) {
     clearRetryHint();
     const result = await openSidePanel(tab?.id, handoffValue);
-    if (result.status === "open-failed" || result.status === "not-configured") {
+    if (result.status === "not-configured") {
+      // Hydration has not reached this tab yet. Nothing was created, so a retry is
+      // clean. Configuration is a lifecycle concern only — the request path never
+      // triggers it, so that a request can never race its own tab's setup.
+      showRetryHint(result.message || "панель ещё готовится. Попробуйте ещё раз.");
+    } else if (result.status === "open-failed") {
       showRetryHint("не удалось открыть панель. Попробуйте ещё раз.");
     }
     return;

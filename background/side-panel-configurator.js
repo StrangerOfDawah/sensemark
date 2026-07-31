@@ -21,30 +21,57 @@
    * worker's open binding, so an unconfigured tab is a latency problem, not a
    * correctness problem.
    */
+  const STATE = Object.freeze({
+    UNKNOWN: "unknown",
+    CONFIGURING: "configuring",
+    CONFIGURED: "configured",
+    FAILED: "failed"
+  });
+
   function createSidePanelConfigurator({ sidePanel, tabs, path = SIDE_PANEL_PATH }) {
     const configured = new Map();
     const failures = new Map();
+    // One in-flight configuration per tab: concurrent lifecycle events (onCreated
+    // immediately followed by onActivated and onUpdated) must not fan out into
+    // duplicate setOptions() calls.
+    const inFlight = new Map();
 
     function pathForTab(tabId) {
       return `${path}?${TAB_TOKEN_PARAMETER}=${encodeURIComponent(String(tabId))}`;
     }
 
-    async function configure(tabId) {
-      if (!Number.isInteger(tabId) || tabId < 0) return { status: "invalid-tab" };
-      if (!sidePanel?.setOptions) return { status: "unavailable" };
-      const wanted = pathForTab(tabId);
-      if (configured.get(tabId) === wanted) return { status: "already-configured" };
+    async function applyConfiguration(tabId, wanted) {
       try {
         await sidePanel.setOptions({ tabId, enabled: true, path: wanted });
         configured.set(tabId, wanted);
         failures.delete(tabId);
         return { status: "configured", path: wanted };
       } catch (error) {
-        // A tab that cannot be configured still works through the open binding.
+        // A tab Chrome refused stays UNCONFIGURED. It must never fall through to the
+        // global default panel, so the request controller rejects it up front.
         const message = String(error?.message || error || "setOptions failed");
+        configured.delete(tabId);
         failures.set(tabId, message);
         return { status: "configuration-failed", error: message };
+      } finally {
+        inFlight.delete(tabId);
       }
+    }
+
+    function configure(tabId) {
+      if (!Number.isInteger(tabId) || tabId < 0) {
+        return Promise.resolve({ status: "invalid-tab" });
+      }
+      if (!sidePanel?.setOptions) return Promise.resolve({ status: "unavailable" });
+      const wanted = pathForTab(tabId);
+      if (configured.get(tabId) === wanted) {
+        return Promise.resolve({ status: "already-configured", path: wanted });
+      }
+      const pending = inFlight.get(tabId);
+      if (pending) return pending;
+      const task = applyConfiguration(tabId, wanted);
+      inFlight.set(tabId, task);
+      return task;
     }
 
     async function configureAll() {
@@ -60,13 +87,23 @@
       );
       return {
         status: "done",
-        configured: results.filter((item) => item.status === "configured").length
+        configured: results.filter((item) =>
+          ["configured", "already-configured"].includes(item.status)
+        ).length
       };
     }
 
     function forget(tabId) {
       configured.delete(tabId);
       failures.delete(tabId);
+      inFlight.delete(tabId);
+    }
+
+    function stateFor(tabId) {
+      if (configured.has(tabId)) return STATE.CONFIGURED;
+      if (inFlight.has(tabId)) return STATE.CONFIGURING;
+      if (failures.has(tabId)) return STATE.FAILED;
+      return STATE.UNKNOWN;
     }
 
     return {
@@ -75,12 +112,16 @@
       configuredPath: (tabId) => configured.get(tabId) || null,
       failureFor: (tabId) => failures.get(tabId) || null,
       forget,
-      // Synchronous read used by the request controller to classify an opening
-      // failure. The controller must never trigger configuration itself.
-      isConfigured: (tabId) => configured.has(tabId),
-      pathForTab
+      /**
+       * True only after Chrome actually accepted setOptions() for this tab at the
+       * current stable path. Read synchronously by the request controller BEFORE any
+       * handoff state is created. Never optimistic: "configuring" is not "configured".
+       */
+      isConfigured: (tabId) => configured.get(tabId) === pathForTab(tabId),
+      pathForTab,
+      stateFor
     };
   }
 
-  return { createSidePanelConfigurator, SIDE_PANEL_PATH, TAB_TOKEN_PARAMETER };
+  return { createSidePanelConfigurator, SIDE_PANEL_PATH, STATE, TAB_TOKEN_PARAMETER };
 });

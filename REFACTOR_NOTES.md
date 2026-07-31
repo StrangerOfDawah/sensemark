@@ -185,6 +185,23 @@ consequently the only extension API on the user-action path, so `setOptions()`
 cannot race it and cannot leave Chrome showing a different instance than the
 one the identity protocol expects.
 
+`sidePanel.open()` on an **unconfigured** tab can succeed by opening Chrome's
+global default panel from the manifest, which escapes the tab-scoped protocol
+entirely. The request controller therefore checks `isConfigured(tabId)` before
+`state.prepare`/`state.replace`, before `handoff.announce`, and before
+`sidePanel.open()`. An unconfigured tab returns `PANEL_NOT_CONFIGURED` and
+creates no pending record, no binding, no notification and no provider call.
+
+Hydration (`configureAll()`) starts during service-worker **module
+initialisation** — `runtime.onStartup` fires once per browser session, but the
+worker restarts many times within one. It is never awaited on the user-action
+path. `isConfigured(tabId)` is true only after Chrome actually accepted
+`setOptions()` for the current stable path; "configuring" is not "configured",
+and a failure leaves the tab unconfigured. Concurrent lifecycle events for one
+tab share a single in-flight `setOptions()` call.
+
+Global default panels are not supported for request delivery.
+
 The failure kinds are distinct, with typed codes:
 
 - `PANEL_NOT_CONFIGURED` — `open()` failed on a tab lifecycle preparation never
@@ -222,20 +239,22 @@ recorded and a manual acceptance case kept.
 
 ### Tab identity
 
-A panel cannot read its own tab id, and "whichever tab is active right now" is
-not that tab: the user can switch tabs between `open()` and READY, and two
-panel documents can briefly coexist in one window. Identity resolves through a
-deterministic ladder, heuristics last:
+Sensemark uses a **strictly tab-specific** side panel. A panel document may be
+bound to a tab by exactly two things, both of which identify the document itself:
 
-1. `port.sender.tab` when Chrome supplies it — never assumed to exist.
-2. The stable per-tab token in the panel URL. Tab identity only, assigned on
-   tab lifecycle events, never request identity.
-3. The worker's open binding for that window, recorded at `open()` time and
-   persisted in `chrome.storage.session` so it survives a worker restart.
-4. The active tab — accepted only when it actually owns a pending record.
+1. `port.sender.tab` — used when Chrome supplies it, never assumed to exist.
+2. The stable per-tab token the configurator placed in the panel URL.
 
-If nothing positively identifies a tab, the panel is told it is idle. A request
-is never claimed by window alone.
+There is no third source. A panel with neither is a legacy or global default
+instance: it is **not** bound to any tab, it can never claim a tab-scoped
+request, and it is told so with a typed `PANEL_NOT_CONFIGURED` error. Inferring
+a tab from the window binding or the active tab is precisely what allowed a
+global panel opened for tab A to look like tab B's panel and strand tab B's
+request.
+
+The persisted window→tab binding remains as defensive metadata — it is ordered
+and restart-safe — but it never promotes an untokenized panel into a supported
+one.
 
 ### Same-tab replacement
 

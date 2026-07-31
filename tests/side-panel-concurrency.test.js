@@ -261,13 +261,13 @@ test("tab switch before READY does not misroute request", async () => {
   // The user switches to tab B before the panel announces itself.
   activeTab = 21;
 
-  const panel = connectPanel(handoff, { windowId: 1 });
+  const panel = connectPanel(handoff, { windowId: 1, tabId: 20 });
   panel.ready();
   await flush();
 
   const delivered = panel.delivered();
   assert.equal(delivered.length, 1);
-  assert.equal(delivered[0].pending.tabId, 20, "the open binding, not the active tab, decides");
+  assert.equal(delivered[0].pending.tabId, 20, "the tab token, not the active tab, decides");
   assert.equal(delivered[0].pending.text, "belongs to tab A");
 });
 
@@ -353,12 +353,13 @@ test("worker restart preserves panel identity", async () => {
   });
   assert.equal(secondHandoff.intentFor({ tabId: 50 }), null, "intents do not survive");
 
-  const panel = connectPanel(secondHandoff, { windowId: 6 });
+  // The panel DOCUMENT survives a worker restart, so it still carries its token.
+  const panel = connectPanel(secondHandoff, { windowId: 6, tabId: 50 });
   panel.ready();
   await flush();
 
   const delivered = panel.delivered();
-  assert.equal(delivered.length, 1, "the persisted binding recovers identity");
+  assert.equal(delivered.length, 1, "the tab token survives the restart");
   assert.equal(delivered[0].pending.tabId, 50);
   assert.equal(delivered[0].pending.text, "survives restart");
 
@@ -388,37 +389,50 @@ test("closed source tab cleans pending request", async () => {
   assert.equal(await state.peek({ tabId: 60 }), null);
   assert.equal(handoff.intentFor({ tabId: 60 }), null);
 
-  const panel = connectPanel(handoff, { windowId: 7 });
+  const panel = connectPanel(handoff, { windowId: 7, tabId: 60 });
   panel.ready();
   await flush();
   assert.equal(panel.delivered().length, 0, "a closed tab's text is never delivered");
   assert.equal(panel.received[0].type, config.SIDE_PANEL.IDLE);
 });
 
-test("an unconfigured tab still resolves identity through the open binding", async () => {
+test("an untokenized panel cannot resolve identity through the open binding", async () => {
+  // Strict tab-specific model: the open binding is defensive metadata only. It must
+  // never promote a global/legacy panel into a supported tab-specific one.
   const storage = memoryStorage();
   const state = createSidePanelState(storage);
   const handoff = createSidePanelHandoff({ state, bindingStore: storage });
   const controller = createController({ state, handoff, randomIds: ["no-token"] });
 
-  await controller.open(70, { text: "no tab token", windowId: 8 });
-  // Panel has no tab token at all: configuration never ran for this tab.
+  await controller.open(70, { text: "tab 70 only", windowId: 8 });
+  const binding = await handoff.bindingFor(8);
+  assert.equal(binding.tabId, 70, "the binding still exists as metadata");
+
   const panel = connectPanel(handoff, { windowId: 8, tabId: null });
   panel.ready();
   await flush();
 
-  assert.equal(panel.delivered().length, 1);
-  assert.equal(panel.delivered()[0].pending.text, "no tab token");
+  assert.equal(panel.delivered().length, 0, "an untokenized panel receives nothing");
+  assert.equal(panel.received[0].type, config.SIDE_PANEL.UNSUPPORTED);
+  assert.equal(panel.received[0].code, config.SIDE_PANEL_ERROR.NOT_CONFIGURED);
+  assert.equal(
+    (await state.peek({ tabId: 70 })).text,
+    "tab 70 only",
+    "the request stays pending for its own configured panel"
+  );
 });
 
-test("the active tab is only trusted when it actually owns a pending request", async () => {
+test("the active tab is never used to resolve panel identity", async () => {
   const storage = memoryStorage();
   const state = createSidePanelState(storage);
+  let activeTabLookups = 0;
   const handoff = createSidePanelHandoff({
     state,
-    resolveActiveTab: async () => 81
+    resolveActiveTab: async () => {
+      activeTabLookups += 1;
+      return 80;
+    }
   });
-  // Tab 80 has a request; tab 81 is merely active and owns nothing.
   await state.replace(
     state.prepare({ tabId: 80, frameId: 0, windowId: 3, requestId: "eighty", text: "tab 80" })
   );
@@ -427,8 +441,9 @@ test("the active tab is only trusted when it actually owns a pending request", a
   panel.ready();
   await flush();
 
-  assert.equal(panel.delivered().length, 0, "tab 81 must not receive tab 80's text");
-  assert.equal(panel.received[0].type, config.SIDE_PANEL.IDLE);
+  assert.equal(panel.delivered().length, 0, "no identity without a tab token");
+  assert.equal(panel.received[0].type, config.SIDE_PANEL.UNSUPPORTED);
+  assert.equal(activeTabLookups, 0, "the active tab must not even be consulted");
   assert.equal((await state.peek({ tabId: 80 })).text, "tab 80", "tab 80 keeps its request");
 });
 

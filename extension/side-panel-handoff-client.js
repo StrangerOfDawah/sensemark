@@ -32,7 +32,8 @@
     retryMs = config.SIDE_PANEL_CLAIM_RETRY_MS,
     onRequest,
     onTimeout,
-    onIdle
+    onIdle,
+    onUnsupported
   } = {}) {
     let port = null;
     let windowId = null;
@@ -123,6 +124,12 @@
           return;
         case config.SIDE_PANEL.WAITING:
           if (claimWindow) claimWindow.expecting = true;
+          return;
+        case config.SIDE_PANEL.UNSUPPORTED:
+          // This panel document has no tab token, so it can never be bound to a tab.
+          // Stop retrying and tell the user, rather than sitting empty forever.
+          finish("unsupported");
+          onUnsupported?.(message);
           return;
         case config.SIDE_PANEL.IDLE:
           // A reason means the worker could not answer properly; keep retrying inside
