@@ -150,11 +150,11 @@ activation.
 ### Honest coverage scope
 
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
-whole-runtime coverage. `npm run coverage:scope` prints the resolved 17-file
+whole-runtime coverage. `npm run coverage:scope` prints the resolved 18-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 3,757 of 5,868 runtime JavaScript lines (64.03%, including
-comments and blank lines). Measured targeted coverage is 92.31% lines, 88.71%
-functions, and 74.50% branches, against 80/85/70 thresholds.
+physical-line scope is 3,983 of 6,156 runtime JavaScript lines (64.7%, including
+comments and blank lines). Measured targeted coverage is 92.49% lines, 88.82%
+functions, and 75.24% branches, against 80/85/70 thresholds.
 
 ### Verification boundary
 
@@ -162,7 +162,7 @@ Three distinct levels, never conflated:
 
 | Level | Command | Result |
 | --- | --- | --- |
-| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 158 passed, 0 failed |
+| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 177 passed, 0 failed |
 | Automated Chromium smoke (Playwright, intercepted provider) | `npm run test:browser:auto` | 18 passed, 0 failed, 0 skipped, 0 console errors |
 | Real Chrome 119+ manual acceptance | `BROWSER_ACCEPTANCE.md` | **Not executed — every row `Not tested`** |
 
@@ -218,21 +218,54 @@ or hidden second model request was introduced.
 
 ## Automated verification snapshot
 
-- `npm test`: 111 passed, 0 failed, 0 skipped; exit 0.
-- `npm run check`: 55 runtime files and extension metadata validated; exit 0.
-- `npm run test:coverage`: 111 passed; 91.26% lines, 88.70% functions,
-  74.89% branches in the disclosed 14-file scope; exit 0.
+Current values. This report intentionally describes only the final
+implementation; earlier snapshots (111 tests, a 14-file coverage scope, 91.26%
+lines) are superseded and are not reproduced here.
+
+- `npm test`: 177 passed, 0 failed, 0 skipped; exit 0.
+- `npm run check`: 59 runtime files and extension metadata validated; exit 0.
+- `npm run test:coverage`: 177 passed; 92.49% lines, 88.82% functions,
+  75.24% branches in the disclosed 18-file scope; exit 0.
 - `npm run test:browser:auto`: 18 passed, 0 failed, 0 skipped; console errors 0;
   exit 0.
 - `npm run verify:reproducible`: two independent builds matched; exit 0.
+- `npm run verify:artifacts`: both archives and checksums verified; exit 0.
 
-The final handoff supersedes this snapshot with the exact clean-source Node 24
-and GitHub Actions results, artifact sizes/counts, and hashes.
+## Current design statements
+
+These are the single current answers; no alternative design is in force.
+
+- **Panel model:** tab-specific. Tab-specific configuration occurs **only** on
+  lifecycle events (`runtime.onInstalled`, `runtime.onStartup`,
+  `tabs.onCreated`, `tabs.onActivated`, `tabs.onUpdated`). Global and
+  tab-specific instances are never mixed.
+- **The request controller does not call `setOptions()`.** `sidePanel.open()`
+  is the only extension API on the user-action path.
+- **Same-tab newest-wins survives a worker restart.** Ordering is
+  `(generationId, sequence, createdAt)`, where `generationId` is a durable
+  counter in session storage. A process-local sequence never lets a stale
+  record defeat a fresh user action.
+- **Persisted window bindings are ordered.** Writes are serialized per window
+  and refuse to overwrite a newer binding; a failed write is typed and the
+  stale stored binding is not trusted.
+- **Identity order:** `port.sender.tab` → stable per-tab URL token → persisted
+  window→tab open binding → active tab, and only when it owns a pending record.
+  A request is never claimed by window alone.
+- **Ordinary-page asynchronous content-script failure is not guaranteed to
+  retain user activation**, so it does not silently fall back to
+  `sidePanel.open()`. It returns `CONTENT_SCRIPT_UNAVAILABLE` and asks the user
+  to repeat the command. Recognisable protected contexts (PDF viewer,
+  restricted schemes, Web Store, unknown URL) still open the panel directly
+  with no awaited work in front of `open()`.
 
 ## Remaining gate
 
-The built-in Chrome PDF context-menu path, real protected-page fallback,
-two-tab panel UI, controlled real opening failure, Russian direct fallback,
-worker restart between store/consume, and side-panel/service-worker console
-audit have not been executed in real Chrome. Until all pass, v1.4.2 must not be
-uploaded to the Chrome Web Store or described as store-ready.
+Real Chrome 119+ acceptance has **not** been executed. The built-in PDF
+context-menu path, non-Russian Cyrillic in PDF, rapid same-tab requests before
+and after a worker restart, tab switching during handoff, confirmation that the
+opened instance is tab-specific, the ordinary-page content-script failure
+behaviour, and the service-worker/side-panel console audit all remain
+`Not tested` in `BROWSER_ACCEPTANCE.md`.
+
+Until they pass, v1.4.2 must not be uploaded to the Chrome Web Store or
+described as store-ready.

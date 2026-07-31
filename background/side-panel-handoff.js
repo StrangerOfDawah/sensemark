@@ -24,11 +24,13 @@
     state,
     resolveActiveTab,
     bindingStore,
+    generation,
     now = Date.now,
     intentTtlMs = config.SIDE_PANEL_HANDOFF_TIMEOUT_MS * 3,
     bindingTtlMs = 5 * 60 * 1000
   }) {
     if (!state?.claim) throw new TypeError("Side-panel state with claim() is required.");
+    const resolveGeneration = generation || state.generation;
 
     const intents = new Map();
     const panels = new Set();
@@ -36,30 +38,112 @@
     // time and persisted, so it survives a worker restart and — unlike "whichever
     // tab is active right now" — cannot drift when the user switches tabs.
     const bindings = new Map();
+    const bindingLocks = new Map();
+    const bindingWrites = new Map();
+    const failedBindings = new Map();
+    let bindingRevisionCounter = 0;
 
     function bindingKey(windowId) {
       return `${config.SIDE_PANEL_BINDING_PREFIX}${windowId}`;
     }
 
+    /** Serialize binding updates per window; different windows never block. */
+    function withWindowLock(windowId, task) {
+      const previous = bindingLocks.get(windowId) || Promise.resolve();
+      const current = previous.then(task, task);
+      bindingLocks.set(
+        windowId,
+        current.then(
+          () => undefined,
+          () => undefined
+        )
+      );
+      return current;
+    }
+
+    /** Newer generation wins outright, then the in-worker revision, then wall clock. */
+    function isNewerBinding(candidate, existing) {
+      if (!existing) return true;
+      const candidateGeneration = Number(candidate?.generationId || 0);
+      const existingGeneration = Number(existing?.generationId || 0);
+      if (candidateGeneration !== existingGeneration) {
+        return candidateGeneration > existingGeneration;
+      }
+      const candidateRevision = Number(candidate?.bindingRevision || 0);
+      const existingRevision = Number(existing?.bindingRevision || 0);
+      if (candidateRevision !== existingRevision) return candidateRevision > existingRevision;
+      return Number(candidate?.createdAt || 0) >= Number(existing?.createdAt || 0);
+    }
+
+    /**
+     * Record the window -> tab binding for this request.
+     *
+     * Synchronous in memory (announce runs on the user-gesture stack), durable
+     * asynchronously. The write is serialized per window and refuses to overwrite a
+     * newer binding: two fire-and-forget writes used to be able to land out of order,
+     * leaving the persisted binding pointing at the OLDER tab and making a restarted
+     * worker recover the wrong identity.
+     *
+     * The returned promise is retained by the caller and joined into the post-open
+     * lifecycle, so the handoff is never reported as prepared while the durable write
+     * is still outstanding or has failed.
+     */
     function rememberBinding(pending) {
-      if (!Number.isInteger(pending?.windowId) || !Number.isInteger(pending?.tabId)) return;
+      if (!Number.isInteger(pending?.windowId) || !Number.isInteger(pending?.tabId)) {
+        return { binding: null, persisted: Promise.resolve({ status: "skipped" }) };
+      }
+      const windowId = pending.windowId;
+      bindingRevisionCounter += 1;
       const binding = {
-        windowId: pending.windowId,
+        windowId,
         tabId: pending.tabId,
         requestId: pending.requestId,
+        bindingRevision: bindingRevisionCounter,
+        generationId: pending.generationId,
         createdAt: now()
       };
-      bindings.set(pending.windowId, binding);
-      // Fire and forget: the in-memory copy already covers the same worker generation.
-      Promise.resolve(bindingStore?.set?.({ [bindingKey(pending.windowId)]: binding })).catch(
-        () => {}
-      );
+      if (isNewerBinding(binding, bindings.get(windowId))) bindings.set(windowId, binding);
+
+      const persisted = withWindowLock(windowId, async () => {
+        if (!bindingStore?.set) return { status: "unavailable", binding };
+        try {
+          const generationId =
+            binding.generationId === undefined && typeof resolveGeneration === "function"
+              ? await resolveGeneration()
+              : binding.generationId;
+          const durable = { ...binding, generationId };
+          if (isNewerBinding(durable, bindings.get(windowId))) bindings.set(windowId, durable);
+          const key = bindingKey(windowId);
+          const stored = await bindingStore.get(key);
+          if (!isNewerBinding(durable, stored?.[key] || null)) {
+            return { status: "superseded", binding: durable };
+          }
+          await bindingStore.set({ [key]: durable });
+          return { status: "persisted", binding: durable };
+        } catch (error) {
+          // A failed write must not become an unhandled rejection, and the stale
+          // stored binding must not be trusted as current.
+          const message = String(error?.message || error || "binding persistence failed");
+          failedBindings.set(windowId, message);
+          return { status: "failed", error: message, binding };
+        }
+      });
+      bindingWrites.set(windowId, persisted);
+      return { binding, persisted };
+    }
+
+    /** The outstanding durable binding write for a window, if any. */
+    function bindingPersistence(windowId) {
+      return bindingWrites.get(windowId) || Promise.resolve({ status: "idle" });
     }
 
     async function readBinding(windowId) {
       if (!Number.isInteger(windowId)) return null;
       const local = bindings.get(windowId);
       if (local && now() - local.createdAt <= bindingTtlMs) return local;
+      // A window whose durable write failed has no trustworthy stored binding: the
+      // record on disk is from before that failure.
+      if (failedBindings.has(windowId)) return null;
       if (!bindingStore?.get) return null;
       try {
         const key = bindingKey(windowId);
@@ -80,7 +164,13 @@
     function forgetBinding(windowId) {
       if (!Number.isInteger(windowId)) return;
       bindings.delete(windowId);
-      Promise.resolve(bindingStore?.remove?.(bindingKey(windowId))).catch(() => {});
+      failedBindings.delete(windowId);
+      bindingWrites.delete(windowId);
+      withWindowLock(windowId, async () => {
+        try {
+          await bindingStore?.remove?.(bindingKey(windowId));
+        } catch {}
+      });
     }
 
     function forgetTab(tabId) {
@@ -109,7 +199,11 @@
         createdAt: now()
       };
       for (const key of scopeKeys(intent)) intents.set(key, intent);
-      rememberBinding(pending);
+      const { persisted } = rememberBinding(pending);
+      // The caller joins this into the post-open lifecycle so the durable write is
+      // never abandoned, but it is deliberately not awaited here: announce() runs on
+      // the user-gesture stack ahead of sidePanel.open().
+      intent.persisted = persisted;
       return intent;
     }
 
@@ -247,13 +341,26 @@
         post(entry, { type: config.SIDE_PANEL.IDLE, reason: "unresolved-tab" });
         return;
       }
+      const intent = intentFor(scope);
+
+      // A live intent means a newer request for this tab has been announced but its
+      // write may not have landed yet. Anything currently on disk for that tab is
+      // therefore stale — typically a record left behind by a previous worker
+      // generation — and must not be handed over. Wait for the real one instead.
+      if (intent && state.peek) {
+        const stored = await state.peek({ tabId: scope.tabId });
+        if (stored && stored.requestId !== intent.requestId) {
+          post(entry, { type: config.SIDE_PANEL.WAITING, requestId: intent.requestId });
+          return;
+        }
+      }
+
       const pending = await state.claim(scope);
       if (pending) {
         abandon(pending);
         post(entry, { type: config.SIDE_PANEL.REQUEST, pending });
         return;
       }
-      const intent = intentFor(scope);
       if (intent) {
         post(entry, { type: config.SIDE_PANEL.WAITING, requestId: intent.requestId });
         return;
@@ -283,7 +390,9 @@
     return {
       abandon,
       announce,
+      bindingFailure: (windowId) => failedBindings.get(windowId) || null,
       bindingFor: readBinding,
+      bindingPersistence,
       connect,
       forgetBinding,
       forgetTab,

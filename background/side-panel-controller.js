@@ -3,10 +3,12 @@
     typeof module === "object" && module.exports
       ? {
           contracts: require("../shared/contracts.js"),
+          errors: require("../shared/errors.js"),
           language: require("../shared/language-utils.js")
         }
       : {
           contracts: root.SensemarkContracts,
+          errors: root.SensemarkErrors,
           language: root.SensemarkLanguageUtils
         };
   const api = factory(dependencies);
@@ -21,7 +23,12 @@
     sidePanel,
     state,
     handoff,
-    configurator,
+    // Read-only view of the tab-lifecycle configurator. The controller NEVER calls
+    // setOptions(): configuring a tab-specific panel while open() is already in
+    // flight can leave Chrome showing a different instance than the one the identity
+    // protocol expects. It only asks whether the tab was prepared, to classify a
+    // failure correctly.
+    isTabConfigured,
     detectLanguage,
     randomId = dependencies.contracts.cryptoRandomId
   }) {
@@ -49,11 +56,9 @@
       // Synchronous, before anything can await. A panel that becomes ready before the
       // storage write lands still learns that a handoff is on the way, so it waits and
       // retries instead of reporting an empty panel.
-      handoff?.announce(pending);
+      const intent = handoff?.announce(pending);
 
-      // `sidePanel.open()` is the ONLY extension API on the user-action path. Panel
-      // configuration happens on tab lifecycle events, so setOptions() is never raced
-      // against open() and can never turn a successful open into a reported failure.
+      // `sidePanel.open()` is the ONLY extension API on the user-action path.
       let openPromise;
       try {
         openPromise = Promise.resolve(sidePanel.open({ tabId }));
@@ -61,10 +66,13 @@
         openPromise = Promise.reject(error);
       }
 
-      // Atomic newest-wins replacement. Never store-then-supersede: two overlapping
-      // requests in one tab used to delete each other and leave nothing claimable.
+      // Atomic newest-wins replacement, ordered across worker generations. Never
+      // store-then-supersede: two overlapping requests in one tab used to delete each
+      // other and leave nothing claimable.
       const replacePromise = Promise.resolve(
-        state.replace ? state.replace(pending) : state.store(pending).then((p) => ({ stored: true, pending: p }))
+        state.replace
+          ? state.replace(pending)
+          : state.store(pending).then((stored) => ({ stored: true, pending: stored }))
       ).then((outcome) => {
         // A newer request already owns this tab; publishing this one would hand the
         // panel stale text.
@@ -72,47 +80,59 @@
         return outcome;
       });
 
-      // Best-effort repair for a tab that was never configured. Deliberately not part
-      // of the result: its failure must not affect request delivery.
-      let configurationError = null;
-      const configurePromise = Promise.resolve(configurator?.configure?.(tabId))
-        .then((result) => {
-          if (result?.status === "configuration-failed") configurationError = result.error;
-        })
-        .catch((error) => {
-          configurationError = String(error?.message || error || "setOptions failed");
-        });
+      // The durable window->tab binding write is part of the handoff lifecycle, not a
+      // fire-and-forget side effect: the handoff is not "prepared" while it is still
+      // outstanding, and a failure must surface rather than vanish.
+      const bindingPromise = Promise.resolve(
+        intent?.persisted || handoff?.bindingPersistence?.(pending.windowId)
+      ).catch((error) => ({
+        status: "failed",
+        error: String(error?.message || error || "binding persistence failed")
+      }));
 
       return Promise.all([replacePromise, openPromise])
         .then(async ([outcome]) => {
-          await configurePromise;
+          const binding = await bindingPromise;
           return {
             status: outcome.stored === false ? "superseded" : "opened",
             pending,
             superseded: outcome.superseded || [],
-            configurationError
+            bindingStatus: binding?.status || "idle",
+            bindingError: binding?.status === "failed" ? binding.error : null
           };
         })
         .catch(async (error) => {
           const [replaceResult] = await Promise.allSettled([replacePromise, openPromise]);
-          await configurePromise;
-          const openFailure = String(error?.message || error || "Side panel failed to open.");
+          const binding = await bindingPromise;
+          const message = String(error?.message || error || "Side panel failed to open.");
 
           // If a panel for this scope is already connected it can still claim the
           // request, so a rejected open() must not destroy valid pending state.
           if (handoff?.hasPanelFor?.({ tabId, windowId: pending.windowId })) {
             return {
               status: "open-failed-panel-available",
+              code: dependencies.errors.ERROR_CODE.PANEL_OPEN_FAILED,
               pending,
-              error: openFailure,
-              configurationError
+              error: message,
+              bindingStatus: binding?.status || "idle"
             };
           }
+
+          // A tab that lifecycle preparation never reached cannot show a tab-specific
+          // panel. That is a configuration problem, not an opening problem.
+          const configured = isTabConfigured ? Boolean(isTabConfigured(tabId)) : true;
           handoff?.abandon(pending);
           if (replaceResult.status !== "fulfilled" || replaceResult.value?.stored !== false) {
             await state.clear(pending);
           }
-          return { status: "open-failed", error: openFailure, configurationError };
+          return {
+            status: configured ? "open-failed" : "not-configured",
+            code: configured
+              ? dependencies.errors.ERROR_CODE.PANEL_OPEN_FAILED
+              : dependencies.errors.ERROR_CODE.PANEL_NOT_CONFIGURED,
+            error: message,
+            bindingStatus: binding?.status || "idle"
+          };
         });
     }
 

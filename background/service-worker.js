@@ -13,6 +13,7 @@ importScripts(
   "./side-panel-state.js",
   "./side-panel-handoff.js",
   "./side-panel-configurator.js",
+  "./selection-route.js",
   "./side-panel-controller.js",
   "./providers/openai-provider.js",
   "./translation-service.js"
@@ -35,6 +36,7 @@ const sidePanelState = SensemarkSidePanelState.createSidePanelState(chrome.stora
 const sidePanelHandoff = SensemarkSidePanelHandoff.createSidePanelHandoff({
   state: sidePanelState,
   bindingStore: chrome.storage.session,
+  generation: () => sidePanelState.generation(),
   // Last-resort identity only, and only when the active tab actually owns a pending
   // request. Works without the "tabs" permission: only the tab id is read.
   async resolveActiveTab(windowId) {
@@ -51,12 +53,16 @@ const sidePanelController = SensemarkSidePanelController.createSidePanelControll
   sidePanel: chrome.sidePanel,
   state: sidePanelState,
   handoff: sidePanelHandoff,
-  configurator: sidePanelConfigurator,
+  // Read-only: the controller never configures, it only classifies failures.
+  isTabConfigured: (tabId) => sidePanelConfigurator.isConfigured(tabId),
   detectLanguage: languageDetector
 });
 
-// Tab-specific panel model: configure tabs on lifecycle events so the context-menu
-// path only ever needs sidePanel.open().
+// Tab-specific panel model. Configuration happens ONLY here, on tab lifecycle
+// events, so the context-menu path never races setOptions() against open().
+chrome.tabs.onCreated.addListener((tab) => {
+  if (Number.isInteger(tab?.id)) sidePanelConfigurator.configure(tab.id).catch(() => {});
+});
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   sidePanelConfigurator.configure(tabId).catch(() => {});
 });
@@ -124,12 +130,28 @@ async function deliverSelection(tabId, frameId, text) {
   }
 }
 
-function overlayKnownUnavailable(url) {
-  const value = String(url || "");
-  return (
-    /^(?:chrome|edge|about|devtools|chrome-extension):/i.test(value) ||
-    /\.pdf(?:$|[?#])/i.test(value)
-  );
+/**
+ * Tell the user a request could not be delivered, without a content script and
+ * without asking for a notifications permission. Cleared on the next success.
+ */
+const RETRY_BADGE_MS = 10000;
+let retryBadgeTimer = null;
+
+function clearRetryHint() {
+  if (retryBadgeTimer) {
+    clearTimeout(retryBadgeTimer);
+    retryBadgeTimer = null;
+  }
+  chrome.action?.setBadgeText?.({ text: "" });
+  chrome.action?.setTitle?.({ title: "Sensemark — перевод на русский" });
+}
+
+function showRetryHint(message) {
+  chrome.action?.setBadgeText?.({ text: "!" });
+  chrome.action?.setBadgeBackgroundColor?.({ color: "#b3261e" });
+  chrome.action?.setTitle?.({ title: `Sensemark: ${message}` });
+  if (retryBadgeTimer) clearTimeout(retryBadgeTimer);
+  retryBadgeTimer = setTimeout(clearRetryHint, RETRY_BADGE_MS);
 }
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -137,19 +159,34 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const text = String(info.selectionText || "").trim();
   if (!text) return;
   const handoffValue = { text, frameId: info.frameId, windowId: tab?.windowId };
-  if (overlayKnownUnavailable(tab?.url)) {
-    await openSidePanel(tab?.id, handoffValue);
+
+  // Synchronous routing decision. Contexts we can recognise from the URL open the
+  // panel with no awaited work in front of open(), preserving user activation.
+  const routing = SensemarkSelectionRoute.routeForSelection({ url: tab?.url });
+  if (routing.route === SensemarkSelectionRoute.ROUTE.DIRECT_SIDE_PANEL) {
+    clearRetryHint();
+    const result = await openSidePanel(tab?.id, handoffValue);
+    if (result.status === "open-failed" || result.status === "not-configured") {
+      showRetryHint("не удалось открыть панель. Попробуйте ещё раз.");
+    }
     return;
   }
+
   const delivery = await deliverSelection(tab?.id, info.frameId, text);
-  if (delivery.status === "content-script-unavailable") {
-    await openSidePanel(tab?.id, handoffValue);
-  } else if (
-    delivery.status === "unsupported" &&
-    delivery.reason !== "password-field"
+  if (delivery.status === "unsupported" && delivery.reason === "password-field") return;
+
+  if (
+    delivery.status === "content-script-unavailable" ||
+    delivery.status === "unsupported"
   ) {
-    await openSidePanel(tab?.id, handoffValue);
+    // Deliberately NOT falling back to sidePanel.open() here. This point is reached
+    // only after an awaited tabs.sendMessage() round trip, and Chrome's transient
+    // user activation may already have expired — the call would fail silently and
+    // the user would see nothing at all. Ask for a fresh gesture instead.
+    showRetryHint("не удалось прочитать выделение на этой странице. Повторите команду.");
+    return;
   }
+  clearRetryHint();
 });
 
 async function translateCurrentSelection(tab) {
@@ -202,17 +239,27 @@ async function translateCurrentSelection(tab) {
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== "translate-selection") return;
+
+  // Same routing rule as the context menu: a recognisable protected context opens the
+  // panel straight away; an ordinary page must not be silently retried through the
+  // panel after an awaited scripting round trip.
+  const routing = SensemarkSelectionRoute.routeForSelection({ url: tab?.url });
+  if (routing.route === SensemarkSelectionRoute.ROUTE.DIRECT_SIDE_PANEL) {
+    clearRetryHint();
+    await openSidePanel(tab?.id, { windowId: tab?.windowId });
+    return;
+  }
+
   const selected = await translateCurrentSelection(tab);
   if (selected.status === "unsupported") return;
   if (selected.status === "selected") {
     const delivery = await deliverSelection(tab?.id, selected.frameId, selected.text);
-    if (delivery.status !== "content-script-unavailable") return;
-    await openSidePanel(tab?.id, { ...selected, windowId: tab?.windowId });
-    return;
+    if (delivery.status !== "content-script-unavailable") {
+      clearRetryHint();
+      return;
+    }
   }
-  if (selected.status === "content-script-unavailable") {
-    await openSidePanel(tab?.id, { windowId: tab?.windowId });
-  }
+  showRetryHint("не удалось прочитать выделение на этой странице. Повторите команду.");
 });
 
 function trustedExtensionPage(sender) {

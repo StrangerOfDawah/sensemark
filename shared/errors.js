@@ -25,6 +25,14 @@
     CANCELLED: "CANCELLED",
     UNKNOWN: "UNKNOWN",
 
+    // Side-panel lifecycle. Kept distinct so a configuration problem is never
+    // reported as an opening failure, and neither is reported as a handoff failure.
+    PANEL_NOT_CONFIGURED: "PANEL_NOT_CONFIGURED",
+    PANEL_OPEN_FAILED: "PANEL_OPEN_FAILED",
+    PANEL_HANDOFF_FAILED: "PANEL_HANDOFF_FAILED",
+    PANEL_HANDOFF_TIMEOUT: "PANEL_HANDOFF_TIMEOUT",
+    CONTENT_SCRIPT_UNAVAILABLE: "CONTENT_SCRIPT_UNAVAILABLE",
+
     // Compatibility aliases used internally by the v1.4 modules.
     ABORTED: "CANCELLED",
     AUTH: "INVALID_API_KEY",
@@ -49,6 +57,8 @@
   ]);
 
   const RETRY_CODES = new Set([
+    ERROR_CODE.CONTENT_SCRIPT_UNAVAILABLE,
+    ERROR_CODE.PANEL_HANDOFF_TIMEOUT,
     ERROR_CODE.RATE_LIMITED,
     ERROR_CODE.NETWORK_ERROR,
     ERROR_CODE.FIRST_BYTE_TIMEOUT,

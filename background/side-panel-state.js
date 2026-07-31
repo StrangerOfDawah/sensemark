@@ -15,8 +15,11 @@
     const consuming = new Set();
     // Monotonic within a worker generation and assigned synchronously in prepare(),
     // so replacement order follows the order the user actually made the requests —
-    // never the order in which storage writes happen to resolve.
+    // never the order in which storage writes happen to resolve. It resets when the
+    // worker restarts, which is why it is only ever the tiebreaker WITHIN a
+    // generation; `generationId` orders across generations.
     let sequenceCounter = Number(options.startSequence) || 0;
+    let generationPromise = null;
     // One promise chain per tab. Replacement must be read-modify-write, and two
     // concurrent context-menu clicks in one tab must not interleave inside it.
     const tabLocks = new Map();
@@ -41,9 +44,49 @@
       return current;
     }
 
-    /** Higher sequence wins; createdAt breaks ties across worker generations. */
+    /**
+     * Resolve this worker's generation, allocating it durably on first use.
+     *
+     * The counter lives in the same session storage as the pending records, so it
+     * survives a service-worker restart and is cleared with them at end of session.
+     * Cached per worker instance: every request from one generation shares a value.
+     */
+    function generation() {
+      if (!generationPromise) {
+        generationPromise = (async () => {
+          if (options.generationId !== undefined) return Number(options.generationId);
+          const key = config.SIDE_PANEL_GENERATION_KEY;
+          try {
+            const stored = await storageArea.get(key);
+            const next = Number(stored?.[key] || 0) + 1;
+            await storageArea.set({ [key]: next });
+            return next;
+          } catch {
+            // Without a durable counter, fall back to wall clock so a fresh worker
+            // still outranks records written by an earlier one.
+            return now();
+          }
+        })();
+      }
+      return generationPromise;
+    }
+
+    /**
+     * Order two records: newer generation wins outright, then the in-worker
+     * sequence, then wall clock.
+     *
+     * Generation must dominate. A fresh user action after a restart starts its
+     * sequence at 1 and would otherwise lose to a stale pending record that reached
+     * sequence 5 in the previous generation — discarding the click the user just
+     * made and translating stale text.
+     */
     function isNewerThan(candidate, existing) {
       if (!existing) return true;
+      const candidateGeneration = Number(candidate?.generationId || 0);
+      const existingGeneration = Number(existing?.generationId || 0);
+      if (candidateGeneration !== existingGeneration) {
+        return candidateGeneration > existingGeneration;
+      }
       const candidateSequence = Number(candidate?.sequence);
       const existingSequence = Number(existing?.sequence);
       if (Number.isFinite(candidateSequence) && Number.isFinite(existingSequence)) {
@@ -118,10 +161,15 @@
      * @returns {Promise<{stored: boolean, pending: object, superseded: string[], winner: object}>}
      */
     async function replace(value) {
-      const pending = value?.sequence === undefined ? prepare(value) : value;
-      const identity = normalizedIdentity(pending);
+      const prepared = value?.sequence === undefined ? prepare(value) : value;
+      const identity = normalizedIdentity(prepared);
       const key = keyFor(identity);
       return withTabLock(identity.tabId, async () => {
+        // Stamped inside the lock: resolving the generation is asynchronous, and it
+        // must not run on the user-gesture stack.
+        const generationId =
+          prepared.generationId === undefined ? await generation() : prepared.generationId;
+        const pending = { ...prepared, generationId };
         await clearExpired();
         const stored = await storageArea.get(null);
         const siblings = Object.entries(stored || {}).filter(
@@ -261,6 +309,7 @@
       clearExpired,
       clearTab,
       consume: consumePending,
+      generation,
       get,
       keyFor,
       peek,

@@ -75,6 +75,9 @@
       configuredPath: (tabId) => configured.get(tabId) || null,
       failureFor: (tabId) => failures.get(tabId) || null,
       forget,
+      // Synchronous read used by the request controller to classify an opening
+      // failure. The controller must never trigger configuration itself.
+      isConfigured: (tabId) => configured.has(tabId),
       pathForTab
     };
   }

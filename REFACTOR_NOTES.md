@@ -178,20 +178,47 @@ Sensemark uses a **tab-specific** side panel, never a global one. Every tab is
 configured with the same document, `sidepanel/sidepanel.html`, carrying one
 stable query parameter: the tab's own id.
 
-Configuration happens on `tabs.onActivated`, `tabs.onUpdated`,
-`runtime.onInstalled` and `runtime.onStartup` — never in the context-menu
-handler. `sidePanel.open()` is consequently the only extension API on the
-user-action path, so `setOptions()` cannot race it.
+Configuration happens on `runtime.onInstalled`, `runtime.onStartup`,
+`tabs.onCreated`, `tabs.onActivated` and `tabs.onUpdated` — **never** in the
+context-menu handler and never in the request controller. `sidePanel.open()` is
+consequently the only extension API on the user-action path, so `setOptions()`
+cannot race it and cannot leave Chrome showing a different instance than the
+one the identity protocol expects.
 
-The three failure kinds are distinct:
+The failure kinds are distinct, with typed codes:
 
-- **configuration failed** — reported as `configurationError`, never fatal,
-  never deletes pending state;
-- **opening failed** — `open-failed`; pending state is cleaned, unless a panel
-  for that scope is already connected, in which case the result is
-  `open-failed-panel-available` and the request stays claimable;
-- **handoff failed** — the panel's bounded retry expires and it shows a typed
-  error.
+- `PANEL_NOT_CONFIGURED` — `open()` failed on a tab lifecycle preparation never
+  reached; pending state is cleaned;
+- `PANEL_OPEN_FAILED` — `open()` failed on a configured tab; pending state is
+  cleaned, unless a panel for that scope is already connected, in which case
+  the result is `open-failed-panel-available` and the request stays claimable;
+- `PANEL_HANDOFF_FAILED` / `PANEL_HANDOFF_TIMEOUT` — the panel's bounded retry
+  expires and it shows a typed error;
+- `CONTENT_SCRIPT_UNAVAILABLE` — see the fallback policy below.
+
+A configuration problem is never reported as an opening failure.
+
+### Ordinary-page fallback policy
+
+Routing is decided synchronously from the tab URL before anything is awaited:
+
+- **Direct side panel** for contexts a content script provably cannot reach —
+  the built-in PDF viewer, restricted schemes (`chrome:`, `devtools:`,
+  `view-source:`, extension pages), the Web Store, and an unreadable URL.
+  `sidePanel.open()` runs with no awaited work in front of it.
+- **Content script** for ordinary injectable pages.
+
+An ordinary page that fails *after* the awaited `tabs.sendMessage()` round trip
+does **not** silently fall back to `sidePanel.open()`. Chrome's transient user
+activation may already have expired, so the call would fail and the user would
+see nothing at all. Instead the request ends as `CONTENT_SCRIPT_UNAVAILABLE`
+and the toolbar action shows a retry hint asking for a fresh gesture. This
+costs one extra user action in a rare case, in exchange for never failing
+invisibly. It uses no additional permission.
+
+If real Chrome testing later proves the asynchronous fallback retains
+activation, this policy can be relaxed — with the exact Chrome versions
+recorded and a manual acceptance case kept.
 
 ### Tab identity
 
@@ -212,7 +239,7 @@ is never claimed by window alone.
 
 ### Same-tab replacement
 
-Records carry `tabId`, `frameId`, `requestId`, `windowId`, a monotonic
+Records carry `tabId`, `frameId`, `requestId`, `windowId`, `generationId`, a
 `sequence` and a five-minute TTL.
 
 Replacement is a single atomic `state.replace()` behind a per-tab lock. It is
@@ -220,17 +247,44 @@ never `store()` followed by an independent `supersede()` scan: two concurrent
 opens could interleave as store(A), store(B), A-removes-B, B-removes-A and
 leave the tab with nothing claimable at all.
 
-The policy is **newest-wins by sequence**, not by promise completion order. The
-sequence is assigned synchronously in `prepare()`, in the order the user acted.
+The policy is **newest-wins by `(generationId, sequence, createdAt)`**, never by
+promise completion order:
+
+- `sequence` is assigned synchronously in `prepare()`, in the order the user
+  acted. It orders requests *within* one worker generation.
+- `generationId` is a **durable** counter in `chrome.storage.session`, allocated
+  once per worker instance. It dominates the comparison.
+
+Generation must dominate because MV3 restarts the worker and resets the
+in-memory sequence. A fresh user action starts at sequence 1 and would
+otherwise lose to a stale pending record that had reached sequence 5 in the
+previous generation — discarding the click the user just made and translating
+stale text.
+
 Inside the lock, an older request that has already lost declines to store
 rather than deleting the winner. An already-running translation is superseded
 through the existing request coordinator, so a stale result can never replace a
 newer one.
 
-A service-worker restart is safe: intents are in-memory only, but the pending
-record and the window binding both live in `chrome.storage.session`, so the
-panel still claims exactly once. A panel reload finds nothing left to claim and
-stays idle.
+A service-worker restart is safe. Intents are in-memory only, but the pending
+record, the window binding and the generation counter all live in
+`chrome.storage.session`. While a newer request has been announced but not yet
+written, the panel is told to wait rather than being handed the older record
+still on disk. A panel reload finds nothing left to claim and stays idle.
+
+### Durable window bindings
+
+Binding writes are serialized per window and ordered by
+`(generationId, bindingRevision, createdAt)`. A write refuses to overwrite a
+newer binding, so two writes that land out of order cannot leave the persisted
+binding pointing at the older tab and make a restarted worker recover the wrong
+identity.
+
+`announce()` records the binding in memory synchronously and returns the
+durable write as `intent.persisted`. The controller joins that promise into the
+post-open lifecycle, so the handoff is never reported as prepared while the
+write is outstanding. A failed write is typed, surfaces as `bindingStatus`, and
+the stale stored binding is no longer trusted for that window.
 
 ### User activation and the Russian preflight
 
@@ -299,7 +353,7 @@ be claimed from Node/jsdom results.
   root-path shell assertions.
 - Production packaging is deterministic on the documented Ubuntu 24.04 /
   Info-ZIP 3.0 environment and verified from two independent source copies.
-- Coverage is explicitly targeted to the 17 critical modules printed by
+- Coverage is explicitly targeted to the 18 critical modules printed by
   `npm run coverage:scope`; its percentage is never described as whole-runtime.
 - Playwright is pinned as a development-only Apache-2.0 dependency. Browser
   smoke responses are intercepted locally and never contact OpenAI.

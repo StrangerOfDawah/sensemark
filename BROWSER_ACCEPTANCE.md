@@ -38,7 +38,7 @@ are recorded in `dist/browser-results.json` and `dist/browser-evidence/` in the
 CI verification artifact because generated `dist/` output is intentionally
 excluded from the source archive.
 
-Unit/integration result on the same commit: **158 passed, 0 failed**.
+Unit/integration result on the same commit: **177 passed, 0 failed**.
 
 `sidePanel.open()` is the only extension API on the user-action path, for every
 script including Cyrillic, with no awaited work in front of it. Panel
@@ -76,6 +76,10 @@ output and screenshots for every row. `Not tested` blocks store publication.
 | Two-tab isolation | Trigger different selections in two tabs | Each panel claims only its own tab's request | Not executed | Not tested | None |
 | Failed panel opening | Cause a controlled real `sidePanel.open()` failure, then issue a valid request | Failed pending state is deleted; stale text never appears; later request works | Not executed | Not tested | None |
 | Worker restart between store and claim | Terminate/restart the worker before the panel claims | Request is translated at most once | Not executed | Not tested | None |
+| New request after worker restart | Leave a pending request, terminate the worker, then make a fresh request in the same tab | The fresh request replaces the stale one and is the text that appears | Not executed | Not tested | None |
+| Rapid same-tab requests after restart | Restart the worker, then trigger A, B and C rapidly in one tab | C wins; no empty state; no duplicate translation | Not executed | Not tested | None |
+| Tab-specific instance | Inspect the opened panel and the service-worker call log | The instance is tab-specific and no `setOptions()` runs at request time | Not executed | Not tested | None |
+| Ordinary-page content-script failure | Trigger on a page where the content script cannot respond | Documented policy: a retry hint appears and the panel is NOT silently opened after the awaited round trip | Not executed | Not tested | None |
 | Handoff timeout | Force a handoff that never completes | Panel shows "Не удалось получить выделенный текст. Попробуйте ещё раз."; no blank panel; retries stop | Not executed | Not tested | None |
 | Panel reload | Reload the side panel after a successful translation | The consumed request is not translated again | Not executed | Not tested | None |
 | User-activation timing | Invoke from the context menu in the built-in PDF viewer and in an ordinary page, for Latin and Cyrillic text | `sidePanel.open()` succeeds without a user-gesture error | Not executed | Not tested | None |

@@ -45,6 +45,14 @@ function memoryStorage() {
   };
 }
 
+/** Only the pending-request records; session storage also holds the durable
+ * generation counter and window bindings. */
+function pendingRecords(storage) {
+  return Object.entries(storage.values)
+    .filter(([key]) => key.startsWith(config.SIDE_PANEL_PENDING_PREFIX))
+    .map(([, record]) => record);
+}
+
 async function flush(rounds = 60) {
   for (let index = 0; index < rounds; index += 1) await Promise.resolve();
 }
@@ -93,12 +101,12 @@ function connectPanel(handoff, { windowId, tabId = null, sender } = {}) {
   };
 }
 
-function createController({ state, handoff, sidePanel, configurator, randomIds = [] } = {}) {
+function createController({ state, handoff, sidePanel, isTabConfigured, randomIds = [] } = {}) {
   let index = 0;
   return createSidePanelController({
     state,
     handoff,
-    configurator,
+    isTabConfigured,
     randomId: () => randomIds[index++] || `request-${index}`,
     sidePanel: sidePanel || { async open() {} }
   });
@@ -119,7 +127,7 @@ test("overlapping same-tab opens preserve newest pending request", async () => {
     controller.open(1, { text: "newer text", windowId: 1 })
   ]);
 
-  const records = Object.values(storage.values);
+  const records = pendingRecords(storage);
   assert.equal(records.length, 1, "exactly one request must remain claimable");
   assert.equal(records[0].text, "newer text");
   assert.equal(records[0].requestId, "B");
@@ -131,7 +139,7 @@ test("overlapping same-tab opens preserve newest pending request", async () => {
   await flush();
   assert.equal(panel.delivered().length, 1, "exactly one translation starts");
   assert.equal(panel.delivered()[0].pending.text, "newer text");
-  assert.deepEqual(storage.values, {}, "nothing stale is left behind");
+  assert.deepEqual(pendingRecords(storage), [], "nothing stale is left behind");
 });
 
 test("newest same-tab request wins regardless of storage completion order", async () => {
@@ -149,7 +157,7 @@ test("newest same-tab request wins regardless of storage completion order", asyn
     if (resolveOrder === "A-then-B") await Promise.all([pendingA, pendingB]);
     else await Promise.all([pendingB, pendingA]);
 
-    const records = Object.values(storage.values);
+    const records = pendingRecords(storage);
     assert.equal(records.length, 1, resolveOrder);
     assert.equal(records[0].requestId, "B", `newest must win for ${resolveOrder}`);
   }
@@ -166,8 +174,8 @@ test("an older request that loses the race never deletes the winner", async () =
 
   assert.equal(outcome.stored, false, "the older request declines to store");
   assert.equal(outcome.winner.requestId, "new");
-  assert.equal(Object.values(storage.values).length, 1);
-  assert.equal(Object.values(storage.values)[0].requestId, "new");
+  assert.equal(pendingRecords(storage).length, 1);
+  assert.equal(pendingRecords(storage)[0].requestId, "new");
 });
 
 test("three rapid same-tab requests leave newest request claimable", async () => {
@@ -182,7 +190,7 @@ test("three rapid same-tab requests leave newest request claimable", async () =>
     controller.open(5, { text: "third", windowId: 2 })
   ]);
 
-  const records = Object.values(storage.values);
+  const records = pendingRecords(storage);
   assert.equal(records.length, 1, "no empty final state, no duplicates");
   assert.equal(records[0].text, "third");
 
@@ -206,7 +214,7 @@ test("different tabs do not supersede each other", async () => {
   ]);
 
   const byTab = Object.fromEntries(
-    Object.values(storage.values).map((record) => [record.tabId, record.text])
+    pendingRecords(storage).map((record) => [record.tabId, record.text])
   );
   assert.deepEqual(byTab, { 10: "tab ten", 11: "tab eleven", 12: "tab twelve" });
 });
@@ -370,7 +378,7 @@ test("closed source tab cleans pending request", async () => {
   const controller = createController({ state, handoff, configurator, randomIds: ["doomed"] });
 
   await controller.open(60, { text: "tab will close", windowId: 7 });
-  assert.equal(Object.keys(storage.values).length, 2, "pending record plus window binding");
+  assert.equal(pendingRecords(storage).length, 1, "one pending record for the tab");
 
   // What chrome.tabs.onRemoved does in the service worker.
   await state.clearTab(60);

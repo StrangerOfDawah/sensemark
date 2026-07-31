@@ -48,6 +48,14 @@ function memoryStorage() {
   };
 }
 
+/** Only the pending-request records; session storage also holds the durable
+ * generation counter and window bindings. */
+function pendingRecords(storage) {
+  return Object.entries(storage.values)
+    .filter(([key]) => key.startsWith(config.SIDE_PANEL_PENDING_PREFIX))
+    .map(([, record]) => record);
+}
+
 async function flush(rounds = 40) {
   for (let index = 0; index < rounds; index += 1) await Promise.resolve();
 }
@@ -150,11 +158,9 @@ function createHarness({ storeDelay = 0, senderTab, resolveActiveTab } = {}) {
   const controller = createSidePanelController({
     state: slowState,
     handoff,
-    configurator: {
-      async configure(tabId) {
-        configured.push(tabId);
-        return { status: "configured" };
-      }
+    isTabConfigured: (tabId) => {
+      configured.push(tabId);
+      return true;
     },
     randomId: () => `request-${(requestCounter += 1)}`,
     detectLanguage: async () => ({ isReliable: false, languages: [] }),
@@ -218,7 +224,7 @@ test("handoff: a panel ready before the storage write still receives the request
   await flush();
 
   // Storage has genuinely not landed yet.
-  assert.deepEqual(harness.storage.values, {});
+  assert.deepEqual(pendingRecords(harness.storage), []);
   assert.equal(panel.translated.length, 0);
   // ...but the panel was told a handoff is coming, so it is waiting rather than idle.
   assert.deepEqual(panel.outcomes, []);
@@ -229,7 +235,7 @@ test("handoff: a panel ready before the storage write still receives the request
 
   assert.equal(panel.translated.length, 1, "exactly one translation must start");
   assert.equal(panel.translated[0].text, "hello");
-  assert.deepEqual(harness.storage.values, {}, "no stale pending record may remain");
+  assert.deepEqual(pendingRecords(harness.storage), [], "no stale pending record may remain");
   assert.deepEqual(panel.outcomes, [], "a delivered handoff is neither idle nor a timeout");
   assert.equal(panel.client.outcome(), "delivered");
 });
@@ -237,7 +243,7 @@ test("handoff: a panel ready before the storage write still receives the request
 test("handoff: storage landing before the panel is ready hands off exactly once", async () => {
   const harness = createHarness();
   assert.equal((await harness.controller.open(1, { text: "already stored", windowId: 1 })).status, "opened");
-  assert.equal(Object.keys(harness.storage.values).length, 1);
+  assert.equal(pendingRecords(harness.storage).length, 1);
 
   const panel = harness.attachPanel({ windowId: 1 });
   await panel.client.start();
@@ -245,7 +251,7 @@ test("handoff: storage landing before the panel is ready hands off exactly once"
 
   assert.equal(panel.translated.length, 1);
   assert.equal(panel.translated[0].text, "already stored");
-  assert.deepEqual(harness.storage.values, {});
+  assert.deepEqual(pendingRecords(harness.storage), []);
 });
 
 test("handoff: request delivery does not depend on per-request setOptions timing", async () => {
@@ -277,7 +283,7 @@ test("handoff: request delivery does not depend on per-request setOptions timing
   });
   const result = await controller.open(9, { text: "no configuration needed", windowId: 4 });
   assert.equal(result.status, "opened");
-  assert.equal(Object.keys(storage.values).length, 1);
+  assert.equal(pendingRecords(storage).length, 1);
 });
 
 test("handoff: the configured panel path carries tab identity but never request identity", () => {
@@ -300,30 +306,31 @@ test("handoff: the configured panel path carries tab identity but never request 
   assert.match(panelSource, /get\("tab"\)/, "the panel reads only its own tab id");
 });
 
-test("handoff: a late setOptions rejection does not turn a successful open into a failure", async () => {
+test("handoff: a failing configurator is never reached from the request path", async () => {
   const clock = createClock();
   const storage = memoryStorage();
   const state = createSidePanelState(storage, { now: clock.now });
   const handoff = createSidePanelHandoff({ state, now: clock.now });
+  let configureCalls = 0;
   const controller = createSidePanelController({
     state,
     handoff,
-    // Configuration fails after open() has already succeeded.
-    configurator: {
-      async configure() {
-        throw new Error("No tab with id 6");
-      }
-    },
+    // Present but must never be consulted for configuration by the controller.
+    isTabConfigured: () => true,
     randomId: () => "late-options",
     sidePanel: {
-      async open() {}
+      async open() {},
+      async setOptions() {
+        configureCalls += 1;
+        throw new Error("No tab with id 6");
+      }
     }
   });
 
   const result = await controller.open(6, { text: "still delivered", windowId: 3 });
-  assert.equal(result.status, "opened", "configuration failure is not an opening failure");
-  assert.match(result.configurationError, /No tab with id/);
-  assert.equal(Object.keys(storage.values).length, 1, "pending state must survive");
+  assert.equal(result.status, "opened");
+  assert.equal(configureCalls, 0, "the controller must not configure during a request");
+  assert.equal(pendingRecords(storage).length, 1, "pending state must survive");
 
   const pair = createPortPair(config.PORTS.SIDE_PANEL);
   handoff.connect(pair.workerPort);
@@ -364,7 +371,7 @@ test("handoff: an already-open panel keeps its pending request when open() rejec
   });
   const result = await controller.open(8, { text: "claimable anyway", windowId: 5 });
   assert.equal(result.status, "open-failed-panel-available");
-  assert.equal(Object.keys(storage.values).length, 1, "a claimable request must not be deleted");
+  assert.equal(pendingRecords(storage).length, 1, "a claimable request must not be deleted");
 
   pair.clientPort.postMessage({ type: config.SIDE_PANEL.CLAIM, windowId: 5, tabId: 8 });
   await flush();
@@ -383,7 +390,7 @@ test("handoff: concurrent ready and claim events produce exactly one consumer", 
 
   const total = first.translated.length + second.translated.length;
   assert.equal(total, 1, "exactly one provider call may start");
-  assert.deepEqual(harness.storage.values, {});
+  assert.deepEqual(pendingRecords(harness.storage), []);
 });
 
 test("handoff: a claim is single-use even under simultaneous state.claim calls", async () => {
@@ -486,7 +493,7 @@ test("handoff: a failed panel opening cleans pending state and leaks nothing lat
   const result = await controller.open(3, { text: "never shown", windowId: 5 });
   assert.equal(result.status, "open-failed");
   assert.match(result.error, /user gesture/);
-  assert.deepEqual(storage.values, {}, "pending state must be cleaned");
+  assert.deepEqual(pendingRecords(storage), [], "pending state must be cleaned");
   assert.equal(handoff.intentFor({ windowId: 5 }), null, "the handoff intent must be dropped");
 
   // A panel opened later by the user must not pick up the abandoned text.
@@ -577,7 +584,7 @@ test("handoff: a panel never claims another window's request", async () => {
   await flush();
 
   assert.equal(received[0].type, config.SIDE_PANEL.IDLE, "window 200 must not see window 100's text");
-  assert.equal(Object.keys(storage.values).length, 1, "the other window's record is untouched");
+  assert.equal(pendingRecords(storage).length, 1, "the other window's record is untouched");
 });
 
 test("handoff: a mismatched tab identity claims nothing", async () => {
@@ -624,7 +631,7 @@ test("handoff: a newer request in one tab supersedes the older unclaimed one", a
   });
   await state.store(newer);
   assert.equal(await state.supersede(newer), 1, "the older record is dropped");
-  assert.equal(Object.keys(storage.values).length, 1);
+  assert.equal(pendingRecords(storage).length, 1);
   const claimed = await state.claim({ tabId: 60, windowId: 1 });
   assert.equal(claimed.text, "newer text");
   assert.equal(await state.claim({ tabId: 60, windowId: 1 }), null, "no stale record survives");
@@ -637,7 +644,7 @@ test("handoff: a stale request id is expired rather than delivered", async () =>
   await state.set({ tabId: 70, frameId: 0, windowId: 1, requestId: "stale", text: "old news" });
   now += 500;
   assert.equal(await state.claim({ tabId: 70, windowId: 1 }), null);
-  assert.deepEqual(storage.values, {});
+  assert.deepEqual(pendingRecords(storage), []);
 });
 
 test("handoff: sender.tab identity is preferred over the reported window", async () => {

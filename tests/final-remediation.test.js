@@ -270,7 +270,12 @@ test("final: failed side-panel opening clears its pending request", async () => 
   const result = await controller.open(3, { text: "hello" });
   assert.equal(result.status, "open-failed");
   assert.match(result.error, /user activation/);
-  assert.deepEqual(storage.values, {});
+  assert.deepEqual(
+    Object.keys(storage.values).filter((key) =>
+      key.startsWith(config.SIDE_PANEL_PENDING_PREFIX)
+    ),
+    []
+  );
 });
 
 test("final: concurrent side-panel consume hands off one request once", async () => {

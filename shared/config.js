@@ -11,6 +11,10 @@
   // window -> tab the panel was opened for; persisted so a worker restart does not
   // fall back to guessing from the currently active tab.
   const SIDE_PANEL_BINDING_PREFIX = "sensemarkSidePanelBinding:";
+  // Durable worker-generation counter. A process-local sequence resets when the MV3
+  // service worker restarts, so it cannot decide whether a fresh user action beats a
+  // pending record left behind by a previous generation. This does.
+  const SIDE_PANEL_GENERATION_KEY = "sensemarkSidePanelGeneration";
   const MAX_SOURCE_CODE_POINTS = 5000;
   const TARGET_LANGUAGE = "ru";
   const PROMPT_VERSION = "2026-07-31.1";
@@ -89,6 +93,7 @@
     SIDE_PANEL,
     SIDE_PANEL_BINDING_PREFIX,
     SIDE_PANEL_CLAIM_RETRY_MS,
+    SIDE_PANEL_GENERATION_KEY,
     SIDE_PANEL_HANDOFF_TIMEOUT_MS,
     SIDE_PANEL_PENDING_PREFIX,
     TARGET_LANGUAGE,
