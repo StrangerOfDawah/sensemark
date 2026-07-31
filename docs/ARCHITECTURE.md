@@ -1,130 +1,87 @@
 # Архитектура Sensemark
 
-## Назначение
+Sensemark 1.4 — универсальное Manifest V3-расширение без доменных правил.
+Runtime написан на обычном JavaScript без сборщика и runtime-зависимостей.
+Небольшие UMD-модули одновременно загружаются Chrome и тестируются через
+CommonJS.
 
-Sensemark — Chrome Extension Manifest V3 для контекстного перевода выделенного
-или вручную введённого текста на русский через OpenAI API. Расширение не имеет
-сервера разработчика: настройки хранятся локально, запрос идёт из service
-worker напрямую в OpenAI.
+## Поток данных
 
-## Основной поток
+1. `content/selection/selection-reader.js` сначала читает `input`/`textarea` или
+   нативный `Selection`.
+2. Для открытого Shadow DOM используются `getComposedRanges()`. Только если
+   нативная строка пуста или заполнена Private Use Area-глифами, reader строит
+   кандидаты из текущего `Range`, `cloneContents()`, стандартных
+   accessibility-полей и ограниченного обхода до 2000 узлов, 25 мс и 5000
+   кодовых точек.
+3. `candidate-scorer.js` нормализует и дедуплицирует кандидаты, сохраняя источник
+   с наибольшим trust, затем выбирает читаемый кандидат с минимальным confidence
+   без знания сайта, URL, селекторов или шрифтов. `StaticRange` предварительно
+   преобразуется в обычный `Range`.
+4. `context-extractor.js` проходит вверх не более восьми предков, предпочитает
+   semantic block, затем ближайший block-level контейнер и bounded inline
+   fallback. Контекст ограничен 800, контейнер — 2000 кодовыми точками; `body`,
+   `main` и page-scale application roots не читаются.
+5. Асинхронная языковая policy объединяет `chrome.i18n.detectLanguage`,
+   Unicode-группы письменностей и технические токены. `mode-utils.js` локально
+   выбирает `text`, `contextual` или `multilingual`.
+6. `translation-client.js` открывает именованный port. Service worker отменяет
+   предыдущий запрос того же surface/tab/frame и возвращает только дельты.
+7. `translation-service.js` проверяет согласие и provider configuration, ищет SHA‑256 cache key в
+   `chrome.storage.session`, затем вызывает активный provider.
+8. `openai-provider.js` отдаёт обычный текст как SSE stream, а контекстный и
+   многоязычный результат — один strict JSON Schema response. Structured result
+   разбирается только после `finish_reason: "stop"`. Repair-запросов нет.
+9. `translation-card.js` показывает карточку после первой видимой дельты,
+   готового structured result или 150 мс ожидания. Throttled `ResizeObserver`
+   повторно clamping/anchoring карточку после роста содержимого. Общий renderer
+   записывает вывод модели только через `textContent`.
 
-```text
-выделение или ручной ввод
-        ↓
-локальная очистка и определение письменностей
-        ↓
-локальный пропуск русского / проверка лимитов
-        ↓
-подготовка одного prompt и cache key
-        ↓
-background.js → OpenAI streaming API
-        ↓
-проверка протокола и содержимого ответа
-        ↓
-парсер ответа → карточка на странице или toolbar popup
-```
+## Владельцы ответственности
 
-## Слои и владельцы поведения
+- `shared/` — контракты, полный error model, общий result renderer,
+  текст/языки, режимы, schema v3 и миграция.
+- `background/service-worker.js` — только Chrome wiring: listeners, context
+  menu, commands, ports, trusted settings и side-panel fallback.
+- `background/providers/` — provider-specific HTTP, prompt, SSE/JSON parsing и
+  error normalization.
+- `background/request-client.js` — таймаут ответа и единственный допустимый
+  pre-stream retry.
+- `background/translation-cache.js` — TTL/LRU cache в session storage:
+  максимум 200 записей, 2 MiB и 6 часов.
+- `content/selection/` — чтение выделения, контекст и intent state machine.
+- `content/ui/` — Shadow DOM-карточка, placement, drag и resize.
+- `extension/` — общие контроллеры popup/side panel и доверенный клиент
+  настроек.
+- `popup/`, `options/`, `sidepanel/` — тонкие страницы интерфейса.
 
-| Слой | Файлы | Ответственность |
-| --- | --- | --- |
-| Манифест | `manifest.json` | Разрешения, content scripts, service worker, popup и команды |
-| Детекция | `language-detection.js` | Письменности, русский текст, технические латинские вставки |
-| Очистка выделения | `selection-text.js` | DOM-шум, скрытые дубликаты, Quran.com, управляющие символы |
-| Запрос и стрим | `background.js` | Prompt, OpenAI, SSE, кэш, repair, валидация ответа |
-| Ответ слова | `word-response.js` | `[[translation]]` и `[[reference]]` |
-| Ответ текста | `text-response.js` | `[[text]]`, `[[multilingual]]` и языковые секции |
-| Страница | `content.js` | Выделение, контекст, delayed UI, Shadow DOM-карточка |
-| Масштаб | `ui-scale.js` | Шаг, пределы и rate limit масштабирования |
-| Ручной перевод | `manual-translation.js` | Локальный request plan и единый view результата |
-| Toolbar popup | `popup.html`, `popup.css`, `popup.js` | Ввод, debounce, стрим, отмена, копирование и настройки |
-| Настройки | `options.html`, `options.js` | API-ключ, модель, согласие, автоперевод |
-| Проверка/сборка | `tests/`, `scripts/`, `.github/workflows/` | Регрессии, coverage, manifest и ZIP |
+## Настройки и граница доверия
 
-## Локальная подготовка текста
+`sensemarkSettings` имеет `schemaVersion: 3`, а privacy consent — версию 2. В private-части находятся provider
+ID, API‑ключ, модель, согласие и все настройки. Service worker вызывает
+`chrome.storage.local.setAccessLevel({accessLevel: "TRUSTED_CONTEXTS"})`.
 
-`content.js` получает выделение и передаёт его в `selection-text.js`. Очистка
-должна сохранить видимый смысл и убрать только доказанный шум. Для Quran.com
-приоритет отдаётся встроенной простой арабской строке вместо дубликата с
-шрифтовыми глифами или повторяющегося диакритизированного слоя.
+Content script не читает `chrome.storage.local`: через сообщения он получает
+только `selection` и `ui`. Старые плоские поля мигрируют один раз после записи
+нового объекта; миграция идемпотентна.
 
-После очистки `language-detection.js`:
+## Точки входа
 
-- распознаёт семейства письменностей;
-- объединяет Han, Hiragana и Katakana в японскую письменность;
-- отличает русский текст от других кириллических языков;
-- допускает небольшие технические латинские вставки в русском;
-- не пропускает настоящий иностранный фрагмент.
+- Выделение: `automatic`, `button` (default для новой установки) или `manual`.
+- Контекстное меню использует `info.selectionText` и `frameId`.
+- Горячая клавиша проверяет все доступные frames через `scripting`.
+- Popup переводит по кнопке или `Ctrl/⌘+Enter`; paste может стартовать
+  автоматически, обычный ввод — нет.
+- На защищённой странице trusted language preflight сначала локально пропускает
+  уверенный русский текст. Затем tab/frame/request-specific запись кладётся в
+  `storage.session`, настраивается tab-specific path и сразу открывается side
+  panel. In-memory consume guard плюс remove-on-read дают одноразовый handoff;
+  failed open, TTL и закрытие вкладки очищают запись.
 
-Русский-only сценарий завершается здесь и не создаёт API port.
+## Отмена и ошибки
 
-## Режимы запроса
-
-Короткий фрагмент может идти в word mode с контекстом предложения. Остальной
-текст идёт в text mode. Обнаруженные письменности входят в cache key и prompt.
-
-Ответ модели использует внутренний протокол:
-
-- `[[translation]]` — обычный перевод слова или короткого выражения;
-- `[[reference]]` — имя, название, бренд, никнейм, опечатка или неизвестный
-  термин;
-- `[[text]]` — единый перевод текста;
-- `[[multilingual]]` и `[[script:SCRIPT|lang:LANGUAGE]]` — отдельные
-  многоязычные секции.
-
-Короткий параллельный заголовок вроде
-`Japanese Daycares – 日本の保育園` может вернуть один `[[text]]`, если обе части
-выражают одно значение. Обычный многоязычный абзац обязан содержать все секции.
-
-## Валидация и repair
-
-`background.js` отвергает:
-
-- `[[skip]]` из модели;
-- отсутствующие обязательные секции;
-- добавленные письменности, которых не было в выделении;
-- повтор иностранного оригинала;
-- перевод на третий язык;
-- скопированные инструкции и подпись `Перевод:`.
-
-Repair — исключительный второй запрос после конкретной ошибки. Корректный
-единый перевод параллельного заголовка не должен запускать repair.
-
-## Отображение
-
-Страница и toolbar popup используют одни парсеры, но разные оболочки:
-
-- карточка страницы создаётся в Shadow DOM и появляется только после видимого
-  текста из стрима;
-- toolbar popup существует сразу после нажатия на иконку, автоматически
-  переводит вставку или ввод после debounce и отменяет устаревший stream.
-
-Raw protocol markers никогда не должны попадать в UI.
-
-## Кэш и жизненный цикл
-
-Service worker держит в памяти до 200 последних результатов. Кэш не
-персистентный и не содержит ключ. Закрытие карточки или изменение ручного ввода
-разрывает port и вызывает `AbortController`, чтобы не оплачивать ненужное
-продолжение генерации.
-
-## Границы безопасности
-
-- Разрешён только `https://api.openai.com/*`.
-- Inline и удалённый исполняемый код запрещены.
-- API-ключ не входит в ZIP, логи, тестовые fixture или GitHub artifacts.
-- Текст изображения без доступного текстового слоя не отправляется в API:
-  автоматического OCR нет.
-
-## Где добавлять тест
-
-| Изменение | Основной тест |
-| --- | --- |
-| Prompt, repair, cache, SSE | `tests/background-*.test.js` |
-| Русский и письменности | `tests/language-detection.test.js` |
-| DOM-шум и Quran.com | `tests/selection-text.test.js` |
-| Форматы ответа | `tests/word-response.test.js`, `tests/text-response.test.js` |
-| Карточка страницы | `tests/content-integration.test.js` |
-| Popup и ручной ввод | `tests/popup.test.js`, `tests/manual-translation.test.js` |
-| Manifest, CI, упаковка, docs | `tests/extension-structure.test.js`, `tests/project-documentation.test.js` |
+Новый запрос в том же scope отменяет старый через `AbortController`. Transport
+имеет таймаут первого ответа, stream — idle timeout. Invalid key, permission,
+model, consent, quota, rate-limit, network, три timeout-фазы, interrupted,
+truncated и filtered output нормализованы в полный контракт с безопасным
+сообщением и явным действием.

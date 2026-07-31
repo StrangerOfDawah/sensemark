@@ -1,4 +1,4 @@
-name: PR test build
+name: Sensemark release validation
 
 on:
   pull_request:
@@ -10,78 +10,112 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  group: release-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Test and package
-    runs-on: ubuntu-latest
+    name: Test, browser smoke, and package
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
 
-      - name: Install locked test dependencies
-        run: npm ci --ignore-scripts
+      - name: Install locked development dependencies
+        run: npm ci
 
-      - name: Validate extension structure
+      - name: Run unit and integration tests
+        run: |
+          mkdir -p dist
+          set -o pipefail
+          npm test 2>&1 | tee dist/test-output.txt
+
+      - name: Validate extension source
         run: npm run check
 
-      - name: Run required tests with coverage thresholds
-        run: npm run test:coverage
-
-      - name: Build extension archive
-        run: bash scripts/package-extension.sh
-
-      - name: Validate and prepare unpacked test build
+      - name: Measure targeted critical-module coverage
         run: |
-          archive="$(find dist -maxdepth 1 -type f -name 'sensemark-v*.zip' -print -quit)"
-          test -n "$archive"
-          node scripts/validate-extension.js "$archive"
+          set -o pipefail
+          npm run test:coverage 2>&1 | tee dist/coverage-output.txt
+
+      - name: Install Chromium for extension smoke tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run automated browser smoke tests
+        run: |
+          set -o pipefail
+          xvfb-run -a npm run test:browser:auto 2>&1 | tee dist/browser-output.txt
+
+      - name: Build production and source archives
+        run: |
+          npm run package:extension
+          npm run package:source
+
+      - name: Verify deterministic production build
+        run: npm run verify:reproducible
+
+      - name: Validate packaged extension and artifacts
+        run: |
+          node scripts/validate-extension.js dist/sensemark-v1.4.2.zip
+          npm run verify:artifacts
           mkdir -p dist/unpacked
-          unzip -q "$archive" -d dist/unpacked
+          unzip -q dist/sensemark-v1.4.2.zip -d dist/unpacked
           test -f dist/unpacked/manifest.json
-          test -f dist/unpacked/popup.html
-          test -f dist/unpacked/popup.css
-          test -f dist/unpacked/popup.js
-          test -f dist/unpacked/manual-translation.js
+          test -f dist/unpacked/background/service-worker.js
+          test -f dist/unpacked/popup/popup.html
+          test -f dist/unpacked/options/options.html
+          test -f dist/unpacked/sidepanel/sidepanel.html
+          test ! -e dist/unpacked/tests
+          test ! -e dist/unpacked/scripts
+          test ! -e dist/unpacked/.github
+          test ! -e dist/unpacked/node_modules
+          test ! -e dist/unpacked/coverage
+          test ! -e dist/unpacked/package.json
+          test ! -e dist/unpacked/package-lock.json
+          test ! -e dist/unpacked/REFACTOR_NOTES.md
+          test ! -e dist/unpacked/RESEARCH_NOTES.md
+          test ! -e dist/unpacked/TECHNICAL_REVIEW_REPORT.md
 
-      - name: Choose artifact name
-        id: artifact-name
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          if [[ -n "$PR_NUMBER" ]]; then
-            echo "name=sensemark-pr-$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=sensemark-manual-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Upload unpacked test build
-        id: upload
+      - name: Upload production ZIP
+        id: production-artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.artifact-name.outputs.name }}
-          path: dist/unpacked
+          name: sensemark-v1.4.2-production
+          path: dist/sensemark-v1.4.2.zip
           if-no-files-found: error
           retention-days: 14
 
-      - name: Add installation instructions
+      - name: Upload verification evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: sensemark-v1.4.2-verification
+          path: |
+            dist/test-output.txt
+            dist/coverage-output.txt
+            dist/browser-output.txt
+            dist/browser-results.json
+            dist/browser-evidence/
+            dist/reproducible-build.json
+            dist/sensemark-v1.4.2-source.zip
+            dist/sensemark-v1.4.2-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Add artifact summary
         env:
-          ARTIFACT_NAME: ${{ steps.artifact-name.outputs.name }}
-          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          ARTIFACT_URL: ${{ steps.production-artifact.outputs.artifact-url }}
         run: |
           {
-            echo "## Sensemark test build"
+            echo "## Sensemark v1.4.2 release candidate"
             echo
-            echo "Download [**$ARTIFACT_NAME**]($ARTIFACT_URL), unzip it, then open \`chrome://extensions\` and choose **Load unpacked**."
+            echo "Production ZIP: $ARTIFACT_URL"
             echo
-            echo "Use a separate Chrome profile for testing so the development API key and settings do not overlap with the installed release."
+            echo "Store publication remains blocked until the manual Chrome PDF/user-activation checklist in BROWSER_ACCEPTANCE.md passes."
           } >> "$GITHUB_STEP_SUMMARY"

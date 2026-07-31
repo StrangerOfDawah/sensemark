@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Настройки Sensemark</title>
+    <link rel="stylesheet" href="../extension/extension.css">
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Настройки Sensemark</h1>
+        <p class="muted">Универсальный перевод выделенного текста на русский</p>
+      </header>
+
+      <section class="card">
+        <h2>OpenAI</h2>
+        <label class="field">
+          <span>API‑ключ</span>
+          <div class="key-row">
+            <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+            <button id="toggleKey" class="secondary" type="button">Показать</button>
+            <button id="deleteKey" class="danger" type="button">Удалить</button>
+          </div>
+          <small>Ключ хранится локально и доступен только доверенным страницам расширения.</small>
+        </label>
+        <label class="field">
+          <span>Модель</span>
+          <select id="model">
+            <option value="gpt-4o-mini">gpt-4o-mini — проверена Sensemark</option>
+            <option value="__custom__">Другая модель (расширенный режим)</option>
+          </select>
+          <input id="customModel" type="text" spellcheck="false" hidden placeholder="Идентификатор модели">
+          <small>Для другой модели проверяется существование; полная совместимость определяется при первом переводе.</small>
+        </label>
+        <label class="check">
+          <input id="consent" type="checkbox">
+          <span>Разрешаю отправлять только выделенный или введённый мной текст и ограниченный текстовый контекст в OpenAI для перевода.</span>
+        </label>
+        <div class="toolbar">
+          <button id="test" class="secondary" type="button">Проверить подключение</button>
+          <span id="testStatus" class="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Выделение</h2>
+        <div class="row">
+          <label class="field">
+            <span>Режим</span>
+            <select id="selectionMode">
+              <option value="button">Кнопка рядом с выделением</option>
+              <option value="automatic">Автоматически</option>
+              <option value="manual">Только меню и горячая клавиша</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Стабильность выделения, мс</span>
+            <input id="stableDelay" type="number" min="250" max="2000" step="50">
+          </label>
+        </div>
+        <label class="field">
+          <span>Обязательный модификатор</span>
+          <select id="modifier">
+            <option value="none">Не нужен</option>
+            <option value="alt">Alt / Option</option>
+            <option value="shift">Shift</option>
+            <option value="meta">Ctrl / Command</option>
+          </select>
+        </label>
+        <p class="muted shortcut">Горячая клавиша: <kbd>Ctrl/⌘</kbd> + <kbd>Shift</kbd> + <kbd>Y</kbd></p>
+      </section>
+
+      <section class="card">
+        <h2>Карточка</h2>
+        <div class="row">
+          <label class="field">
+            <span>Масштаб</span>
+            <input id="scale" type="range" min="0.75" max="1.75" step="0.05">
+          </label>
+          <div class="field">
+            <span>Сохранённый размер</span>
+            <button id="resetSize" class="secondary" type="button">Сбросить размер</button>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <span id="saveStatus" class="status" aria-live="polite"></span>
+        <a href="../PRIVACY.md" target="_blank">Политика конфиденциальности</a>
+      </footer>
+    </main>
+    <script src="../shared/config.js"></script>
+    <script src="../extension/configuration-status.js"></script>
+    <script src="../extension/private-settings-client.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -1,121 +1,126 @@
-const assert = require("node:assert/strict");
 const test = require("node:test");
+const assert = require("node:assert/strict");
+const config = require("../shared/config.js");
+const schema = require("../shared/settings-schema.js");
+const { createRequestPlan } = require("../extension/request-plan.js");
 
-const {
-  MAX_CHARS,
-  PRIVACY_CONSENT_VERSION,
-  createRequestPlan,
-  isShortText,
-  parseManualResponse,
-  settingsIssue
-} = require("../manual-translation.js");
-
-test("manual translation validates setup before a request", () => {
-  assert.equal(settingsIssue({ apiKey: "key", privacyConsentVersion: 0 }).code, "consent");
-  assert.equal(
-    settingsIssue({ apiKey: "  ", privacyConsentVersion: PRIVACY_CONSENT_VERSION }).code,
-    "api-key"
-  );
-  assert.equal(
-    settingsIssue({ apiKey: "key", privacyConsentVersion: PRIVACY_CONSENT_VERSION }),
-    null
-  );
+test("new installations default to explicit button mode and private OpenAI settings", () => {
+  const settings = schema.defaultSettings();
+  assert.equal(settings.schemaVersion, config.SETTINGS_VERSION);
+  assert.equal(settings.selection.mode, config.SELECTION_MODE.BUTTON);
+  assert.equal(settings.providers.openai.model, "gpt-4o-mini");
+  assert.equal(settings.providers.openai.apiKey, "");
+  assert.equal(settings.targetLanguage, "ru");
 });
 
-test("manual request plan rejects empty, oversized, and non-word input", () => {
-  assert.equal(createRequestPlan("   ").kind, "error");
-  assert.equal(createRequestPlan("• — 123").kind, "error");
-  assert.match(createRequestPlan("a".repeat(MAX_CHARS + 1)).message, /5000/);
-});
-
-test("manual request plan skips Russian and technical insertions locally", () => {
-  assert.equal(createRequestPlan("Этот текст уже на русском.").kind, "russian");
-  assert.equal(
-    createRequestPlan("Критичный момент с dev-секретом и APP_ENV.", {
-      isReliable: true,
-      languages: [{ language: "en", percentage: 60 }]
-    }).kind,
-    "russian"
-  );
-});
-
-test("manual request plan selects word and multilingual text modes", () => {
-  const word = createRequestPlan("Why");
-  assert.equal(word.kind, "request");
-  assert.equal(word.wordMode, true);
-  assert.deepEqual(word.sourceScripts, ["Latin"]);
-  assert.equal(word.context, null);
-
-  const paragraph = createRequestPlan("This sentence is long enough to use regular text mode.");
-  assert.equal(paragraph.wordMode, false);
-
-  const mixed = createRequestPlan("Hello مرحبا");
-  assert.equal(mixed.wordMode, false);
-  assert.deepEqual(mixed.sourceScripts, ["Latin", "Arabic"]);
-  assert.equal(isShortText("short phrase"), true);
-});
-
-test("manual response hides protocol scaffolding until translated text exists", () => {
-  assert.equal(parseManualResponse("[[text]]\n", false).visible, false);
-  assert.equal(parseManualResponse("[[translation]]\n", true, "Why").visible, false);
-  assert.equal(parseManualResponse("[[reference]]\n", true, "Sensemark").visible, false);
-  assert.equal(parseManualResponse("[[skip]]", false).visible, false);
-});
-
-test("manual response parses text and word translations", () => {
-  assert.deepEqual(parseManualResponse("[[text]]\nГотовый перевод.", false), {
-    visible: true,
-    kind: "translation",
-    text: "Готовый перевод.",
-    detail: "",
-    detailLabel: "",
-    copyText: "Готовый перевод."
+test("legacy storage migration preserves key, model, behavior and card geometry", () => {
+  const migration = schema.migrateStoredSettings({
+    apiKey: " sk-old ",
+    model: "custom-model",
+    autoTranslate: true,
+    uiScale: 1.25,
+    cardWidth: 480,
+    cardHeight: 320,
+    privacyConsentVersion: 1
   });
-
-  assert.deepEqual(
-    parseManualResponse("[[translation]]\nпочему\nдругие значения: зачем", true, "Why"),
-    {
-      visible: true,
-      kind: "translation",
-      text: "почему",
-      detail: "зачем",
-      detailLabel: "Другие значения",
-      copyText: "почему"
-    }
-  );
+  assert.equal(migration.migrated, true);
+  assert.ok(migration.legacyKeys.includes("apiKey"));
+  assert.deepEqual(migration.settings.providers.openai, {
+    apiKey: "sk-old",
+    model: "custom-model"
+  });
+  assert.equal(migration.settings.selection.mode, config.SELECTION_MODE.AUTOMATIC);
+  assert.deepEqual(migration.settings.ui, {
+    scale: 1.25,
+    cardWidth: 480,
+    cardHeight: 320
+  });
+  assert.equal(migration.settings.privacyConsentVersion, 0);
 });
 
-test("manual response preserves multilingual order and builds copy text", () => {
-  const view = parseManualResponse(
-    "[[multilingual]]\n" +
-      "[[script:Latin|lang:английский]]\nПривет.\n" +
-      "[[script:Arabic|lang:арабский]]\nДобро пожаловать.",
-    false
-  );
-
-  assert.equal(view.kind, "multilingual");
-  assert.deepEqual(
-    view.sections.map((section) => section.language),
-    ["английский", "арабский"]
-  );
-  assert.equal(view.copyText, "Привет.\n\nДобро пожаловать.");
+test("migration is idempotent and old disabled auto mode maps to manual", () => {
+  const old = schema.migrateStoredSettings({ autoTranslate: false }).settings;
+  assert.equal(old.selection.mode, config.SELECTION_MODE.MANUAL);
+  const stored = schema.migrateStoredSettings({ [config.SETTINGS_KEY]: old });
+  assert.equal(stored.migrated, false);
+  assert.deepEqual(stored.legacyKeys, []);
+  assert.deepEqual(stored.settings, old);
 });
 
-test("manual response gives unknown terms a separate reference view", () => {
-  assert.deepEqual(
-    parseManualResponse(
-      "[[reference]]\nназвание\nВероятно, название проекта.",
-      true,
-      "Sensemark"
-    ),
-    {
-      visible: true,
-      kind: "reference",
-      title: "Sensemark",
-      category: "название",
-      detail: "Вероятно, название проекта.",
-      detailLabel: "Что это может быть",
-      copyText: "Sensemark\nВероятно, название проекта."
+test("v1.4 schema migrates to v3 and resets the superseded privacy consent", () => {
+  const migration = schema.migrateStoredSettings({
+    [config.SETTINGS_KEY]: {
+      schemaVersion: 2,
+      activeProviderId: "openai",
+      providers: { openai: { apiKey: "secret", model: "model-v14" } },
+      targetLanguage: "Russian",
+      selection: {
+        mode: "button",
+        stableDelayMs: 750,
+        requiredModifier: "shift"
+      },
+      ui: { scale: 1.2, cardWidth: 420, cardHeight: 260 },
+      privacyConsentVersion: 1
     }
+  });
+  assert.equal(migration.migrated, true);
+  assert.equal(migration.settings.schemaVersion, 3);
+  assert.equal(migration.settings.targetLanguage, "ru");
+  assert.equal(migration.settings.providers.openai.apiKey, "secret");
+  assert.equal(migration.settings.privacyConsentVersion, 0);
+});
+
+test("normalization clamps public settings and never accepts another provider", () => {
+  const normalized = schema.normalizeSettings({
+    activeProviderId: "unknown",
+    providers: { openai: { apiKey: 123, model: "" } },
+    selection: { mode: "bad", stableDelayMs: 99, requiredModifier: "bad" },
+    ui: { scale: 8, cardWidth: -5, cardHeight: 4000 },
+    privacyConsentVersion: 99
+  });
+  assert.equal(normalized.activeProviderId, "openai");
+  assert.equal(normalized.providers.openai.apiKey, "123");
+  assert.equal(normalized.providers.openai.model, "gpt-4o-mini");
+  assert.equal(normalized.selection.mode, "button");
+  assert.equal(normalized.selection.stableDelayMs, 250);
+  assert.equal(normalized.selection.requiredModifier, "none");
+  assert.deepEqual(normalized.ui, { scale: 1.75, cardWidth: 0, cardHeight: 1000 });
+  assert.equal(normalized.privacyConsentVersion, 0);
+});
+
+test("public settings omit API key and public patches cannot alter it", () => {
+  const privateSettings = schema.normalizeSettings({
+    providers: { openai: { apiKey: "secret", model: "model-a" } }
+  });
+  assert.deepEqual(Object.keys(schema.publicSettings(privateSettings)).sort(), [
+    "schemaVersion",
+    "selection",
+    "ui"
+  ]);
+  const patched = schema.patchSettings(
+    privateSettings,
+    {
+      providers: { openai: { apiKey: "stolen" } },
+      ui: { scale: 1.3 }
+    },
+    "public"
   );
+  assert.equal(patched.providers.openai.apiKey, "secret");
+  assert.equal(patched.ui.scale, 1.3);
+  const privatePatch = schema.patchSettings(privateSettings, {
+    providers: { openai: { model: "model-b" } },
+    selection: { requiredModifier: "alt" }
+  });
+  assert.equal(privatePatch.providers.openai.model, "model-b");
+  assert.equal(privatePatch.selection.requiredModifier, "alt");
+});
+
+test("manual request plan validates length and chooses multilingual mode", () => {
+  assert.deepEqual(createRequestPlan(""), { error: "Введите или вставьте текст." });
+  assert.deepEqual(createRequestPlan("123!?"), { error: "В тексте не найдено слов." });
+  assert.match(createRequestPlan("a".repeat(5001)).error, /максимум 5000/);
+  const plan = createRequestPlan("hello мир", "sidepanel");
+  assert.equal(plan.request.mode, config.TRANSLATION_MODE.MULTILINGUAL);
+  assert.equal(plan.request.surface, "sidepanel");
+  assert.deepEqual(plan.request.sourceScripts, ["Cyrillic", "Latin"]);
 });

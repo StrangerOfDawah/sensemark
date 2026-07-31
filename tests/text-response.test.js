@@ -1,48 +1,28 @@
-const assert = require("node:assert/strict");
 const test = require("node:test");
+const assert = require("node:assert/strict");
+const { createSseParser } = require("../background/sse-parser.js");
 
-const { parse } = require("../text-response.js");
-
-test("parses a regular translated text", () => {
-  assert.deepEqual(parse("[[text]]\nПереведённый абзац."), {
-    mode: "text",
-    text: "Переведённый абзац.",
-    sections: []
-  });
+test("SSE parser survives arbitrary chunk boundaries and CRLF", () => {
+  const events = [];
+  const parser = createSseParser({ onEvent: (event) => events.push(event) });
+  parser.feed("event: response\r\ni");
+  parser.feed("d: 7\r\ndata: first\r\ndata: second\r\n\r\n");
+  assert.deepEqual(events, [{ event: "response", id: "7", data: "first\nsecond" }]);
 });
 
-test("parses multilingual sections in their original order", () => {
-  assert.deepEqual(
-    parse(
-      "[[multilingual]]\n" +
-        "[[script:Cyrillic|lang:русский]]\nПривет!\n" +
-        "[[script:Latin|lang:английский]]\nКак дела?\n" +
-        "[[script:Arabic|lang:арабский]]\nДобро пожаловать."
-    ),
-    {
-      mode: "multilingual",
-      text: "",
-      sections: [
-        { script: "Cyrillic", language: "русский", text: "Привет!" },
-        { script: "Latin", language: "английский", text: "Как дела?" },
-        { script: "Arabic", language: "арабский", text: "Добро пожаловать." }
-      ]
-    }
-  );
+test("SSE parser ignores comments, accepts LF/CR and resets partial input", () => {
+  const events = [];
+  const parser = createSseParser({ onEvent: (event) => events.push(event) });
+  parser.feed(":keepalive\n\ndata: one\n\n");
+  parser.feed("data: two\r\r");
+  parser.feed("data: discarded");
+  parser.reset();
+  parser.feed("data: three\n\n");
+  assert.deepEqual(events.map((event) => event.data), ["one", "two", "three"]);
 });
 
-test("keeps compatibility with language-only section markers", () => {
-  assert.deepEqual(parse("[[multilingual]]\n[[lang:арабский]]\nПеревод.").sections, [
-    { script: "", language: "арабский", text: "Перевод." }
-  ]);
-});
-
-test("recognizes a Russian-only skip response", () => {
-  assert.equal(parse("[[skip]]").mode, "skip");
-});
-
-test("hides incomplete streaming markers and empty multilingual scaffolding", () => {
-  assert.equal(parse("[").mode, "pending");
-  assert.equal(parse("[[multi").mode, "pending");
-  assert.equal(parse("[[multilingual]]\n").mode, "pending");
+test("SSE parser enforces a bounded buffer and validates its callback", () => {
+  assert.throws(() => createSseParser(), /onEvent/);
+  const parser = createSseParser({ onEvent() {}, maxBufferBytes: 4 });
+  assert.throws(() => parser.feed("12345"), /buffer limit/);
 });

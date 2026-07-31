@@ -1,63 +1,49 @@
-# Выпуск новой версии
+# Выпуск Sensemark
 
-## 1. Подготовка
+## Подготовка
 
-- Рабочее дерево должно содержать только изменения релиза.
-- Версия должна совпадать в `manifest.json`, `package.json` и
-  `package-lock.json`.
-- `CHANGELOG.md` должен содержать секцию этой версии и дату.
-- Для каждой новой функции и исправленного бага должен существовать
-  автоматический тест.
-
-## 2. Полная проверка
+1. Используйте Node.js 24 LTS (`.nvmrc`) и убедитесь, что `manifest.json`, `package.json`, `package-lock.json` и новая
+   секция `CHANGELOG.md` содержат одну версию.
+2. Проверьте store copy и privacy disclosure, если менялись данные, permissions
+   или provider.
+3. Выполните:
 
 ```bash
-npm ci --ignore-scripts
+npm ci
 npm test
 npm run test:coverage
 npm run check
-bash scripts/package-extension.sh
-node scripts/validate-extension.js dist/sensemark-vX.Y.Z.zip
+npm run test:browser:auto
+npm run package:extension
+npm run package:source
+npm run verify:reproducible
+npm run verify:artifacts
+node scripts/validate-source.js dist/sensemark-v$(node -p "require('./manifest.json').version")-source.zip
+node scripts/validate-extension.js dist/sensemark-v$(node -p "require('./manifest.json').version").zip
 ```
 
-Проверить распакованную сборку в отдельном профиле Chrome:
+4. Выполните ручной gate из `BROWSER_ACCEPTANCE.md`. Если built-in PDF и
+   side-panel user activation остаются `Not tested`, артефакт является только
+   release candidate и не загружается в Chrome Web Store.
+5. После успешного gate загрузите ZIP как новую package-версию в Chrome Web Store. Не распаковывайте
+   и не перепаковывайте архив вручную.
+6. В Chrome 119+ перед отправкой review проверьте распакованную сборку:
+   - обычный текст, формы и открытый Shadow DOM;
+   - top frame, same-origin и cross-origin iframe;
+   - automatic/button/manual, copy suppression, menu и shortcut;
+   - text/contextual/multilingual;
+   - cancel, auth, quota, timeout, retry и cache hit;
+   - drag, double-click reset, resize, zoom и viewport resize;
+   - popup explicit action, paste auto и side-panel fallback.
 
-1. Русский текст не открывает карточку и не создаёт запрос.
-2. Обычный иностранный текст начинает показываться только с первым переводом.
-3. Смешанный русский, английский и арабский текст сохраняет порядок секций.
-4. `Japanese Daycares – 日本の保育園` переводится один раз без ошибки полноты.
-5. Неизвестное название показывает янтарное объяснение.
-6. Вставка в toolbar popup запускает перевод без кнопки.
-7. Очистка/закрытие отменяет незавершённый запрос.
-8. Popup остаётся компактным и не получает пустую область справа или снизу.
+## Публикация
 
-## 3. PR и CI
+Тег и GitHub Release создаются только с точного commit, прошедшего CI. Артефакт
+релиза должен совпадать с проверенным ZIP. API‑ключ ревьюера не коммитится и
+размещается только в приватном поле Dashboard с малым бюджетом.
 
-- Push выполняется в feature/pre-release ветку.
-- PR должен содержать изменения, причину и выполненные тесты.
-- Draft снимается только после локальной проверки.
-- Нельзя merge, если обязательный `Test and package` не завершился успешно.
-- Для финальной ручной проверки можно скачать `sensemark-pr-N`.
+## После отправки
 
-## 4. Merge и тег
-
-После успешного PR CI:
-
-1. Влить PR в `main`.
-2. Дождаться успешного workflow на точном merge commit.
-3. Собрать ZIP из этого commit.
-4. Проверить ZIP через `scripts/validate-extension.js`.
-5. Создать аннотированный тег `vX.Y.Z` на этом merge commit и отправить его.
-
-Не переносите тег на другой commit и не переиспользуйте опубликованную версию.
-
-## 5. GitHub Release
-
-- Заголовок: `Sensemark vX.Y.Z`.
-- Release notes берутся из соответствующей секции `CHANGELOG.md`.
-- Приложить `sensemark-vX.Y.Z.zip`.
-- Указать SHA-256 архива.
-- После публикации проверить tag target, asset name, размер, digest и ссылку
-  `/releases/latest`.
-
-Если любая финальная проверка не проходит, релиз не публикуется.
+Review обновления обычно короче первой публикации, но сроки определяет Chrome
+Web Store. Не меняйте ZIP во время review; новая загрузка запускает новую
+проверку. После публикации проверьте установленную версию и основные сценарии.

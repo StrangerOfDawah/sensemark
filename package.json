@@ -1,17 +1,27 @@
 {
   "name": "sensemark-extension",
-  "version": "1.3.0",
+  "version": "1.4.2",
   "private": true,
   "description": "Tests and packaging checks for the Sensemark Chrome extension.",
   "scripts": {
     "check": "node scripts/validate-extension.js",
+    "package:extension": "bash scripts/package-extension.sh",
+    "package:source": "bash scripts/package-source.sh",
+    "validate:source": "node scripts/validate-source.js",
+    "verify:reproducible": "node scripts/verify-reproducible-build.js",
+    "verify:artifacts": "node scripts/verify-artifacts.js",
+    "hash:artifacts": "node scripts/write-artifact-checksums.js",
     "test": "node --test tests/*.test.js",
-    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=95 --test-coverage-branches=75 --test-coverage-include=language-detection.js --test-coverage-include=selection-text.js --test-coverage-include=word-response.js --test-coverage-include=text-response.js --test-coverage-include=manual-translation.js --test-coverage-include=ui-scale.js --test tests/*.test.js"
+    "test:coverage": "node scripts/run-targeted-coverage.js",
+    "coverage:scope": "node scripts/coverage-scope.js",
+    "test:browser": "npm run test:browser:auto",
+    "test:browser:auto": "node tests/browser/run-extension-tests.js"
   },
   "devDependencies": {
-    "jsdom": "29.1.1"
+    "jsdom": "29.1.1",
+    "playwright": "1.62.1"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24.x"
   }
 }
