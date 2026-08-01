@@ -376,5 +376,7 @@ be claimed from Node/jsdom results.
   `npm run coverage:scope`; its percentage is never described as whole-runtime.
 - Playwright is pinned as a development-only Apache-2.0 dependency. Browser
   smoke responses are intercepted locally and never contact OpenAI.
-- `BROWSER_ACCEPTANCE.md` blocks store publication until built-in Chrome PDF
-  and real side-panel user-activation checks pass.
+- `BROWSER_ACCEPTANCE.md` blocks store publication until every real-Chrome row
+  in sections A–H is executed and passes. It separates three evidence levels —
+  unit/integration, automated Chromium smoke, and real Chrome manual acceptance
+  — and only the third can lift the gate.

@@ -8,10 +8,15 @@ Remediation date: 2026-07-31
 
 The source, automated tests, browser smoke infrastructure, release workflow,
 and packaging controls are ready for a final immutable-commit CI run. Chrome
-Web Store publication remains blocked until the real-Chrome built-in PDF and
-side-panel user-activation matrix in `BROWSER_ACCEPTANCE.md` is executed. Node,
-jsdom, mocked Chrome APIs, and Playwright's bundled Chromium are not presented
-as proof of that manual gate.
+Web Store publication remains blocked until every real-Chrome row in sections
+A–H of `BROWSER_ACCEPTANCE.md` is executed and passes. Node, jsdom, mocked
+Chrome APIs, and Playwright's bundled Chromium are not presented as proof of
+that manual gate.
+
+The manual gate has **not** been executed. It requires a human operator with a
+real Chrome window: `chrome://extensions` is unreachable from browser
+automation, and native context menus, the built-in PDF Viewer and the Side
+Panel UI are browser/OS chrome rather than page content.
 
 CI identifiers, immutable commit SHA, downloaded artifact hashes, and the final
 external `sensemark-v1.4.2-SHA256SUMS.txt` contents are reported in the release
@@ -90,10 +95,12 @@ independence.
 
 ### Panel configuration model
 
-Sensemark uses a **tab-specific** side panel. Tabs are configured from
-`tabs.onActivated`, `tabs.onUpdated`, `runtime.onInstalled` and
-`runtime.onStartup` — never from the context-menu handler. `sidePanel.open()`
-is now the only extension API on the user-action path.
+Sensemark uses a **strictly tab-specific** side panel. Tabs are configured from
+`runtime.onInstalled`, `runtime.onStartup`, `tabs.onCreated`,
+`tabs.onActivated` and `tabs.onUpdated`, plus hydration at service-worker
+module initialisation — never from the context-menu handler and never from the
+request controller. `sidePanel.open()` is the only extension API on the
+user-action path.
 
 `setOptions()` therefore cannot race `open()`, and a configuration failure is
 reported separately from an opening failure: a rejected `setOptions()` after a
@@ -122,12 +129,10 @@ a tab from the window binding or the active tab is precisely what allowed a
 global panel opened for tab A to look like tab B's panel and strand tab B's
 request.
 
-The persisted window→tab binding remains as defensive metadata — it is ordered
-and restart-safe — but it never promotes an untokenized panel into a supported
-one.
-
-If neither source identifies a tab, the panel is rejected. A request is never
-claimed by window, never by the active tab, and never by a binding.
+The persisted window→tab binding remains ordered, restart-safe diagnostic
+metadata. It never establishes identity and never promotes an untokenized panel
+into a supported one; neither does the active tab, which is not consulted at
+all. If neither source identifies a tab, the panel is rejected.
 
 ### Strict tab-specific model
 
@@ -182,9 +187,9 @@ activation.
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
 whole-runtime coverage. `npm run coverage:scope` prints the resolved 18-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 4,040 of 6,252 runtime JavaScript lines (64.62%, including
-comments and blank lines). Measured targeted coverage is 92.43% lines, 88.92%
-functions, and 74.29% branches, against 80/85/70 thresholds.
+physical-line scope is 4,045 of 6,260 runtime JavaScript lines (64.63%, including
+comments and blank lines). Measured targeted coverage is 92.44% lines, 88.92%
+functions, and 74.23% branches, against 80/85/70 thresholds.
 
 ### Verification boundary
 
@@ -192,9 +197,15 @@ Three distinct levels, never conflated:
 
 | Level | Command | Result |
 | --- | --- | --- |
-| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 191 passed, 0 failed |
+| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 193 passed, 0 failed |
 | Automated Chromium smoke (Playwright, intercepted provider) | `npm run test:browser:auto` | 18 passed, 0 failed, 0 skipped, 0 console errors |
 | Real Chrome 119+ manual acceptance | `BROWSER_ACCEPTANCE.md` | **Not executed — every row `Not tested`** |
+
+The manual gate could not be executed by automation: `chrome://extensions` is
+unreachable from browser automation, and native context menus, the built-in PDF
+Viewer and the Side Panel UI are OS/browser chrome rather than page content. A
+human operator with a real Chrome window is required; `BROWSER_ACCEPTANCE.md`
+carries the runbook.
 
 ### Deterministic production ZIP
 
@@ -252,10 +263,10 @@ Current values. This report intentionally describes only the final
 implementation; earlier snapshots (111 tests, a 14-file coverage scope, 91.26%
 lines) are superseded and are not reproduced here.
 
-- `npm test`: 191 passed, 0 failed, 0 skipped; exit 0.
+- `npm test`: 193 passed, 0 failed, 0 skipped; exit 0.
 - `npm run check`: 59 runtime files and extension metadata validated; exit 0.
-- `npm run test:coverage`: 191 passed; 92.43% lines, 88.92% functions,
-  74.29% branches in the disclosed 18-file scope; exit 0.
+- `npm run test:coverage`: 193 passed; see BROWSER_ACCEPTANCE.md for the
+  three evidence levels; exit 0.
 - `npm run test:browser:auto`: 18 passed, 0 failed, 0 skipped; console errors 0;
   exit 0.
 - `npm run verify:reproducible`: two independent builds matched; exit 0.

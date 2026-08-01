@@ -8,8 +8,9 @@
   const PRIVACY_CONSENT_VERSION = 2;
   const CACHE_KEY = "sensemarkTranslationCache";
   const SIDE_PANEL_PENDING_PREFIX = "sensemarkSidePanelPending:";
-  // window -> tab the panel was opened for; persisted so a worker restart does not
-  // fall back to guessing from the currently active tab.
+  // window -> tab the panel was opened for. Ordered, restart-safe diagnostic
+  // metadata only: it never establishes panel identity and never authorizes an
+  // untokenized panel.
   const SIDE_PANEL_BINDING_PREFIX = "sensemarkSidePanelBinding:";
   // Durable worker-generation counter. A process-local sequence resets when the MV3
   // service worker restarts, so it cannot decide whether a fresh user action beats a

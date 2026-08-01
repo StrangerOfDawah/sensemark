@@ -23,8 +23,11 @@
     windows = globalThis.chrome?.windows,
     // Stable per-tab token assigned by the configurator on tab lifecycle events.
     // This is tab identity, never request identity, and it never changes between
-    // requests for a tab. Absent tokens are fine: the worker falls back to its own
-    // open binding.
+    // requests for a tab.
+    //
+    // A valid stable tab token is REQUIRED for side-panel request delivery. An
+    // untokenized global or legacy panel is rejected by the worker and cannot claim
+    // a tab-scoped request; it receives PANEL_NOT_CONFIGURED instead.
     tabToken = null,
     timers = { setTimeout, clearTimeout },
     now = Date.now,

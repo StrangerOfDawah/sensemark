@@ -532,3 +532,61 @@ test("the manifest default path exists but is never a delivery target", () => {
     "identity comes only from sender.tab or the tab token"
   );
 });
+
+// ------------------------------------ static guards against the removed fallback
+
+test("no source or documentation reintroduces the global-fallback model", () => {
+  const sources = [
+    "background/side-panel-configurator.js",
+    "background/side-panel-controller.js",
+    "background/side-panel-handoff.js",
+    "background/service-worker.js",
+    "extension/side-panel-handoff-client.js",
+    "sidepanel/sidepanel.js",
+    "shared/config.js",
+    "BROWSER_ACCEPTANCE.md",
+    "TECHNICAL_REVIEW_REPORT.md",
+    "REFACTOR_NOTES.md",
+    "README.md",
+    "README.en.md",
+    "docs/ARCHITECTURE.md",
+    "docs/DECISIONS.md"
+  ];
+
+  // Wording that asserted the removed behaviour. Each pattern describes a claim
+  // that is now false: an untokenized panel recovering identity, a missing token
+  // being acceptable, or a supported global fallback.
+  const forbidden = [
+    /falls back to (?:its own )?open binding/i,
+    /Absent tokens are fine/i,
+    /a panel with no token still resolves/i,
+    /the worker works without it/i,
+    /global (?:panel )?fallback is supported/i,
+    /missing tab token is (?:fine|acceptable|ok)/i
+  ];
+
+  for (const file of sources) {
+    const content = read(file);
+    for (const pattern of forbidden) {
+      assert.doesNotMatch(content, pattern, `${file} reintroduces removed wording: ${pattern}`);
+    }
+  }
+});
+
+test("the runtime cannot reintroduce binding or active-tab identity", () => {
+  const handoff = read("background/side-panel-handoff.js");
+  const resolver = handoff.slice(
+    handoff.indexOf("async function resolveScope"),
+    handoff.indexOf("async function handleClaim")
+  );
+  assert.ok(resolver.length > 0);
+  assert.doesNotMatch(resolver, /readBinding/, "identity must not read a window binding");
+  assert.doesNotMatch(resolver, /resolveActiveTab/, "identity must not read the active tab");
+  assert.match(resolver, /sender\?\.tab|senderTab/);
+  assert.match(resolver, /message\.tabId/);
+
+  // The service worker no longer supplies an active-tab resolver at all.
+  const worker = read("background/service-worker.js");
+  assert.doesNotMatch(worker, /resolveActiveTab/);
+  assert.doesNotMatch(worker, /tabs\.query\(\{\s*active:/);
+});

@@ -27,8 +27,12 @@ source.addEventListener("input", () => controller.cancel());
 // loaded before or after the worker stored the request.
 //
 // The only thing read from the URL is this panel's own tab id, assigned by the
-// configurator on tab lifecycle events. It is stable for the life of the tab, it is
-// never per-request, and the worker works without it.
+// configurator on tab lifecycle events. It is stable for the life of the tab and is
+// never per-request.
+//
+// A valid stable tab token is required for request delivery. Without it this
+// document is an untokenized global or legacy panel: the worker rejects it and it
+// cannot claim a tab-scoped request.
 const tabToken = new URLSearchParams(location.search).get("tab");
 
 const handoff = SensemarkSidePanelHandoffClient.createSidePanelHandoffClient({

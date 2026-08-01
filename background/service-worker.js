@@ -36,13 +36,10 @@ const sidePanelState = SensemarkSidePanelState.createSidePanelState(chrome.stora
 const sidePanelHandoff = SensemarkSidePanelHandoff.createSidePanelHandoff({
   state: sidePanelState,
   bindingStore: chrome.storage.session,
-  generation: () => sidePanelState.generation(),
-  // Last-resort identity only, and only when the active tab actually owns a pending
-  // request. Works without the "tabs" permission: only the tab id is read.
-  async resolveActiveTab(windowId) {
-    const [tab] = await chrome.tabs.query({ active: true, windowId });
-    return tab?.id;
-  }
+  generation: () => sidePanelState.generation()
+  // No active-tab resolver: panel identity comes only from the panel document
+  // itself (sender.tab or the stable tab token). Consulting the active tab could
+  // bind a panel to whichever tab happens to be focused at claim time.
 });
 const sidePanelConfigurator =
   SensemarkSidePanelConfigurator.createSidePanelConfigurator({

@@ -136,9 +136,20 @@ test("readiness: browser acceptance and store publication gate are explicit", ()
   const acceptance = read("BROWSER_ACCEPTANCE.md");
   assert.match(acceptance, /BLOCKED/);
   assert.match(acceptance, /built-in PDF/i);
-  assert.match(acceptance, /User-activation timing/);
+  assert.match(acceptance, /transient user activation/i);
   assert.match(acceptance, /Not tested/);
   assert.match(acceptance, /must not be described as store-ready/i);
+  // The gate is only meaningful while it is honest about what has not been run.
+  assert.match(acceptance, /Real Chrome manual acceptance/i);
+  assert.doesNotMatch(
+    acceptance,
+    /^\|.*\|\s*Passed\s*\|/m,
+    "no manual scenario may be marked Passed without a recorded execution"
+  );
+  // Automated levels must stay separated from the manual gate.
+  for (const level of [/Unit \/ integration/i, /Automated Chromium smoke/i]) {
+    assert.match(acceptance, level);
+  }
   const packageJson = JSON.parse(read("package.json"));
   assert.equal(packageJson.scripts["test:browser:auto"], "node tests/browser/run-extension-tests.js");
 });

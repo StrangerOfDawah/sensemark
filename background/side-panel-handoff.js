@@ -13,16 +13,16 @@
    * The panel never learns its request from its URL. It announces readiness on a
    * long-lived port, and this registry answers with one of three states:
    *
-   *   REQUEST  the pending request, claimed exactly once;
-   *   WAITING  a handoff was announced for this scope but storage has not landed yet;
-   *   IDLE     nothing is expected — the user opened the panel themselves.
+   *   REQUEST      the pending request, claimed exactly once;
+   *   WAITING      a handoff was announced for this tab but storage has not landed;
+   *   IDLE         nothing is expected — the user opened the panel themselves;
+   *   UNSUPPORTED  the panel has no valid tab token and can never claim a request.
    *
    * `announce()` runs synchronously on the user-gesture stack, before any await, so
    * WAITING is already knowable no matter how the storage write races the panel load.
    */
   function createSidePanelHandoff({
     state,
-    resolveActiveTab,
     bindingStore,
     generation,
     now = Date.now,
@@ -34,9 +34,9 @@
 
     const intents = new Map();
     const panels = new Set();
-    // window -> tab that a side panel was actually opened for. Recorded at open()
-    // time and persisted, so it survives a worker restart and — unlike "whichever
-    // tab is active right now" — cannot drift when the user switches tabs.
+    // window -> tab that a side panel was actually opened for. Ordered, restart-safe
+    // diagnostic metadata only: it never establishes panel identity and never
+    // authorizes an untokenized panel.
     const bindings = new Map();
     const bindingLocks = new Map();
     const bindingWrites = new Map();
@@ -291,9 +291,9 @@
      * active tab is exactly what let a global panel opened for tab A go on to look
      * like tab B's panel. Such an instance is rejected outright.
      *
-     * The window binding is retained as defensive metadata (diagnostics, and
-     * cross-checking a token) but never turns an untokenized panel into a supported
-     * one.
+     * The window binding is retained as ordered diagnostic metadata only. It never
+     * establishes identity and never turns an untokenized panel into a supported
+     * one. Neither does the active tab, which is not consulted at all.
      */
     async function resolveScope(port, message) {
       const windowId = Number.isInteger(message?.windowId) ? message.windowId : null;

@@ -17,9 +17,12 @@
    * what lets two panel documents in one window tell themselves apart — the one
    * question `chrome.windows.getCurrent()` cannot answer.
    *
-   * Identity degrades gracefully: a panel with no token still resolves through the
-   * worker's open binding, so an unconfigured tab is a latency problem, not a
-   * correctness problem.
+   * A valid stable tab token is required for side-panel request delivery. An
+   * untokenized global or legacy panel is rejected and cannot claim a tab-scoped
+   * request. A tab that
+   * configuration has not reached is therefore rejected up front with
+   * PANEL_NOT_CONFIGURED rather than silently falling through to Chrome's global
+   * default panel.
    */
   const STATE = Object.freeze({
     UNKNOWN: "unknown",
