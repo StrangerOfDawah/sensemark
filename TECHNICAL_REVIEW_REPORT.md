@@ -187,9 +187,11 @@ activation.
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
 whole-runtime coverage. `npm run coverage:scope` prints the resolved 18-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 4,045 of 6,260 runtime JavaScript lines (64.63%, including
+physical-line scope is 4,046 of 6,260 runtime JavaScript lines (64.63%, including
 comments and blank lines). Measured targeted coverage is 92.44% lines, 88.92%
-functions, and 74.23% branches, against 80/85/70 thresholds.
+functions, and 74.29% branches, against 80/85/70 thresholds. These are the
+figures produced by the release CI run; a local run on the same commit produces
+identical values.
 
 ### Verification boundary
 
