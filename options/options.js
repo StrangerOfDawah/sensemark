@@ -6,7 +6,6 @@ const fields = {
   consent: document.getElementById("consent"),
   selectionMode: document.getElementById("selectionMode"),
   stableDelay: document.getElementById("stableDelay"),
-  modifier: document.getElementById("modifier"),
   scale: document.getElementById("scale")
 };
 const saveStatus = document.getElementById("saveStatus");
@@ -32,7 +31,9 @@ function patchFromFields() {
     selection: {
       mode: fields.selectionMode.value,
       stableDelayMs: Number(fields.stableDelay.value),
-      requiredModifier: fields.modifier.value
+      // No modifier is part of the default experience; the stored value stays
+      // "none" so older profiles keep working without exposing a control.
+      requiredModifier: "none"
     },
     ui: {
       scale: Number(fields.scale.value),
@@ -77,7 +78,6 @@ async function initialize() {
     settings.privacyConsentVersion === SensemarkConfig.PRIVACY_CONSENT_VERSION;
   fields.selectionMode.value = settings.selection.mode;
   fields.stableDelay.value = settings.selection.stableDelayMs;
-  fields.modifier.value = settings.selection.requiredModifier;
   fields.scale.value = settings.ui.scale;
 }
 

@@ -44,7 +44,7 @@ test("settings service performs migration before removing legacy values", async 
   await service.patchPrivate({ providers: { openai: { model: "next" } } });
   assert.equal((await service.getPrivate()).providers.openai.model, "next");
   await service.write(schema.defaultSettings());
-  assert.equal((await service.getPrivate()).selection.mode, "button");
+  assert.equal((await service.getPrivate()).selection.mode, "automatic");
 });
 
 test("local storage access is restricted when the platform supports it", async () => {

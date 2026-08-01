@@ -115,6 +115,22 @@ objects are converted to live Range objects. Scored fallback candidates expose
 confidence and must pass a minimum threshold. Normalized duplicates are removed
 before scoring while paragraph-boundary differences remain distinct.
 
+## Primary interface
+
+The product's primary interface is the **compact floating card** next to the
+selection, as in 1.3. Automatic translation is the default mode: select text and
+the translation appears, with no modifier key and no extra gesture. The card is
+sized to its content between 230 and 400px rather than being a fixed block, and
+an outside click dismisses it.
+
+The side panel is a **fallback only**, used where an in-page card cannot work —
+the built-in PDF viewer, restricted schemes, the Web Store. Ordinary pages are
+never routed to it.
+
+The required-modifier control has been removed from settings; the
+`requiredModifier` field remains in the schema at `"none"` purely so existing
+profiles keep loading.
+
 ## Card lifecycle
 
 - Structured/slow results show a compact loading card only after 150 ms.
@@ -131,8 +147,10 @@ before scoring while paragraph-boundary differences remain distinct.
 - Escape closes trigger/loading/stream/result/error UI and aborts only the
   card's active request.
 - Copy leaves the card and request intact.
-- External click and scroll intentionally do not close or reposition a manually
-  dragged card. Window resize clamps it; a non-manual card returns to anchored
+- An outside pointerdown closes the card, matching 1.3. Anything inside the
+  shadow host — header, buttons, resize grip, trigger — is not "outside", so
+  ordinary card interaction is unaffected. Scroll intentionally does not close or
+  reposition a manually dragged card. Window resize clamps it; a non-manual card returns to anchored
   placement. Frame unload/disconnect cancels its request.
 - The dialog, buttons, resize handle, focus state, live-region behavior, and
   reduced-motion mode have explicit accessibility semantics.

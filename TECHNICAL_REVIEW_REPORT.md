@@ -187,9 +187,9 @@ activation.
 `npm run test:coverage` is explicitly **Targeted core-module coverage**, not
 whole-runtime coverage. `npm run coverage:scope` prints the resolved 18-file
 critical include list and every excluded first-party runtime file. The current
-physical-line scope is 4,046 of 6,260 runtime JavaScript lines (64.63%, including
-comments and blank lines). Measured targeted coverage is 92.44% lines, 88.92%
-functions, and 74.29% branches, against 80/85/70 thresholds. These are the
+physical-line scope is 4,059 of 6,339 runtime JavaScript lines (64.03%, including
+comments and blank lines). Measured targeted coverage is 92.41% lines, 88.92%
+functions, and 74.31% branches, against 80/85/70 thresholds. These are the
 figures produced by the release CI run; a local run on the same commit produces
 identical values.
 
@@ -199,7 +199,7 @@ Three distinct levels, never conflated:
 
 | Level | Command | Result |
 | --- | --- | --- |
-| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 193 passed, 0 failed |
+| Unit/integration (Node, jsdom, mocked Chrome) | `npm test` | 206 passed, 0 failed |
 | Automated Chromium smoke (Playwright, intercepted provider) | `npm run test:browser:auto` | 18 passed, 0 failed, 0 skipped, 0 console errors |
 | Real Chrome 119+ manual acceptance | `BROWSER_ACCEPTANCE.md` | **Not executed — every row `Not tested`** |
 
@@ -265,9 +265,9 @@ Current values. This report intentionally describes only the final
 implementation; earlier snapshots (111 tests, a 14-file coverage scope, 91.26%
 lines) are superseded and are not reproduced here.
 
-- `npm test`: 193 passed, 0 failed, 0 skipped; exit 0.
+- `npm test`: 206 passed, 0 failed, 0 skipped; exit 0.
 - `npm run check`: 59 runtime files and extension metadata validated; exit 0.
-- `npm run test:coverage`: 193 passed; see BROWSER_ACCEPTANCE.md for the
+- `npm run test:coverage`: 206 passed; see BROWSER_ACCEPTANCE.md for the
   three evidence levels; exit 0.
 - `npm run test:browser:auto`: 18 passed, 0 failed, 0 skipped; console errors 0;
   exit 0.

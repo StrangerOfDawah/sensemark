@@ -240,7 +240,11 @@
     documentObject.addEventListener(
       "pointerdown",
       (event) => {
+        // Clicking anywhere on the page dismisses the card, as in 1.3. Anything
+        // inside our own shadow host — header, buttons, resize grip, the trigger —
+        // is not "outside", so ordinary interaction with the card is unaffected.
         if (isOwnUi(event)) return;
+        card.close?.();
         selectionRevision += 1;
         pendingPlan = null;
         card.hideIntent?.();

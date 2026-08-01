@@ -11,7 +11,7 @@ These are never conflated. Only the third can lift the gate.
 
 | Level | Command / method | Proves | Result |
 | --- | --- | --- | --- |
-| Unit / integration | `npm test` (Node, jsdom, mocked Chrome APIs) | Module contracts, ordering, state machines | 193 passed, 0 failed |
+| Unit / integration | `npm test` (Node, jsdom, mocked Chrome APIs) | Module contracts, ordering, state machines | 206 passed, 0 failed |
 | Automated Chromium smoke | `npm run test:browser:auto` (Playwright, intercepted provider) | Extension loads, content-script and card behaviour in a real renderer | 18 passed, 0 failed, 0 skipped, 0 console errors |
 | **Real Chrome manual acceptance** | Human operator, stable Chrome 119+ | Native context menus, transient user activation, built-in PDF Viewer, Side Panel UI | **Not executed** |
 
@@ -47,6 +47,15 @@ protection, duplicate suppression and cache reuse.
 Local result: **18 passed, 0 failed, 0 skipped**, Chrome for Testing 151 on
 macOS; service worker/page console errors: **0**. CI repeats the suite on
 Ubuntu 24.04 / Node 24.
+
+## Restored UX under test
+
+The primary interface is the **compact floating card** next to the selection.
+Automatic translation is the default; no modifier key is required and none is
+offered in settings. An outside click dismisses the card. The side panel is a
+fallback for contexts where an in-page card cannot work.
+
+Manual acceptance must confirm the restored feel, not only the plumbing.
 
 ## Implemented model under test
 

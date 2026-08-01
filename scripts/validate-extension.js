@@ -128,7 +128,6 @@ validateHtml("options/options.html", [
   "customModel",
   "selectionMode",
   "stableDelay",
-  "modifier",
   "consent",
   "deleteKey",
   "test"

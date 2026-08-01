@@ -4,10 +4,12 @@ const config = require("../shared/config.js");
 const schema = require("../shared/settings-schema.js");
 const { createRequestPlan } = require("../extension/request-plan.js");
 
-test("new installations default to explicit button mode and private OpenAI settings", () => {
+test("new installations default to automatic mode with no required modifier", () => {
+  // The 1.3 experience: select text, the translation appears. No extra gesture.
   const settings = schema.defaultSettings();
   assert.equal(settings.schemaVersion, config.SETTINGS_VERSION);
-  assert.equal(settings.selection.mode, config.SELECTION_MODE.BUTTON);
+  assert.equal(settings.selection.mode, config.SELECTION_MODE.AUTOMATIC);
+  assert.equal(settings.selection.requiredModifier, "none");
   assert.equal(settings.providers.openai.model, "gpt-4o-mini");
   assert.equal(settings.providers.openai.apiKey, "");
   assert.equal(settings.targetLanguage, "ru");
@@ -81,7 +83,7 @@ test("normalization clamps public settings and never accepts another provider", 
   assert.equal(normalized.activeProviderId, "openai");
   assert.equal(normalized.providers.openai.apiKey, "123");
   assert.equal(normalized.providers.openai.model, "gpt-4o-mini");
-  assert.equal(normalized.selection.mode, "button");
+  assert.equal(normalized.selection.mode, "automatic");
   assert.equal(normalized.selection.stableDelayMs, 250);
   assert.equal(normalized.selection.requiredModifier, "none");
   assert.deepEqual(normalized.ui, { scale: 1.75, cardWidth: 0, cardHeight: 1000 });

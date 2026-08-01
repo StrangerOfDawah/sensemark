@@ -9,16 +9,19 @@ const { createPrivateSettingsClient } = require("../extension/private-settings-c
 const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
-test("options expose three intent modes, consent, test and explicit key deletion", () => {
+test("options stay compact: no modifier control, automatic offered first", () => {
   const dom = new JSDOM(read("options/options.html"));
   const document = dom.window.document;
   assert.deepEqual(
     Array.from(document.querySelectorAll("#selectionMode option"), (option) => option.value),
-    ["button", "automatic", "manual"]
+    ["automatic", "button", "manual"]
   );
-  for (const id of ["apiKey", "model", "consent", "stableDelay", "modifier", "deleteKey", "test"]) {
+  for (const id of ["apiKey", "model", "consent", "stableDelay", "deleteKey", "test"]) {
     assert.ok(document.getElementById(id), `missing #${id}`);
   }
+  // The required-modifier control is gone from the product entirely.
+  assert.equal(document.getElementById("modifier"), null);
+  assert.doesNotMatch(read("options/options.html"), /модификатор/i);
   assert.equal(document.querySelectorAll("script:not([src])").length, 0);
 });
 

@@ -32,9 +32,11 @@
 
     function delta(value) {
       output += String(value || "");
-      resultElement.textContent = output;
-      resultElement.hidden = !output.trim();
-      if (output.trim()) statusElement.textContent = "";
+      // Same guard as the card: show extracted text, never a structured payload.
+      const visible = renderer.displayText ? renderer.displayText(output) : output;
+      resultElement.textContent = visible;
+      resultElement.hidden = !visible.trim();
+      if (visible.trim()) statusElement.textContent = "";
     }
 
     function completed(result) {

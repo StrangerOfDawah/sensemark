@@ -13,8 +13,10 @@ text into Russian using the user's own OpenAI API key.
 - strict structured output for short contextual and multilingual selections;
 - draggable and resizable Shadow DOM card with viewport-safe placement;
 - explicit popup action, with automatic start only after paste;
-- strictly tab-specific side panel, opened directly for protected pages and the
-  built-in PDF viewer;
+- compact floating card next to the selection as the primary interface;
+- automatic translation on by default, no modifier key required;
+- strictly tab-specific side panel as a fallback only, for protected pages and
+  the built-in PDF viewer;
 - session TTL/LRU cache and cancellation of stale requests;
 - API key unavailable to content scripts;
 - no analytics, developer server, ads, or site-specific rules.

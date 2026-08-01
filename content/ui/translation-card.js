@@ -27,20 +27,22 @@
     :host{all:initial;color-scheme:light dark;--sm-scale:1;--sm-font-size:calc(14px * var(--sm-scale));--sm-spacing:calc(10px * var(--sm-scale));--sm-control-size:calc(30px * var(--sm-scale))}
     *{box-sizing:border-box}
     .card,.trigger{font:var(--sm-font-size)/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18202a}
-    .card{position:fixed;z-index:2147483647;width:min(390px,calc(100vw - 24px));max-height:min(520px,calc(100vh - 24px));display:none;flex-direction:column;background:rgba(255,255,255,.98);border:1px solid rgba(22,36,50,.14);border-radius:calc(16px * var(--sm-scale));box-shadow:0 16px 48px rgba(15,23,42,.25);overflow:hidden}
+    /* Content-sized as in 1.3: a two-word translation is a small card, not a
+       fixed 390px slab. Bounds match the original 230-400px range. */
+    .card{position:fixed;z-index:2147483647;width:max-content;min-width:min(230px,calc(100vw - 24px));max-width:min(400px,calc(100vw - 24px));max-height:min(520px,calc(100vh - 24px));display:none;flex-direction:column;background:rgba(255,255,255,.98);border:1px solid rgba(22,36,50,.14);border-radius:calc(16px * var(--sm-scale));box-shadow:0 16px 48px rgba(15,23,42,.25);overflow:hidden}
     .card.visible{display:flex;animation:sm-in .13s ease-out}
     @keyframes sm-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-    .header{display:flex;align-items:center;gap:calc(8px * var(--sm-scale));padding:var(--sm-spacing) var(--sm-spacing) calc(8px * var(--sm-scale)) calc(14px * var(--sm-scale));cursor:grab;touch-action:none;user-select:none;border-bottom:1px solid rgba(22,36,50,.08)}
+    .header{display:flex;align-items:center;gap:calc(8px * var(--sm-scale));padding:.79em .71em .5em 1.14em;cursor:grab;touch-action:none;user-select:none;border-bottom:1px solid rgba(22,36,50,.08)}
     .header:active{cursor:grabbing}.brand{font-weight:700;letter-spacing:-.01em}.spacer{flex:1}
     button{appearance:none;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;border-radius:calc(9px * var(--sm-scale))}
     button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
     .icon{width:var(--sm-control-size);height:var(--sm-control-size);display:grid;place-items:center}.icon:hover{background:#eef2f7}
-    .body{padding:calc(14px * var(--sm-scale));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;min-height:calc(70px * var(--sm-scale))}
-    .translation{font-size:calc(16px * var(--sm-scale));line-height:1.55}
-    .source{display:none;margin-top:calc(12px * var(--sm-scale));padding-top:calc(12px * var(--sm-scale));border-top:1px solid #e5e9ef;color:#5b6572}.source.visible{display:block}
-    .section{margin-top:calc(12px * var(--sm-scale));padding-top:var(--sm-spacing);border-top:1px solid #e5e9ef}.section-label{font-size:calc(11px * var(--sm-scale));text-transform:uppercase;color:#697586}
-    .explanation,.alternatives{margin-top:var(--sm-spacing);color:#485466}
-    .status{color:#697586}.error{color:#9f2d2d}.actions{display:flex;gap:calc(8px * var(--sm-scale));margin-top:calc(12px * var(--sm-scale))}
+    .body{padding:.5em 1.14em .93em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;min-height:0}
+    .translation{font-size:1.04em;line-height:1.5}
+    .source{display:none;margin-top:.62em;padding-top:.62em;border-top:1px solid #e5e9ef;color:#5b6572}.source.visible{display:block}
+    .section{margin-top:.62em;padding-top:.5em;border-top:1px solid #e5e9ef}.section-label{font-size:calc(11px * var(--sm-scale));text-transform:uppercase;color:#697586}
+    .explanation,.alternatives{margin-top:.5em;color:#485466}
+    .status{color:#697586}.error{color:#9f2d2d}.actions{display:flex;gap:calc(8px * var(--sm-scale));margin-top:.62em}
     .action{padding:calc(7px * var(--sm-scale)) var(--sm-spacing);background:#eef2f7}.action.primary{background:#2563eb;color:white}
     .grip{position:absolute;right:1px;bottom:1px;width:calc(20px * var(--sm-scale));height:calc(20px * var(--sm-scale));cursor:nwse-resize;touch-action:none}
     .grip::after{content:"";position:absolute;right:calc(5px * var(--sm-scale));bottom:calc(5px * var(--sm-scale));width:calc(7px * var(--sm-scale));height:calc(7px * var(--sm-scale));border-right:2px solid #94a0af;border-bottom:2px solid #94a0af}
@@ -218,8 +220,12 @@
       outputText += pendingDelta;
       pendingDelta = "";
       translation.setAttribute("aria-live", "off");
-      translation.textContent = outputText;
-      if (outputText.trim()) show();
+      // A model can answer a text-mode request with structured output. Paint the
+      // extracted text, never the payload, even mid-stream.
+      translation.textContent = dependencies.renderer.displayText
+        ? dependencies.renderer.displayText(outputText)
+        : outputText;
+      if (translation.textContent.trim()) show();
     }
 
     function appendDelta(delta) {

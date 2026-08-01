@@ -19,7 +19,10 @@
       },
       targetLanguage: config.TARGET_LANGUAGE,
       selection: {
-        mode: config.SELECTION_MODE.BUTTON,
+        // Automatic is the product default: select text, the translation appears.
+        // No modifier key is required, and none is offered in the settings UI —
+        // `requiredModifier` survives only so existing profiles keep working.
+        mode: config.SELECTION_MODE.AUTOMATIC,
         stableDelayMs: 600,
         requiredModifier: "none"
       },
