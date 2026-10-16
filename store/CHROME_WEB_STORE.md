@@ -23,7 +23,7 @@ Productivity
 **Assets**
 
 - Store icon: `store/assets/icon-128.png`
-- Screenshots, in order: `screenshot-1-overview.png`, `screenshot-2-streaming.png`, `screenshot-3-context.png`, `screenshot-4-sizing.png`
+- Screenshots, in order: `screenshot-1-overview.png`, `screenshot-2-streaming.png`, `screenshot-3-context.png`, `screenshot-4-long-text.png`, `screenshot-5-settings.png`
 - Small promo tile: `store/assets/promo-small-440x280.png`
 - Marquee promo tile (optional): `store/assets/promo-marquee-1400x560.png`
 
@@ -116,9 +116,18 @@ Select **No, I am not using remote code**. All executable JavaScript and CSS are
 
 ## Reviewer test instructions
 
-The extension requires an OpenAI API key with available API balance.
+The default free mode needs no key: it uses Chrome's built-in Translator API (Chrome 138+). The optional OpenAI mode requires an OpenAI API key with available API balance.
 
-1. Install the extension; the settings page opens automatically.
+Free mode:
+
+1. Install the extension; the settings page opens automatically with “Встроенный переводчик Chrome — Бесплатно” selected.
+2. Open any regular HTTPS page, select an English sentence and press Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (macOS).
+3. The first time, Chrome downloads a language pack: the card offers “Скачать”, then shows the download progress. Afterwards the Russian translation appears in a card next to the selection, in the page's colours.
+4. Select several paragraphs; confirm that the translation appears as a note in the right margin (or as a panel at the window edge) and that the selected text stays visible.
+
+OpenAI mode:
+
+1. Open the settings page and choose “OpenAI”.
 2. Review the data disclosure and select the consent checkbox.
 3. Paste the reviewer API key into “API-ключ OpenAI”.
 4. Click “Проверить ключ” and confirm that “Работает” appears.

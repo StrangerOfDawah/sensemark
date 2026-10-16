@@ -74,8 +74,13 @@ async function setupContent(markup, options = {}) {
   window.chrome = {
     i18n: {
       async detectLanguage(text) {
+        // Как настоящий CLD: одно слово «bank» он путает с себуано.
+        if (text.trim() === "bank") {
+          return { isReliable: false, languages: [{ language: "ceb", percentage: 100 }] };
+        }
         return {
-          isReliable: true,
+          // Настоящий CLD считает «ненадёжным» и верный ответ на короткой фразе.
+          isReliable: text.length > 60,
           languages: [
             {
               language: /^[А-Яа-яЁё\s.,!?—-]+$/u.test(text) ? "ru" : "en",
@@ -370,6 +375,26 @@ test("while waiting: a small pill, then a circle, and no empty card", async () =
   assert.equal(card.shadowRoot.querySelector(".badge").textContent, "Перевод · с английского");
   await wait(200);
   assert.equal(context.document.getElementById(STATUS_HOST), null, "кружок уступил место карточке");
+});
+
+test("a single word gets its source language from the sentence, not a wrong guess", async () => {
+  const context = await setupContent('<p>I went to the <span id="w">bank</span> yesterday to deposit a check.</p>');
+  context.select(context.document.getElementById("w"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[translation]]\nбанк\nдругие значения: берег, вал" });
+
+  const badge = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".badge");
+  assert.equal(badge.textContent, "Перевод · с английского");
+});
+
+test("an unreliable language guess is not shown at all", async () => {
+  const context = await setupContent('<p id="w">bank</p>');
+  context.select(context.document.getElementById("w"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[translation]]\nбанк" });
+
+  const badge = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".badge");
+  assert.equal(badge.textContent, "Перевод");
 });
 
 test("Esc while the pill is waiting cancels the request and removes the pill", async () => {
