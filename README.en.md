@@ -22,11 +22,27 @@ Before a request, Sensemark cleans the selection locally: it removes menus, site
 
 ## No waiting for the translation
 
-The response streams over SSE: the card opens together with the first translated characters while the model is still writing the rest. No empty loading card is shown before the response begins.
+The response streams: the card opens together with the first translated characters while the rest is still being written. No empty loading card is shown — if the response is slow, a small "Перевожу с английского…" pill appears next to the selection and shrinks into a circle with a running arc.
 
-<img src="docs/feature-stream.png" alt="Three stages of a translation appearing as it is generated">
+<img src="docs/feature-stream.png" alt="The status pill, then the circle, then the card with the translation">
 
 Close the card mid-translation and the request aborts — unfinished tokens aren't billed.
+
+<br>
+
+## A card that matches the page
+
+The card takes the colours of the site you are reading: white on a white page, dark on a dark one, warm on a sepia one, and the translation uses the page's text size. In the "Оформление" settings you can pin a light or dark theme, pick the translation font (System, Golos Text or Literata) and turn off "same size as the page".
+
+<img src="docs/feature-chameleon.png" alt="The card on a white, a dark and a sepia page">
+
+<br>
+
+## Long text goes to the margin
+
+A short fragment is translated in a card under the selection. A long one (about 300+ characters or several paragraphs) appears as a note in the right margin, or as a panel at the window edge when there is no room. The text stays visible, and the card moves with it while you scroll.
+
+<img src="docs/feature-long.png" alt="Three paragraphs translated as a margin note and as a panel at the window edge">
 
 <br>
 
@@ -46,7 +62,7 @@ If the selection is not a common word — for example, it is a name, title, user
 
 <img src="docs/feature-context.png" alt="The word bank in two contexts: банк and берег">
 
-The card lives in a Shadow DOM, so site styles can't break it, and it follows the page's light or dark theme.
+The card lives in a Shadow DOM, so site styles can't break it.
 
 <br>
 
@@ -58,9 +74,11 @@ The whole card scales, not just the font — padding, buttons and icons grow wit
 
 <br>
 
-## One key and you're done
+## Settings: free or smarter
 
-<img src="docs/feature-options.png" alt="Extension settings page">
+<img src="docs/feature-options.png" alt="Settings: translation mode and card appearance">
+
+The free mode works right after installation — nothing to configure. In the settings you can switch to OpenAI with your own key and choose the card theme, font and size. There is no "Save" button: everything applies immediately.
 
 <br>
 
@@ -101,7 +119,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 
 1. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and top up your balance
 2. Click the extension icon, then the settings button in the top-right corner
-3. Paste the key in settings and hit **Проверить ключ** (Test key)
+3. Choose the **OpenAI** mode, paste the key and hit **Проверить ключ** (Test key)
 
 **On cost.** The default is the cheapest current model, `gpt-6-luna`, with reasoning turned off; instructions are short and in English. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
@@ -118,7 +136,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 | Manual | Click the extension icon → paste text; translation starts automatically |
 | Scale | <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll over the card |
 
-In the card: the icon button copies the translation, ⏸ pauses or turns off auto-translation. Close it with <kbd>Esc</kbd>, the × or a click outside. Scrolling does not close the card: it moves with the text. The card takes the page's colours and text size; long selections are translated as a note in the right margin (or a panel at the window edge when there is no room).
+In the card: the icon button copies the translation, ⏸ pauses or turns off auto-translation. Close it with <kbd>Esc</kbd>, the × or a click outside. Scrolling does not close the card: it moves with the text.
 
 You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't work right away, check there that the combination is actually assigned — Chrome silently leaves the field empty when another extension already claims it.
 

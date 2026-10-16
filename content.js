@@ -487,20 +487,30 @@
 
   // Русский ли это текст и с какого языка переводим — для подписи
   // «Перевожу с английского…». Определяет сам Chrome, локально и бесплатно.
-  async function detectSource(text) {
-    let detection = null;
-    try {
-      detection = await chrome.i18n?.detectLanguage?.(text);
-    } catch {
-      // Локальный CLD может не дать результат для очень короткого текста.
-    }
-    const top = detection?.languages?.[0];
+  // На одном слове определитель часто ошибается («bank» → себуано), поэтому
+  // язык для подписи берём по предложению вокруг, а ненадёжный ответ не
+  // показываем вовсе — лучше просто «Перевод», чем неверный язык.
+  async function detectSource(text, labelText = text) {
+    const detection = await detectLanguageSafe(text);
+    const labelDetection = labelText === text ? detection : await detectLanguageSafe(labelText);
+    const top = labelDetection?.languages?.[0];
     const code = Builtin.normalizeLanguage(top?.language);
-    const known = code && code !== "ru" && (top?.percentage ?? 100) >= 60;
+    // isReliable у Chrome бывает false даже на верном ответе для короткого
+    // предложения, поэтому от 20 символов верим и «ненадёжному» ответу.
+    const trusted = labelDetection?.isReliable !== false || labelText.trim().length >= 20;
+    const known = code && code !== "ru" && trusted && (top?.percentage ?? 100) >= 60;
     return {
       ignore: isRussianOnly(text, detection),
       language: known ? Builtin.languageGenitive(code) : ""
     };
+  }
+
+  async function detectLanguageSafe(text) {
+    try {
+      return await chrome.i18n?.detectLanguage?.(text);
+    } catch {
+      return null; // локальный CLD может не дать результат для очень короткого текста
+    }
   }
 
   // Ближайший блочный предок — за его границы предложение не выходит.
@@ -595,7 +605,7 @@
 
     // Русский текст уже является результатом перевода: не показываем карточку
     // и не отправляем лишний запрос в OpenAI.
-    const source = await detectSource(info.text);
+    const source = await detectSource(info.text, info.context || info.text);
     if (source.ignore) {
       if (id !== requestId) return;
       close();
