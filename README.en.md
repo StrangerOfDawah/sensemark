@@ -118,7 +118,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 | Manual | Click the extension icon → paste text; translation starts automatically |
 | Scale | <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll over the card |
 
-In the card: the icon button copies the translation, ⏸ pauses or turns off auto-translation. Close it with <kbd>Esc</kbd>, the ×, a click outside, or by scrolling.
+In the card: the icon button copies the translation, ⏸ pauses or turns off auto-translation. Close it with <kbd>Esc</kbd>, the × or a click outside. Scrolling does not close the card: it moves with the text. The card takes the page's colours and text size; long selections are translated as a note in the right margin (or a panel at the window edge when there is no room).
 
 You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't work right away, check there that the combination is actually assigned — Chrome silently leaves the field empty when another extension already claims it.
 

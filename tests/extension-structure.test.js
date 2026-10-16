@@ -61,6 +61,7 @@ test("content runtime declares every helper in manifest and fallback injection",
     "text-response.js",
     "ui-scale.js",
     "builtin-translator.js",
+    "card-theme.js",
     "content.js"
   ]);
 

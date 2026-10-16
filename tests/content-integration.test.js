@@ -57,10 +57,12 @@ async function setupContent(markup, options = {}) {
     width: 220,
     x: 40,
     y: 106,
+    ...options.rect,
     toJSON() {
       return this;
     }
   };
+  const sentMessages = [];
 
   window.Range.prototype.getBoundingClientRect = () => rectangle;
   window.Range.prototype.getClientRects = () => [rectangle];
@@ -90,7 +92,10 @@ async function setupContent(markup, options = {}) {
         ports.push(port);
         return port;
       },
-      async sendMessage() {}
+      async sendMessage(message) {
+        sentMessages.push(message);
+        return { ok: false, faces: [] };
+      }
     },
     storage: {
       local: {
@@ -112,6 +117,7 @@ async function setupContent(markup, options = {}) {
     "text-response.js",
     "ui-scale.js",
     "builtin-translator.js",
+    "card-theme.js",
     "content.js"
   ]) {
     const source = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
@@ -132,8 +138,12 @@ async function setupContent(markup, options = {}) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
-  return { document: window.document, dom, ports, select, translateSelection, window };
+  return { document: window.document, dom, ports, select, sentMessages, translateSelection, window };
 }
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const STATUS_HOST = "__sensemark_status_host__";
+const CARD_HOST = "__gpt_translate_popup_host__";
 
 test("content script makes no API request and leaves no card for Russian text", async () => {
   const context = await setupContent('<p id="russian">Этот текст уже на русском языке.</p>');
@@ -333,4 +343,165 @@ test("free mode: a missing language pack is downloaded by one click on the card"
     card.shadowRoot.querySelector(".live").textContent,
     "RU[en] The weather is nice today, let us go out."
   );
+});
+
+// ---------- «Хамелеон»: пилюля статуса, место и цвет карточки ----------
+
+test("while waiting: a small pill, then a circle, and no empty card", async () => {
+  const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+
+  assert.equal(context.document.getElementById(STATUS_HOST), null, "быстрый ответ — без пилюли");
+  await wait(260);
+  const pillHost = context.document.getElementById(STATUS_HOST);
+  assert.ok(pillHost, "ответа нет дольше 200 мс — пилюля появилась");
+  const pill = pillHost.shadowRoot.querySelector(".status");
+  assert.equal(pill.querySelector(".lbl").textContent, "Перевожу с английского…");
+  assert.equal(pill.classList.contains("mini"), false);
+  assert.equal(context.document.getElementById(CARD_HOST), null, "пустой карточки нет");
+
+  await wait(1250);
+  assert.equal(pill.classList.contains("mini"), true, "через секунду — кружок");
+
+  context.ports[0].serverMessage({ type: "chunk", text: "[[text]]\nПариж — столица" });
+  const card = context.document.getElementById(CARD_HOST);
+  assert.ok(card);
+  assert.equal(card.shadowRoot.querySelector(".badge").textContent, "Перевод · с английского");
+  await wait(200);
+  assert.equal(context.document.getElementById(STATUS_HOST), null, "кружок уступил место карточке");
+});
+
+test("Esc while the pill is waiting cancels the request and removes the pill", async () => {
+  const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await wait(260);
+  assert.ok(context.document.getElementById(STATUS_HOST));
+
+  context.document.dispatchEvent(new context.window.KeyboardEvent("keydown", { key: "Escape" }));
+  await wait(200);
+  assert.equal(context.document.getElementById(STATUS_HOST), null);
+  assert.equal(context.ports[0].disconnected, true, "запрос оборван — токены не тратятся");
+});
+
+test("free mode: language pack download shows the language and real progress", async () => {
+  let finish;
+  const Translator = {
+    async availability() {
+      return "downloadable";
+    },
+    create({ sourceLanguage, monitor }) {
+      monitor?.({ addEventListener: (_name, listener) => listener({ loaded: 0.42 }) });
+      return new Promise((resolve) => {
+        finish = () => resolve({ translate: async (text) => `RU[${sourceLanguage}] ${text}` });
+      });
+    }
+  };
+  const context = await setupContent('<p id="x">The weather is nice today, let us go out.</p>', {
+    settings: { provider: "builtin" },
+    Translator
+  });
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await wait(20);
+
+  const pill = context.document.getElementById(STATUS_HOST).shadowRoot.querySelector(".status");
+  assert.equal(pill.querySelector(".lbl").textContent, "Скачиваю английский · 42%");
+  assert.equal(pill.classList.contains("determinate"), true);
+  assert.equal(pill.style.getPropertyValue("--progress"), "42");
+  assert.match(pill.title, /один раз/, "полное объяснение — во всплывающей подсказке");
+
+  finish();
+  await wait(30);
+  assert.ok(context.document.getElementById(CARD_HOST));
+});
+
+test("a short paragraph stays a card under the selection", async () => {
+  const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+
+  const card = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".card");
+  assert.equal(card.classList.contains("anchor"), true);
+  assert.equal(card.classList.contains("margin"), false);
+});
+
+test("several paragraphs go to the margin on the right, with a bracket along the text", async () => {
+  const context = await setupContent(
+    '<div id="x"><p>Paris is the capital and largest city of France.</p><p>The bakery on the corner opens at seven every morning.</p><p>Most tourists come later in the day.</p></div>'
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж.\nПекарня.\nТуристы." });
+
+  const root = context.document.getElementById(CARD_HOST).shadowRoot;
+  const card = root.querySelector(".card");
+  assert.equal(card.classList.contains("margin"), true);
+  assert.equal(card.style.width, "400px");
+  assert.equal(root.querySelector(".bracket").hidden, false);
+  assert.equal(root.querySelector(".badge").textContent, "Перевод · 3 абзаца с английского");
+  // Абзацы перевода разделены пустой строкой, чтобы не слипаться.
+  assert.equal(root.querySelector(".tr .live").textContent, "Париж.\n\nПекарня.\n\nТуристы.");
+  await wait(40);
+  // Заметка справа от выделения (правый край 260 px + отступ под скобку).
+  assert.equal(card.style.left, "288px");
+});
+
+test("a long selection with no room on the right opens a drawer at the window edge", async () => {
+  const context = await setupContent(
+    '<div id="x"><p>Paris is the capital and largest city of France.</p><p>The bakery on the corner opens at seven every morning and closes at noon.</p></div>',
+    { rect: { left: 24, right: 1000, width: 976 } }
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж.\nПекарня." });
+
+  const root = context.document.getElementById(CARD_HOST).shadowRoot;
+  assert.equal(root.querySelector(".card").classList.contains("drawer"), true);
+  assert.equal(root.querySelector(".bracket").hidden, true);
+});
+
+test("scrolling the page no longer closes the card", async () => {
+  const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+
+  context.window.dispatchEvent(new context.window.Event("scroll"));
+  context.document.dispatchEvent(new context.window.Event("scroll", { bubbles: true }));
+  await wait(20);
+  assert.ok(context.document.getElementById(CARD_HOST), "карточка осталась у текста");
+  assert.equal(context.ports[0].disconnected, true, "ответ уже получен целиком");
+});
+
+test("the card takes the colors of a dark page", async () => {
+  const context = await setupContent(
+    '<body style="background-color: rgb(13, 17, 23); color: rgb(201, 209, 217)"><p id="x">Paris is the capital of France, they say.</p></body>'
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+
+  const host = context.document.getElementById(CARD_HOST);
+  assert.equal(host.shadowRoot.querySelector(".card").dataset.scheme, "dark");
+  assert.notEqual(host.style.getPropertyValue("--surface"), "#ffffff");
+});
+
+test("manual light theme ignores a dark page; chosen font is loaded from the extension", async () => {
+  const context = await setupContent(
+    '<body style="background-color: rgb(13, 17, 23)"><p id="x" style="font-size: 18px">Paris is the capital of France, they say.</p></body>',
+    { settings: { cardTheme: "light", cardFont: "literata" } }
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+
+  const host = context.document.getElementById(CARD_HOST);
+  assert.equal(host.shadowRoot.querySelector(".card").dataset.scheme, "light");
+  assert.equal(host.style.getPropertyValue("--surface"), "#ffffff");
+  assert.match(host.style.getPropertyValue("--tr-font"), /Sensemark Literata/);
+  assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "размер как на странице");
+  assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [{ type: "get-font", font: "literata" }]);
 });

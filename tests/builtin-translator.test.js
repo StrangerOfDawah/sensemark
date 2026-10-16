@@ -132,7 +132,15 @@ test("a missing language pack needs one click, then translation works", async ()
   );
 
   Translator.state.gesture = true; // пользователь нажал «Скачать»
-  await translator.prepare("ja");
+  const progress = [];
+  const create = Translator.create;
+  Translator.create = async (options) => {
+    const target = { addEventListener: (_name, listener) => [0.25, 1].forEach((loaded) => listener({ loaded })) };
+    options.monitor?.(target);
+    return create(options);
+  };
+  await translator.prepare("ja", (value) => progress.push(value));
+  assert.deepEqual(progress, [0.25, 1], "прогресс скачивания доходит до кружка");
   assert.equal(
     await translator.run({ text: "日本の保育園です", sourceScripts: ["Japanese"] }),
     "[[text]]\nRU[ja] 日本の保育園です"
@@ -215,6 +223,7 @@ test("language codes and names", () => {
 
 test("downloading a language pack shows progress and gives up after a timeout", async () => {
   const statuses = [];
+  const metas = [];
   const hanging = {
     async availability() {
       return "downloadable";
@@ -227,18 +236,21 @@ test("downloading a language pack shows progress and gives up after a timeout", 
   await assert.rejects(
     engine(hanging, { downloadTimeoutMs: 20 }).run(
       { text: "Good morning everyone.", sourceScripts: ["Latin"] },
-      { onStatus: (text) => statuses.push(text) }
+      { onStatus: (text, meta) => statuses.push(text) && metas.push(meta) }
     ),
     (error) => error.code === "download-failed" && /OpenAI/.test(error.message)
   );
   assert.match(statuses[0], /Скачиваю языковой пакет для перевода с английского — это нужно один раз…$/);
   assert.match(statuses[1], /… 40%$/);
+  // Данные для кружка прогресса: язык и доля скачанного.
+  assert.deepEqual(metas[0], { kind: "download", language: "en", progress: null });
+  assert.deepEqual(metas[1], { kind: "download", language: "en", progress: 0.4 });
 });
 
 test("local port forwards download progress as a status message", async () => {
   const port = Builtin.openLocalPort({
     run: async (_message, { onStatus }) => {
-      onStatus("Скачиваю…");
+      onStatus("Скачиваю…", { kind: "download", language: "ja", progress: 0.42 });
       return "[[text]]\nготово";
     }
   });
@@ -250,6 +262,13 @@ test("local port forwards download progress as a status message", async () => {
     messages.map((message) => message.type),
     ["status", "done"]
   );
+  assert.deepEqual(messages[0], {
+    type: "status",
+    text: "Скачиваю…",
+    kind: "download",
+    language: "ja",
+    progress: 0.42
+  });
 });
 
 test("line breaks survive: multi-line text is translated line by line", async () => {

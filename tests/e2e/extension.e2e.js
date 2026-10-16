@@ -23,7 +23,8 @@ let context;
 let worker;
 let extensionId;
 const pages = {};
-const api = { calls: [], reply: null };
+const api = { calls: [], reply: null, delayMs: 0 };
+const STATUS = "#__sensemark_status_host__ .status";
 
 // ---------- заглушка OpenAI ----------
 
@@ -57,6 +58,8 @@ before(async () => {
     const body = JSON.parse(route.request().postData() || "{}");
     api.calls.push(body);
     const answer = api.reply ? api.reply(body) : { status: 500, error: "no reply configured" };
+    // Медленный ответ — чтобы увидеть пилюлю статуса и кружок.
+    if (api.delayMs) await new Promise((resolve) => setTimeout(resolve, api.delayMs));
     if (answer.status && answer.status !== 200) {
       await route.fulfill({
         status: answer.status,
@@ -76,10 +79,14 @@ before(async () => {
 
   await context.route(`${SITE}/**`, async (route) => {
     const name = new URL(route.request().url()).pathname.slice(1);
+    const page = pages[name] || "";
     await route.fulfill({
       contentType: "text/html; charset=utf-8",
-      body: `<!doctype html><html><head><meta charset="utf-8"></head>
-        <body style="font: 16px/1.5 sans-serif; padding: 24px">${pages[name] || ""}</body></html>`
+      // Полный документ отдаём как есть — для страниц со своим оформлением.
+      body: page.startsWith("<!doctype")
+        ? page
+        : `<!doctype html><html><head><meta charset="utf-8"></head>
+        <body style="font: 16px/1.5 sans-serif; padding: 24px">${page}</body></html>`
     });
   });
 
@@ -109,6 +116,7 @@ after(async () => {
 beforeEach(async () => {
   api.calls = [];
   api.reply = null;
+  api.delayMs = 0;
   // Свежий service worker без кэша переводов между тестами.
   await worker.evaluate(() => {
     cache.clear();
@@ -256,7 +264,7 @@ test("имя или название показывается янтарной �
   await selectAndRelease(page, "#w");
   await page.locator(`${CARD}.reference`).waitFor();
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".badge"), "ОБЪЯСНЕНИЕ");
+  assert.equal(await cardText(page, ".badge"), "Объяснение");
   assert.match(await cardText(page, ".alt"), /Название расширения/);
   await shot(page, "03-reference-light");
   await page.close();
@@ -578,9 +586,14 @@ test("бесплатный режим: в OpenAI ничего не уходит,
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("free", '<p id="p">The weather is nice today, let us go for a walk.</p>');
   await selectAndRelease(page, "#p");
-  await page.locator(`${CARD} .err-t`).waitFor();
-  assert.match(await cardText(page, ".err-t"), /Скачиваю языковой пакет для перевода с английского/);
-  assert.equal(await page.locator(`${CARD} .err svg`).count(), 0, "без значка ошибки");
+  // Пока Chrome скачивает пакет, видна пилюля с языком, а не пустая карточка.
+  await page.locator(STATUS).waitFor();
+  assert.match(await page.locator(`${STATUS} .lbl`).innerText(), /^Скачиваю английский/);
+  assert.match(
+    await page.locator(STATUS).getAttribute("title"),
+    /Скачиваю языковой пакет для перевода с английского/
+  );
+  assert.equal(await page.locator(CARD).count(), 0);
   assert.equal(api.calls.length, 0, "в бесплатном режиме нет запросов к OpenAI");
   await shot(page, "12-free-downloading-light");
   await page.close();
@@ -613,5 +626,186 @@ test("настройки: бесплатный режим скрывает вс�
   assert.equal(await page.locator("#openaiSettings").isVisible(), true);
   await page.waitForTimeout(100);
   assert.equal((await settings()).provider, "openai");
+  await page.close();
+});
+
+// ---------- «Хамелеон»: статус, цвет под страницу, длинный текст ----------
+
+function article({ background = "#ffffff", color = "#222222", font = "17px/1.65 Georgia, serif", width = 600, body }) {
+  return `<!doctype html><html><head><meta charset="utf-8"></head>
+    <body style="margin: 0; background: ${background}; color: ${color}; font: ${font}">
+      <div style="width: ${width}px; margin: 34px 0 0 90px">${body}</div>
+    </body></html>`;
+}
+
+const PARIS =
+  "Paris is the capital and largest city of France, and on Sunday mornings its streets feel surprisingly quiet.";
+
+test("статус: пилюля «Перевожу с английского…» сжимается в кружок, затем раскрывается карточка", async () => {
+  replyWith("[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие.");
+  api.delayMs = 2600;
+  const page = await openPage("status", article({ body: `<p id="p">${PARIS}</p>` }));
+  await selectAndRelease(page, "#p");
+
+  await page.locator(STATUS).waitFor();
+  assert.equal(await page.locator(`${STATUS} .lbl`).innerText(), "Перевожу с английского…");
+  assert.equal(await page.locator(CARD).count(), 0, "пустой карточки нет");
+  const fontSize = await page.locator(STATUS).evaluate((element) => getComputedStyle(element).fontSize);
+  assert.equal(fontSize, "12px", "подпись мелкая и спокойная");
+  await shot(page, "14-status-pill");
+
+  await page.locator(`${STATUS}.mini`).waitFor({ timeout: 3000 });
+  await shot(page, "15-status-circle");
+
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor({ timeout: 6000 });
+  assert.equal(await page.locator(STATUS).count(), 0, "кружок уступил место карточке");
+  assert.equal(await cardText(page, ".badge"), "Перевод · с английского");
+  await shot(page, "16-status-card");
+  await page.close();
+});
+
+test("тёмная страница: пилюля и карточка тёмные, в цвет сайта", async () => {
+  replyWith("[[text]]\nОбновление ускоряет запуск и исправляет сбой при импорте больших файлов.");
+  api.delayMs = 1800;
+  const page = await openPage(
+    "dark-status",
+    article({
+      background: "#0d1117",
+      color: "#c9d1d9",
+      font: "16px/1.6 -apple-system, BlinkMacSystemFont, sans-serif",
+      body: '<p id="p">The update improves startup time and fixes a crash when importing large files.</p>'
+    })
+  );
+  await selectAndRelease(page, "#p");
+  await page.locator(STATUS).waitFor();
+  const pillBackground = await page.locator(STATUS).evaluate((element) => getComputedStyle(element).backgroundColor);
+  assert.notEqual(pillBackground, "rgb(255, 255, 255)", "пилюля не белая на тёмном сайте");
+  await shot(page, "17-status-dark");
+
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor({ timeout: 6000 });
+  assert.equal(await page.locator(CARD).getAttribute("data-scheme"), "dark");
+  const cardBackground = await page.locator(CARD).evaluate((element) => getComputedStyle(element).backgroundColor);
+  assert.notEqual(cardBackground, "rgb(255, 255, 255)", "карточка тёмная");
+  assert.equal(cardBackground, pillBackground, "кружок и карточка одного цвета");
+  await shot(page, "17b-card-dark");
+  await page.close();
+});
+
+test("сепия: тёплая карточка и перевод размером как на странице", async () => {
+  replyWith("[[text]]\nБыл уже поздний вечер, когда письмо наконец пришло.");
+  const page = await openPage(
+    "sepia",
+    article({
+      background: "#f4ecd8",
+      color: "#3b2f20",
+      font: "19px/1.6 Georgia, serif",
+      body: '<p id="p">It was late in the evening when the letter finally arrived at the house.</p>'
+    })
+  );
+  await selectAndRelease(page, "#p");
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
+  const size = await page.locator(`${CARD} .tr`).evaluate((element) => getComputedStyle(element).fontSize);
+  assert.equal(size, "19px");
+  const background = await page.locator(CARD).evaluate((element) => getComputedStyle(element).backgroundColor);
+  assert.notEqual(background, "rgb(255, 255, 255)", "карточка тёплая, а не белая");
+  await shot(page, "18-sepia");
+  await page.close();
+});
+
+const LONG_BODY = `
+  <div style="font: 700 30px/1.2 -apple-system, sans-serif; margin-bottom: 18px">A slow morning in the city</div>
+  <p>I woke up early, made coffee, and decided to walk before the city did.</p>
+  <div id="sel">
+    <p>${PARIS} The bakery on the corner opens at seven and sells out of croissants before nine.</p>
+    <p>Most tourists arrive later, so early walks are the best way to see the old town. In the evening the river fills with boats, music and people sitting along the banks.</p>
+    <p>By noon the cafés are full, and the quiet city I saw at dawn is gone until next Sunday.</p>
+  </div>
+  <p>On the way home I bought flowers at the market near the bridge.</p>
+  <div style="height: 1400px"></div>`;
+
+const LONG_REPLY =
+  "[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие. " +
+  "Пекарня на углу открывается в семь, и круассаны заканчиваются ещё до девяти.\n" +
+  "Большинство туристов приезжают позже, поэтому ранние прогулки — лучший способ увидеть старый город. " +
+  "Вечером река наполняется лодками, музыкой и людьми, сидящими вдоль берегов.\n" +
+  "К полудню кафе заполнены, и тихий город, который я видел на рассвете, исчезает до следующего воскресенья.";
+
+test("длинный текст: заметка на полях справа, не закрывает текст и едет при прокрутке", async () => {
+  replyWith(LONG_REPLY, 40);
+  const page = await openPage("long", article({ body: LONG_BODY }));
+  await page.setViewportSize({ width: 1200, height: 720 });
+  await selectAndRelease(page, "#sel");
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
+
+  assert.equal(await page.locator(CARD).evaluate((element) => element.classList.contains("margin")), true);
+  assert.equal(await cardText(page, ".badge"), "Перевод · 3 абзаца с английского");
+  const text = await page.locator("#sel").boundingBox();
+  const before = await page.locator(CARD).boundingBox();
+  assert.ok(before.x >= text.x + text.width, "заметка справа от текста, текст открыт");
+  await shot(page, "19-long-margin");
+
+  await page.mouse.move(300, 300);
+  await page.mouse.wheel(0, 150);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator(CARD).count(), 1, "прокрутка не закрывает перевод");
+  const after = await page.locator(CARD).boundingBox();
+  assert.ok(Math.abs(before.y - 150 - after.y) <= 2, "заметка уехала вместе с текстом");
+  await shot(page, "20-long-margin-scrolled");
+  await page.close();
+});
+
+test("длинный текст на всю ширину: панель у правого края окна", async () => {
+  replyWith(LONG_REPLY, 40);
+  const page = await openPage(
+    "drawer",
+    article({
+      background: "#0d1117",
+      color: "#c9d1d9",
+      font: "16px/1.6 -apple-system, BlinkMacSystemFont, sans-serif",
+      width: 1080,
+      body: LONG_BODY
+    })
+  );
+  await page.setViewportSize({ width: 1200, height: 720 });
+  await selectAndRelease(page, "#sel");
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
+  assert.equal(await page.locator(CARD).evaluate((element) => element.classList.contains("drawer")), true);
+  const box = await page.locator(CARD).boundingBox();
+  assert.equal(Math.round(box.x + box.width), 1200, "панель прижата к правому краю");
+  assert.equal(Math.round(box.height), 720, "во всю высоту окна");
+  await shot(page, "21-long-drawer");
+  await page.close();
+});
+
+test("шрифт Golos Text из настроек подключается из расширения, без интернета", async () => {
+  await setSettings({ cardFont: "golos" });
+  replyWith("[[text]]\nПариж — столица и крупнейший город Франции.");
+  const page = await openPage("font", article({ body: `<p id="p">${PARIS}</p>` }));
+  await selectAndRelease(page, "#p");
+  await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
+  await page.waitForFunction(() => document.fonts.check('16px "Sensemark Golos"', "Париж"));
+  const family = await page.locator(`${CARD} .tr`).evaluate((element) => getComputedStyle(element).fontFamily);
+  assert.match(family, /Sensemark Golos/);
+  await shot(page, "22-font-golos");
+  await page.close();
+});
+
+test("настройки «Оформление»: тема, шрифт и размер сохраняются", async () => {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 760, height: 1000 });
+  await page.goto(`chrome-extension://${extensionId}/options.html`);
+  await page.locator('input[name="cardTheme"][value="auto"]:checked').waitFor({ state: "attached" });
+  await page.locator("#appearanceGroup").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.locator("#appearanceGroup").screenshot({ path: path.join(SHOTS, "23-options-appearance.png") });
+
+  await page.locator('label:has(input[name="cardTheme"][value="dark"])').click();
+  await page.locator('label:has(input[name="cardFont"][value="literata"])').click();
+  await page.locator("#matchPageSize").click();
+  await page.waitForTimeout(150);
+  const saved = await settings();
+  assert.equal(saved.cardTheme, "dark");
+  assert.equal(saved.cardFont, "literata");
+  assert.equal(saved.matchPageSize, false);
   await page.close();
 });

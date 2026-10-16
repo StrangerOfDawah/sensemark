@@ -238,6 +238,7 @@ test("old tabs receive all content helpers after an initial ping failure", async
       "text-response.js",
       "ui-scale.js",
       "builtin-translator.js",
+      "card-theme.js",
       "content.js"
     ]
   );

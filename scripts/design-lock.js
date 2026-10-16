@@ -14,11 +14,12 @@ const PARTS = {
   "popup.css": (read) => read("popup.css"),
   "popup.html": (read) => read("popup.html"),
   "options.html": (read) => read("options.html"),
+  // Все блоки <style> из content.js: карточка и пилюля статуса.
   "content.js (CSS карточки)": (read) => {
     const source = read("content.js");
-    const match = source.match(/<style>([\s\S]*?)<\/style>/);
-    if (!match) throw new Error("В content.js не найден блок <style> карточки.");
-    return match[1];
+    const blocks = [...source.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1]);
+    if (!blocks.length) throw new Error("В content.js не найден блок <style> карточки.");
+    return blocks.join("\n/* --- */\n");
   }
 };
 

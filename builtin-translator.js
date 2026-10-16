@@ -104,10 +104,12 @@
     function createWithDownload(language, availability, onStatus) {
       const options = { sourceLanguage: language, targetLanguage: TARGET };
       const downloading = availability === "downloadable" || availability === "downloading";
+      // Вторым аргументом — данные для кружка прогресса на странице.
       const status = (percent) =>
         onStatus?.(
           `Скачиваю языковой пакет для перевода с ${languageGenitive(language)} — это нужно один раз` +
-            (percent === null ? "…" : `… ${percent}%`)
+            (percent === null ? "…" : `… ${percent}%`),
+          { kind: "download", language, progress: percent === null ? null : percent / 100 }
         );
       if (downloading) status(null);
       const created = Translator.create({
@@ -266,10 +268,19 @@
     }
 
     // Скачать языковой пакет по клику пользователя (Chrome требует жест).
-    async function prepare(language) {
+    // onProgress(0…1) — для кружка прогресса на странице.
+    async function prepare(language, onProgress) {
       ensureAvailable();
       translators.delete(language);
-      await Translator.create({ sourceLanguage: language, targetLanguage: TARGET });
+      await Translator.create({
+        sourceLanguage: language,
+        targetLanguage: TARGET,
+        monitor(monitor) {
+          monitor.addEventListener?.("downloadprogress", (event) => {
+            onProgress?.(Math.min(1, Number(event.loaded) || 0));
+          });
+        }
+      });
     }
 
     return { run, prepare, detect };
@@ -301,7 +312,7 @@
           .run(message, {
             signal: abort.signal,
             onChunk: (text) => emit({ type: "chunk", text }),
-            onStatus: (text) => emit({ type: "status", text })
+            onStatus: (text, meta) => emit({ type: "status", text, ...meta })
           })
           .then((text) => emit({ type: "done", text }))
           .catch((error) => {

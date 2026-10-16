@@ -204,6 +204,7 @@ async function ping(tabId, frameId) {
           "text-response.js",
           "ui-scale.js",
           "builtin-translator.js",
+          "card-theme.js",
           "content.js"
         ]
       });
@@ -225,7 +226,48 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "open-options") {
     chrome.runtime.openOptionsPage();
   }
+
+  if (message?.type === "get-font") {
+    loadFont(message.font)
+      .then((faces) => sendResponse({ ok: true, faces }))
+      .catch(() => sendResponse({ ok: false, faces: [] }));
+    return true;
+  }
 });
+
+// Шрифты перевода вшиты в расширение (лицензия OFL, папка fonts/). Страница
+// не может сама прочитать файлы расширения, поэтому content script получает
+// их отсюда — без web_accessible_resources, по которым сайт мог бы узнать о
+// расширении, и без загрузки из интернета.
+const FONT_FILES = {
+  golos: ["golos-text-latin-400.woff2", "golos-text-cyrillic-400.woff2"],
+  literata: ["literata-latin-400.woff2", "literata-cyrillic-400.woff2"]
+};
+const FONT_RANGES = {
+  latin:
+    "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, " +
+    "U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+  cyrillic: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+};
+
+async function loadFont(font) {
+  const files = FONT_FILES[font];
+  if (!files) return [];
+  return Promise.all(
+    files.map(async (file) => {
+      const response = await fetch(chrome.runtime.getURL(`fonts/${file}`));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      let binary = "";
+      for (let index = 0; index < bytes.length; index += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      }
+      return {
+        data: btoa(binary),
+        unicodeRange: file.includes("cyrillic") ? FONT_RANGES.cyrillic : FONT_RANGES.latin
+      };
+    })
+  );
+}
 
 // Разовый перевод без стриминга — используется кнопкой «Проверить ключ».
 async function translate(rawText, context, wordMode = false) {
