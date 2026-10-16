@@ -20,6 +20,7 @@ const runtimeFiles = [
   "text-response.js",
   "manual-translation.js",
   "ui-scale.js",
+  "builtin-translator.js",
   "content.js",
   "popup.html",
   "popup.css",

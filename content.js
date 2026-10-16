@@ -7,22 +7,20 @@
   const isRussianOnly = globalThis.SensemarkLanguageDetection?.isRussianOnly;
   const detectScripts = globalThis.SensemarkLanguageDetection?.detectScripts;
   const hasMultipleScripts = globalThis.SensemarkLanguageDetection?.hasMultipleScripts;
-  const alternativeWord = globalThis.SensemarkSelectionText?.alternativeWord;
-  const isQuranGlyphFont = globalThis.SensemarkSelectionText?.isQuranGlyphFont;
+  const detectSignificantScripts = globalThis.SensemarkLanguageDetection?.detectSignificantScripts;
   const joinSelectionParts = globalThis.SensemarkSelectionText?.joinSelectionParts;
-  const selectArabicAlternative = globalThis.SensemarkSelectionText?.selectArabicAlternative;
   const createScaleController = globalThis.SensemarkScale?.createScaleController;
+  const Builtin = globalThis.SensemarkBuiltin;
   if (
     !parseWordResponse ||
     !parseTextResponse ||
     !isRussianOnly ||
     !detectScripts ||
     !hasMultipleScripts ||
-    !alternativeWord ||
-    !isQuranGlyphFont ||
+    !detectSignificantScripts ||
     !joinSelectionParts ||
-    !selectArabicAlternative ||
-    !createScaleController
+    !createScaleController ||
+    !Builtin
   ) {
     console.error("Sensemark: response helpers are unavailable.");
     return;
@@ -48,11 +46,29 @@
 
   // Держим флаги локально, чтобы не будить service worker на каждое выделение.
   let autoTranslate = false;
+  let autoPausedUntil = 0; // пауза автоперевода (общая для всех вкладок), мс
+  // Режим перевода: "builtin" — бесплатный переводчик Chrome на устройстве,
+  // "openai" — свой ключ OpenAI через background.
+  let provider = "builtin";
+  const builtinEngine = Builtin.createBuiltinTranslator({
+    Translator: globalThis.Translator,
+    detectLanguage: (text) => chrome.i18n.detectLanguage(text),
+    isRussianOnly,
+    detectScripts: (text) => detectSignificantScripts(text)
+  });
+
+  function openTranslationPort() {
+    return provider === "openai"
+      ? chrome.runtime.connect({ name: "translate" })
+      : Builtin.openLocalPort(builtinEngine);
+  }
   let view = { ...VIEW_DEFAULTS };
   const scaleController = createScaleController();
 
-  chrome.storage.local.get({ autoTranslate: false, ...VIEW_DEFAULTS }).then((s) => {
+  chrome.storage.local.get({ autoTranslate: false, autoPausedUntil: 0, provider: "builtin", ...VIEW_DEFAULTS }).then((s) => {
     autoTranslate = s.autoTranslate;
+    provider = s.provider === "openai" ? "openai" : "builtin";
+    autoPausedUntil = Number(s.autoPausedUntil) || 0;
     view = { uiScale: s.uiScale, cardWidth: s.cardWidth, cardHeight: s.cardHeight };
     if (card) applyView();
   });
@@ -60,6 +76,8 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.autoTranslate) autoTranslate = changes.autoTranslate.newValue;
+    if (changes.autoPausedUntil) autoPausedUntil = Number(changes.autoPausedUntil.newValue) || 0;
+    if (changes.provider) provider = changes.provider.newValue === "openai" ? "openai" : "builtin";
     // Изменения из соседней вкладки применяем на лету.
     let touched = false;
     for (const key of Object.keys(VIEW_DEFAULTS)) {
@@ -108,13 +126,59 @@
     }
   });
 
+  // Автоперевод ждёт немного после выделения: если за это время человек
+  // копирует (⌘/Ctrl+C) или открывает контекстное меню, значит, он выделял
+  // не для перевода — запрос отменяется, пока карточка ещё не появилась.
+  const AUTO_DELAY = 500;
+  const PAUSE_MINUTES = 5;
   let autoTimer = null;
-  document.addEventListener("mouseup", (event) => {
-    if (!autoTranslate) return;
-    if (host && event.composedPath().includes(host)) return;
+  let autoPendingId = 0; // id автозапроса, карточка которого ещё не показана
+
+  function isAutoEnabled() {
+    return Boolean(autoTranslate) && Date.now() >= autoPausedUntil;
+  }
+
+  // Выделение внутри поля ввода или редактора — это правка, а не чтение.
+  function isEditableSelection() {
+    const active = document.activeElement;
+    if (active && (/^(?:INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) {
+      return true;
+    }
+    const anchor = window.getSelection()?.anchorNode;
+    const element = anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+    return Boolean(element?.isContentEditable);
+  }
+
+  function cancelPendingAuto() {
     clearTimeout(autoTimer);
-    autoTimer = setTimeout(handleSelection, 250);
+    autoTimer = null;
+    if (autoPendingId && autoPendingId === requestId) {
+      requestId++;
+      currentPort?.disconnect(); // background оборвёт запрос
+      currentPort = null;
+    }
+    autoPendingId = 0;
+  }
+
+  document.addEventListener("mouseup", (event) => {
+    if (event.button !== 0) return; // правая/средняя кнопка — не выделение для чтения
+    if (!isAutoEnabled()) return;
+    if (host && event.composedPath().includes(host)) return;
+    if (isEditableSelection()) return;
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => handleSelection({ auto: true }), AUTO_DELAY);
   });
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      // event.code, а не key: на русской раскладке клавиша C даёт «с».
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyC") cancelPendingAuto();
+    },
+    true
+  );
+  document.addEventListener("copy", cancelPendingAuto, true);
+  document.addEventListener("contextmenu", cancelPendingAuto, true);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();
@@ -148,38 +212,64 @@
     const wordMode = isShort(text) && !hasMultipleScripts(text);
     const context = wordMode && text === rawText ? extractContext(range, text) : null;
 
-    return { text, rect, context, wordMode, sourceScripts: detectScripts(text) };
+    return { text, rect, context, wordMode, sourceScripts: detectSignificantScripts(text) };
   }
 
   function extractVisibleRangeText(range) {
     const root = range.commonAncestorContainer;
-    const textNodes = [];
-    const arabicAlternatives = new WeakMap();
+    const nodes = [];
+    // Кэши на одно выделение: при выделении всей страницы иначе getComputedStyle
+    // вызывается заново для каждого предка каждого текстового узла.
+    const cache = { visible: new Map(), block: new Map(), noise: new Map() };
 
     if (root.nodeType === Node.TEXT_NODE) {
-      textNodes.push(root);
+      nodes.push(root);
     } else {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) =>
+            node.nodeType === Node.TEXT_NODE || node.nodeName === "BR"
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP
+        }
+      );
       let node;
-      while ((node = walker.nextNode())) textNodes.push(node);
+      while ((node = walker.nextNode())) nodes.push(node);
     }
 
     const parts = [];
-    for (const node of textNodes) {
+    for (const node of nodes) {
       try {
-        if (!range.intersectsNode(node) || !isVisibleTextNode(node)) continue;
+        if (!range.intersectsNode(node)) continue;
+        const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        if (!element) continue;
+
+        if (node.nodeName === "BR") {
+          if (!isVisibleElement(element, cache.visible)) continue;
+          parts.push({
+            lineBreak: true,
+            block: blockOf(element, cache.block),
+            noise: isNoiseElement(element, cache.noise)
+          });
+          continue;
+        }
+
+        if (!isVisibleTextNode(node, cache.visible)) continue;
 
         let start = 0;
         let end = node.data.length;
         if (node === range.startContainer) start = range.startOffset;
         if (node === range.endContainer) end = range.endOffset;
-        const part = node.data.slice(start, end).trim();
+        const part = node.data.slice(start, end);
         if (!part) continue;
 
-        const semanticWord = semanticQuranWord(node, arabicAlternatives);
         parts.push({
-          text: semanticWord || part,
-          noise: !semanticWord && isInterfaceTextNode(node)
+          text: part,
+          block: blockOf(element, cache.block),
+          noise: isNoiseElement(element, cache.noise),
+          preserveLines: /^(?:pre|break-spaces)/.test(getComputedStyle(element).whiteSpace || "")
         });
       } catch {
         // Некоторые сложные Range на динамических страницах нельзя пересечь.
@@ -188,58 +278,47 @@
     return joinSelectionParts(parts);
   }
 
-  // Quran.com выводит каждое слово одним кодом шрифта code_v1/code_v2.
-  // Сам код не является буквами слова, но рядом сайт уже держит скрытую
-  // Imlaei-копию с data-word-location для точного сопоставления.
-  function semanticQuranWord(node, alternatives) {
-    const glyph = node.parentElement?.closest("[data-font]");
-    if (!glyph || !isQuranGlyphFont(glyph.dataset.font)) return "";
-
-    const word = glyph.closest("[data-word-location]");
-    const location = word?.dataset.wordLocation?.split(":");
-    const wordNumber = Number(location?.at(-1));
-    if (!Number.isInteger(wordNumber) || wordNumber < 1) return "";
-
-    const verseText = glyph.closest('[data-testid^="verse-arabic-"]');
-    const root = verseText?.parentElement;
-    if (!root) return "";
-
-    let alternative = alternatives.get(root);
-    if (alternative === undefined) {
-      const candidates = [];
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let candidateNode;
-      while ((candidateNode = walker.nextNode())) {
-        const value = candidateNode.data.trim();
-        if (
-          value &&
-          /\p{Script=Arabic}/u.test(value) &&
-          !candidateNode.parentElement?.closest("[data-font]") &&
-          !isVisibleTextNode(candidateNode)
-        ) {
-          candidates.push(value);
-        }
-      }
-
-      const expectedWords = root.querySelectorAll(
-        '[data-word-location] [data-font^="code_v"]'
-      ).length;
-      alternative = selectArabicAlternative(candidates, expectedWords);
-      alternatives.set(root, alternative);
+  // Ближайший блочный предок: текст внутри одного блока — один абзац.
+  function blockOf(element, cache) {
+    if (cache.has(element)) return cache.get(element);
+    let current = element;
+    while (current && current !== document.body && current !== document.documentElement) {
+      const display = getComputedStyle(current).display;
+      if (display && !display.startsWith("inline") && display !== "contents") break;
+      current = current.parentElement;
     }
-
-    return alternativeWord(alternative, wordNumber);
+    const block = current || document.body;
+    cache.set(element, block);
+    return block;
   }
 
-  function isInterfaceTextNode(node) {
-    const element = node.parentElement;
-    if (!element) return false;
-    return Boolean(
-      element.closest(
-        "a, button, input, select, textarea, option, summary, sup, " +
-          '[role="button"], [role="menuitem"], [role="tooltip"], [role="dialog"]'
-      )
-    );
+  // Мусор интерфейса, общий для любого сайта: элементы управления, меню и
+  // навигация, шапка/подвал/боковая панель сайта, сноски-ссылки.
+  // Ссылки внутри текста — это содержимое, их не трогаем.
+  const CONTROL_SELECTOR =
+    "button, input, select, textarea, option, summary, nav, menu, " +
+    '[role="button"], [role="menuitem"], [role="menu"], [role="menubar"], ' +
+    '[role="navigation"], [role="toolbar"], [role="tablist"], [role="tab"], ' +
+    '[role="search"], [role="tooltip"]';
+  const SITE_CHROME_SELECTOR =
+    'header, footer, aside, [role="banner"], [role="contentinfo"], [role="complementary"]';
+  const CONTENT_SELECTOR = 'article, main, [role="main"], [role="article"]';
+
+  function isNoiseElement(element, cache) {
+    if (cache.has(element)) return cache.get(element);
+    let noise = Boolean(element.closest(CONTROL_SELECTOR));
+    if (!noise) {
+      // Шапка статьи с заголовком — содержимое; шапка всего сайта — нет.
+      const chrome = element.closest(SITE_CHROME_SELECTOR);
+      noise = Boolean(chrome && !chrome.closest(CONTENT_SELECTOR));
+    }
+    if (!noise) {
+      // Сноска вида [1] — ссылка в верхнем индексе. Обычный x² остаётся.
+      const sup = element.closest("sup");
+      noise = Boolean(sup && (sup.querySelector("a") || sup.closest("a")));
+    }
+    cache.set(element, noise);
+    return noise;
   }
 
   function extractSelectedImages(range) {
@@ -261,34 +340,33 @@
     });
   }
 
-  function isVisibleElement(element) {
-    let current = element;
-    while (current && current !== document.documentElement) {
-      const style = getComputedStyle(current);
-      const rect = current.getBoundingClientRect();
-      if (
-        current.hidden ||
-        current.inert ||
-        current.getAttribute("aria-hidden") === "true" ||
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.visibility === "collapse" ||
-        Number(style.opacity) === 0 ||
-        style.clipPath === "inset(50%)" ||
-        (style.position === "absolute" &&
-          style.overflow === "hidden" &&
-          rect.width <= 1 &&
-          rect.height <= 1)
-      ) {
-        return false;
-      }
-      current = current.parentElement;
-    }
-    return true;
+  function isVisibleElement(element, cache = new Map()) {
+    if (!element || element === document.documentElement) return true;
+    if (cache.has(element)) return cache.get(element);
+
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const hidden =
+      element.hidden ||
+      element.inert ||
+      element.getAttribute("aria-hidden") === "true" ||
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      Number(style.opacity) === 0 ||
+      style.clipPath === "inset(50%)" ||
+      (style.position === "absolute" &&
+        style.overflow === "hidden" &&
+        rect.width <= 1 &&
+        rect.height <= 1);
+
+    const visible = !hidden && isVisibleElement(element.parentElement, cache);
+    cache.set(element, visible);
+    return visible;
   }
 
-  function isVisibleTextNode(node) {
-    if (!node.parentElement || !isVisibleElement(node.parentElement)) return false;
+  function isVisibleTextNode(node, cache) {
+    if (!node.parentElement || !isVisibleElement(node.parentElement, cache)) return false;
 
     const probe = document.createRange();
     probe.selectNodeContents(node);
@@ -367,7 +445,8 @@
     return sentence;
   }
 
-  async function handleSelection() {
+  async function handleSelection({ auto = false } = {}) {
+    autoTimer = null;
     const info = getSelectionInfo();
     if (!info) return; // в этом фрейме выделения нет — молчим
 
@@ -394,6 +473,7 @@
     }
 
     const id = ++requestId;
+    autoPendingId = auto ? id : 0;
     currentPort?.disconnect();
     currentPort = null;
 
@@ -406,6 +486,10 @@
     }
     if (id !== requestId) return;
 
+    startTranslation(info, id);
+  }
+
+  function startTranslation(info, id) {
     // Старый результат убираем сразу, но пустую карточку для нового запроса не
     // создаём. Она появится только вместе с первым содержательным фрагментом.
     if (host) close({ cancelRequest: false, animate: false });
@@ -413,7 +497,7 @@
     // Стриминг: перевод печатается по мере генерации, не дожидаясь всего ответа.
     let port;
     try {
-      port = chrome.runtime.connect({ name: "translate" });
+      port = openTranslationPort();
     } catch {
       render(info.rect, { state: "error", message: "Расширение перезагружено — обновите страницу." });
       return;
@@ -424,6 +508,7 @@
     let finished = false;
     const release = () => {
       finished = true;
+      if (autoPendingId === id) autoPendingId = 0;
       if (currentPort === port) currentPort = null;
     };
 
@@ -443,6 +528,7 @@
           return;
         }
         if (!started) {
+          if (autoPendingId === id) autoPendingId = 0; // карточка показана — больше не отменяем
           beginStreamCard(info.rect, info.text, info.wordMode);
           started = true;
         }
@@ -453,10 +539,38 @@
           release();
           port.disconnect();
         }
+      } else if (message.type === "status") {
+        // Например, «Скачиваю языковой пакет… 40%» — пока перевода ещё нет.
+        if (!started) render(info.rect, { state: "error", message: message.text, action: null, icon: false });
       } else if (message.type === "error") {
-        render(info.rect, { state: "error", message: message.error });
         release();
         port.disconnect();
+        if (message.code === "needs-download") {
+          // Chrome скачивает языковой пакет только по клику пользователя.
+          render(info.rect, {
+            state: "error",
+            message: `${message.error} Это займёт несколько секунд.`,
+            action: {
+              label: "Скачать",
+              run: async () => {
+                render(info.rect, { state: "error", message: "Скачиваю языковой пакет…", action: null });
+                try {
+                  await builtinEngine.prepare(message.language);
+                } catch {
+                  render(info.rect, {
+                    state: "error",
+                    message: "Не удалось скачать языковой пакет — проверьте интернет и попробуйте ещё раз."
+                  });
+                  return;
+                }
+                const retryId = ++requestId;
+                startTranslation(info, retryId);
+              }
+            }
+          });
+          return;
+        }
+        render(info.rect, { state: "error", message: message.error });
       }
     });
 
@@ -485,6 +599,8 @@
       '<svg viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6 6.6 12l6.2-7.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     chevron:
       '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.5 10 8l-4 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pause:
+      '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.2v7.6M10 4.2v7.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     warn:
       '<svg viewBox="0 0 16 16" fill="none"><path d="M8 2.4 14.5 13a1 1 0 0 1-.86 1.5H2.36A1 1 0 0 1 1.5 13L8 2.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".9" fill="currentColor"/></svg>'
   };
@@ -671,6 +787,9 @@
           letter-spacing: 0.07em;
           text-transform: uppercase;
         }
+        /* display: inline-flex выше перебивает атрибут hidden — без этой строки
+           пустой бейджик категории виден в каждой обычной карточке. */
+        .term-kind[hidden] { display: none; }
         .reference-note {
           margin-top: 0.3em;
           color: var(--sec);
@@ -808,6 +927,22 @@
         .chip.open svg { transform: rotate(90deg); }
         .chip.accent { color: var(--accent); padding: 6px 13px; }
         .chip.accent:hover { background: var(--fill); color: var(--accent); }
+        .icon-btn.open { background: var(--fill); color: var(--text); }
+        .icon-btn[hidden], .auto-menu[hidden], .auto-note[hidden] { display: none; }
+
+        .auto-menu {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 0.29em;
+          margin-top: 0.43em;
+        }
+        .auto-note {
+          margin-top: 0.57em;
+          color: var(--sec);
+          font-size: 0.82em;
+          line-height: 1.45;
+        }
 
         .err {
           display: flex;
@@ -1004,12 +1139,20 @@
 
     if (payload.state === "error") {
       bodyEl.innerHTML = `
-        <div class="err">${ICONS.warn}<p class="err-t"></p></div>
+        <div class="err">${payload.icon === false ? "" : ICONS.warn}<p class="err-t"></p></div>
         <div class="acts"><span class="sp"></span><button class="chip accent" data-act="options">Открыть настройки</button></div>`;
       bodyEl.querySelector(".err-t").textContent = payload.message;
-      bodyEl.querySelector("[data-act=options]").addEventListener("click", () => {
-        chrome.runtime.sendMessage({ type: "open-options" });
-      });
+      const button = bodyEl.querySelector("[data-act=options]");
+      if (payload.action === null) {
+        button.remove();
+      } else if (payload.action) {
+        button.textContent = payload.action.label;
+        button.addEventListener("click", payload.action.run);
+      } else {
+        button.addEventListener("click", () => {
+          chrome.runtime.sendMessage({ type: "open-options" });
+        });
+      }
     }
 
     // Перезапускаем появление контента.
@@ -1034,12 +1177,16 @@
       <div class="segments" hidden></div>
       <p class="reference-note" hidden>Не переводится как обычное слово</p>
       <div class="alt" hidden><div class="cap">Другие значения</div><p class="alt-t"></p></div>
-      <div class="src"><p class="src-t"></p></div>
       <div class="acts pending">
-        <button class="chip" data-act="orig">${ICONS.chevron}<span>Оригинал</span></button>
         <span class="sp"></span>
+        <button class="icon-btn" data-act="auto" title="Автоперевод" hidden>${ICONS.pause}</button>
         <button class="icon-btn" data-act="copy" title="Скопировать">${ICONS.copy}</button>
-      </div>`;
+      </div>
+      <div class="auto-menu" hidden>
+        <button class="chip accent" data-act="pause">Пауза на ${PAUSE_MINUTES} минут</button>
+        <button class="chip" data-act="off">Выключить автоперевод</button>
+      </div>
+      <p class="auto-note" hidden></p>`;
 
     const state = {
       main: "",
@@ -1059,18 +1206,7 @@
     };
     streamState = state;
 
-    const src = bodyEl.querySelector(".src");
-    src.querySelector(".src-t").textContent = source || "";
-
-    const origBtn = bodyEl.querySelector("[data-act=orig]");
-    if (!source) origBtn.hidden = true;
-    origBtn.addEventListener("click", () => {
-      const opening = !src.classList.contains("open");
-      origBtn.classList.toggle("open", opening);
-      src.classList.toggle("open", opening);
-      src.style.maxHeight = opening ? `${src.scrollHeight}px` : "0";
-      if (opening && lastRect) setTimeout(() => position(lastRect), 290);
-    });
+    setupAutoControls();
 
     const copyBtn = bodyEl.querySelector("[data-act=copy]");
     copyBtn.addEventListener("click", async () => {
@@ -1081,6 +1217,46 @@
         copyBtn.classList.remove("ok");
         copyBtn.innerHTML = ICONS.copy;
       }, 1400);
+    });
+  }
+
+  // Кнопка «пауза» в карточке: пауза на 5 минут или полное выключение
+  // автоперевода. Ручной перевод (правый клик, горячая клавиша) работает всегда.
+  function setupAutoControls() {
+    const toggle = bodyEl.querySelector("[data-act=auto]");
+    const menu = bodyEl.querySelector(".auto-menu");
+    const note = bodyEl.querySelector(".auto-note");
+    toggle.hidden = !isAutoEnabled();
+
+    const hotkey = /Mac/i.test(navigator.platform) ? "⌘⇧Y" : "Ctrl+Shift+Y";
+    const manualHint = `Переводите вручную: правый клик → «Перевести на русский» или ${hotkey}.`;
+    const finish = (message) => {
+      menu.hidden = true;
+      toggle.hidden = true;
+      note.textContent = message;
+      note.hidden = false;
+      if (lastRect) position(lastRect);
+    };
+
+    toggle.addEventListener("click", () => {
+      menu.hidden = !menu.hidden;
+      toggle.classList.toggle("open", !menu.hidden);
+      if (lastRect) position(lastRect);
+    });
+    menu.querySelector("[data-act=pause]").addEventListener("click", () => {
+      const until = Date.now() + PAUSE_MINUTES * 60 * 1000;
+      autoPausedUntil = until;
+      chrome.storage.local.set({ autoPausedUntil: until }).catch(() => {});
+      const time = new Date(until).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      finish(`Автоперевод на паузе до ${time}. ${manualHint}`);
+    });
+    menu.querySelector("[data-act=off]").addEventListener("click", () => {
+      autoTranslate = false;
+      chrome.storage.local.set({ autoTranslate: false, autoPausedUntil: 0 }).catch(() => {});
+      finish(
+        `Автоперевод выключен. ${manualHint} ` +
+          "Включить снова — в настройках или правым кликом по значку Sensemark."
+      );
     });
   }
 

@@ -1,38 +1,16 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const {
-  alternativeWord,
-  isQuranGlyphFont,
-  joinSelectionParts,
-  normalizeSelectionText,
-  selectArabicAlternative
-} = require("../selection-text.js");
-
-test("recognizes Quran.com page-font glyph modes", () => {
-  assert.equal(isQuranGlyphFont("code_v2"), true);
-  assert.equal(isQuranGlyphFont("code_v1"), true);
-  assert.equal(isQuranGlyphFont("text_uthmani"), false);
-});
-
-test("prefers Quran.com's simple Arabic alternative over the diacritized duplicate", () => {
-  const simple = "تبارك الذي بيده الملك وهو على كل شيء قدير ١";
-  const uthmani = "تَبَـٰرَكَ ٱلَّذِى بِيَدِهِ ٱلْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَىْءٍۢ قَدِيرٌ ١";
-
-  const selected = selectArabicAlternative([uthmani, simple], 10);
-  assert.equal(selected, simple);
-  assert.equal(alternativeWord(selected, 1), "تبارك");
-  assert.equal(alternativeWord(selected, 10), "١");
-});
+const { joinSelectionParts, normalizeSelectionText } = require("../selection-text.js");
 
 test("drops selected interface labels when actual content is present", () => {
   assert.equal(
     joinSelectionParts([
-      { text: "67:1", noise: true },
-      { text: "Blessed is the One.", noise: false },
+      { text: "Menu", noise: true },
+      { text: "The meeting starts at noon.", noise: false },
       { text: "Share", noise: true }
     ]),
-    "Blessed is the One."
+    "The meeting starts at noon."
   );
 });
 
@@ -41,5 +19,62 @@ test("keeps an explicitly selected control when it is the only text", () => {
 });
 
 test("removes directional and soft-hyphen control noise", () => {
-  assert.equal(normalizeSelectionText("Hello\u2066 \u2069wor\u00ADld"), "Hello world");
+  assert.equal(normalizeSelectionText("Hello⁦ ⁩wor­ld"), "Hello world");
+});
+
+test("removes icon-font and zero-width characters but keeps joiners", () => {
+  assert.equal(normalizeSelectionText(" Read​ more "), "Read more");
+  assert.equal(normalizeSelectionText("می‌خواهم"), "می‌خواهم");
+});
+
+test("glues parts of one block without inventing spaces", () => {
+  const block = {};
+  assert.equal(
+    joinSelectionParts([
+      { text: "This is un", block },
+      { text: "believ", block },
+      { text: "able, see ", block },
+      { text: "France", block },
+      { text: ".", block }
+    ]),
+    "This is unbelievable, see France."
+  );
+});
+
+test("keeps paragraphs and explicit line breaks", () => {
+  const first = {};
+  const second = {};
+  assert.equal(
+    joinSelectionParts([
+      { text: "First\n    paragraph.", block: first },
+      { text: "Line one", block: second },
+      { lineBreak: true, block: second },
+      { text: "line two.", block: second }
+    ]),
+    "First paragraph.\nLine one\nline two."
+  );
+});
+
+test("keeps real line breaks only inside preformatted text", () => {
+  const block = {};
+  assert.equal(
+    joinSelectionParts([{ text: "let a = 1;\nlet b = 2;", block, preserveLines: true }]),
+    "let a = 1;\nlet b = 2;"
+  );
+});
+
+test("removing noise in the middle of a sentence leaves a single space", () => {
+  const block = {};
+  assert.equal(
+    joinSelectionParts([
+      { text: "Click ", block },
+      { text: "here", block, noise: true },
+      { text: " to continue.", block }
+    ]),
+    "Click to continue."
+  );
+});
+
+test("whitespace-only selection gives an empty result", () => {
+  assert.equal(joinSelectionParts([{ text: "   ", block: {} }]), "");
 });

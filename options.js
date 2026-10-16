@@ -1,6 +1,8 @@
+const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULTS = {
+  provider: "builtin",
   apiKey: "",
-  model: "gpt-4o-mini",
+  model: DEFAULT_MODEL,
   targetLang: "русский",
   autoTranslate: false,
   privacyConsentVersion: 0
@@ -13,6 +15,8 @@ const fields = {
   autoTranslate: document.getElementById("autoTranslate"),
   dataConsent: document.getElementById("dataConsent")
 };
+const providerInputs = [...document.querySelectorAll('input[name="provider"]')];
+const openaiSettings = document.getElementById("openaiSettings");
 const testBtn = document.getElementById("test");
 const testStatus = document.getElementById("testStatus");
 const toastEl = document.getElementById("toast");
@@ -43,11 +47,12 @@ const fitKey = () => {
 
 function init() {
   chrome.storage.local.get(DEFAULTS).then((settings) => {
-    // Модель, вписанную вручную в прошлой версии, сохраняем как пункт списка.
+    // Старые модели OpenAI отключаются — показываем и сохраняем актуальную.
     if (![...fields.model.options].some((o) => o.value === settings.model)) {
-      const custom = new Option(settings.model, settings.model);
-      fields.model.add(custom);
+      settings.model = DEFAULT_MODEL;
+      chrome.storage.local.set({ model: DEFAULT_MODEL }).catch(() => {});
     }
+    setProvider(settings.provider === "openai" ? "openai" : "builtin");
     fields.apiKey.value = settings.apiKey;
     fields.model.value = settings.model;
     fields.autoTranslate.checked = settings.autoTranslate;
@@ -64,6 +69,12 @@ function init() {
   fields.apiKey.addEventListener("input", () => { fitKey(); scheduleSave(); });
   fields.model.addEventListener("change", scheduleSave);
   fields.autoTranslate.addEventListener("change", scheduleSave);
+  for (const input of providerInputs) {
+    input.addEventListener("change", () => {
+      setProvider(input.value);
+      save();
+    });
+  }
   fields.dataConsent.addEventListener("change", () => {
     save();
     if (!fields.dataConsent.checked) {
@@ -83,8 +94,19 @@ function init() {
   });
 }
 
+function currentProvider() {
+  return providerInputs.find((input) => input.checked)?.value === "openai" ? "openai" : "builtin";
+}
+
+// Настройки OpenAI (ключ, модель, согласие) видны только в режиме OpenAI.
+function setProvider(provider) {
+  for (const input of providerInputs) input.checked = input.value === provider;
+  openaiSettings.hidden = provider !== "openai";
+}
+
 function collect() {
   return {
+    provider: currentProvider(),
     apiKey: fields.apiKey.value.trim(),
     model: fields.model.value.trim() || DEFAULTS.model,
     // Язык зафиксирован — поля ввода нет, чтобы в промпт не попал произвольный текст.
@@ -141,7 +163,12 @@ async function runTest() {
   testBtn.disabled = false;
 
   if (response?.ok) {
-    setTestStatus(`Работает — «${response.text}»`, "ok");
+    // Служебные метки ответа ([[text]] и т. п.) пользователю не показываем.
+    const shown = String(response.text || "")
+      .replace(/^\s*\[\[[^\]]+\]\]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    setTestStatus(`Работает — «${shown}»`, "ok");
   } else {
     setTestStatus(response?.error || "Не удалось выполнить запрос", "err");
   }

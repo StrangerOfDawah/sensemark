@@ -8,7 +8,7 @@
 
 <div align="center">
 
-[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · OpenAI API · [Privacy](PRIVACY.en.md)
+[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free or OpenAI · [Privacy](PRIVACY.en.md)
 
 </div>
 
@@ -16,7 +16,7 @@
 
 A Russian selection is ignored without opening the card or calling the API, including small technical insertions such as `dev-секрет`, `APP_ENV`, a URL, or the ChatGPT name. When a selection contains genuinely separate Russian and foreign-language sentences, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
 
-Before a request, Sensemark locally removes hidden duplicates, controls, interface labels, and Unicode direction markers. On Quran.com, page-font glyph codes are replaced with the simple Arabic copy already embedded in the page. The model receives real text rather than visual codes, and DOM noise does not waste tokens.
+Before a request, Sensemark cleans the selection locally: it removes menus, site header and footer, buttons, footnote markers, hidden text, icon-font symbols, and Unicode control characters. Links inside the text, paragraphs, and line breaks are kept. Even when a whole page is selected, the model mostly receives the text itself and skips leftover interface labels on its own.
 
 <br>
 
@@ -79,7 +79,7 @@ Until the Chrome Web Store listing is published, the extension is installed manu
 
 ## Test build from a PR
 
-For every pull request and every change to `main`, GitHub Actions runs unit and DOM integration tests, enforces coverage thresholds (90% lines, 75% branches, 95% functions), validates the Manifest V3 structure, and checks every packaged runtime file. Any failure stops the job and prevents publication of the test artifact.
+For every pull request and every change to `main`, GitHub Actions runs unit and DOM integration tests, end-to-end tests in real Chromium with the extension loaded (`npm run test:e2e`, OpenAI replaced by a stub), enforces coverage thresholds (90% lines, 75% branches, 95% functions), validates the Manifest V3 structure, and checks every packaged runtime file. Any failure stops the job and prevents publication of the test artifact.
 
 After a successful run, open **PR test build** on the Actions tab, download the `sensemark-pr-N` artifact, unzip it, and load the resulting folder from `chrome://extensions` → **Load unpacked**.
 
@@ -97,13 +97,13 @@ Release history is in [CHANGELOG.md](CHANGELOG.md); the publication checklist is
 
 ## OpenAI key
 
-You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.
+Sensemark has two modes, chosen in settings. The default is **free**: Chrome's built-in on-device translator (Chrome 138+, desktop, https pages) — no key, no cost, the text never leaves the computer. **OpenAI** is smarter (word sense from context, explanations of names, cleans leftover page noise) and costs about $1 a year with daily use. For OpenAI you need an API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.
 
 1. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and top up your balance
 2. Click the extension icon, then the settings button in the top-right corner
 3. Paste the key in settings and hit **Проверить ключ** (Test key)
 
-**On cost.** The default is the economical `gpt-4o-mini` model. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
+**On cost.** The default is the cheapest current model, `gpt-6-luna`, with reasoning turned off; instructions are short and in English. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
 <br>
 
@@ -113,11 +113,12 @@ You need an OpenAI API key. This is **not** a ChatGPT Plus subscription — that
 | --- | --- |
 | Keyboard shortcut | Select text → <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Mac) or <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Windows) |
 | Context menu | Select text → right-click → «Перевести на русский» |
-| Automatic | Enable the toggle in settings — translates on any mouse selection |
+| Automatic | Enable the toggle in settings — translates a mouse selection after half a second. Pressing <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>C</kbd> or the right mouse button right away cancels it; selections inside input fields are ignored |
+| Pause | The ⏸ button on the card pauses auto-translation for 5 minutes or turns it off. Turn it back on in settings or by right-clicking the Sensemark toolbar icon |
 | Manual | Click the extension icon → paste text; translation starts automatically |
 | Scale | <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll over the card |
 
-In the card: the icon button copies the translation, «Оригинал» expands the source text. Close it with <kbd>Esc</kbd>, the ×, a click outside, or by scrolling.
+In the card: the icon button copies the translation, ⏸ pauses or turns off auto-translation. Close it with <kbd>Esc</kbd>, the ×, a click outside, or by scrolling.
 
 You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't work right away, check there that the combination is actually assigned — Chrome silently leaves the field empty when another extension already claims it.
 
@@ -129,8 +130,9 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 | --- | --- |
 | `manifest.json` | Manifest, permissions, keyboard shortcut |
 | `background.js` | Service worker: context menu, OpenAI streaming, translation cache |
+| `builtin-translator.js` | Free mode: Chrome's built-in on-device translator |
 | `language-detection.js` | Local check for whether the selected text needs translation |
-| `selection-text.js` | Selection cleanup and semantic recovery for page-font glyphs |
+| `selection-text.js` | Selection cleanup: page noise and control characters |
 | `word-response.js` | Word-response parser: regular translation or name/title explanation |
 | `text-response.js` | Parser for regular and sectioned multilingual translations |
 | `manual-translation.js` | Manual-request planning and response parsing without duplicating API logic |
@@ -140,11 +142,11 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 | `options.html` · `options.js` | Settings page |
 | `icons/` | Icons, 16–128 |
 
-The key is stored in `chrome.storage.local`. Selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI for translation. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
+In free mode the text is translated on the device and is not sent anywhere. In OpenAI mode the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
 
 Repeat translations of the same fragment come from an in-memory cache in the service worker (last 200) and cost nothing. Selections are capped at 5000 characters so an accidental <kbd>⌘</kbd><kbd>A</kbd> doesn't send a whole page to the API.
 
-If a selection exists only as an image and the page provides no foreign-language text layer, Sensemark shows a local message and sends nothing to the API. Automatic OCR is intentionally avoided because it would add cost and could corrupt decorative or Quranic text.
+If a selection exists only as an image and the page provides no foreign-language text layer, Sensemark shows a local message and sends nothing to the API. Automatic OCR is intentionally avoided because it would add cost and could corrupt the text.
 
 <br>
 

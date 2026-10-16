@@ -21,13 +21,15 @@
     const main = (lines[0] || "").replace(/^перевод\s*:\s*/i, "");
     const secondary = lines.slice(1).join(" ");
     const meanings = secondary.match(/^друг\S*\s+значения\s*:\s*(.+)$/i);
+    // Бесплатный режим: перевод всего предложения вместо списка значений.
+    const sentence = secondary.match(/^в\s+предложении\s*:\s*(.+)$/i);
 
     return {
       mode: "translation",
       main,
       category: "",
-      detail: meanings?.[1] || "",
-      detailLabel: meanings ? "Другие значения" : ""
+      detail: meanings?.[1] || sentence?.[1] || "",
+      detailLabel: meanings ? "Другие значения" : sentence ? "В предложении" : ""
     };
   }
 

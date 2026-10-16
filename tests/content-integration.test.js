@@ -39,7 +39,7 @@ function createPort() {
   };
 }
 
-async function setupContent(markup) {
+async function setupContent(markup, options = {}) {
   const dom = new JSDOM(markup, {
     pretendToBeVisual: true,
     runScripts: "outside-only",
@@ -95,7 +95,7 @@ async function setupContent(markup) {
     storage: {
       local: {
         async get(defaults) {
-          return { ...defaults, autoTranslate: false };
+          return { ...defaults, autoTranslate: false, provider: "openai", ...options.settings };
         },
         async set() {}
       },
@@ -103,6 +103,7 @@ async function setupContent(markup) {
     }
   };
 
+  if (options.Translator) window.Translator = options.Translator;
   const context = dom.getInternalVMContext();
   for (const file of [
     "language-detection.js",
@@ -110,6 +111,7 @@ async function setupContent(markup) {
     "word-response.js",
     "text-response.js",
     "ui-scale.js",
+    "builtin-translator.js",
     "content.js"
   ]) {
     const source = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
@@ -205,7 +207,7 @@ test("content scale rate limit is wired to the visible card", async () => {
 
 test("image-only selections are stopped locally without spending tokens", async () => {
   const context = await setupContent(
-    '<div id="image"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Благословен"><span>Благословен</span></div>'
+    '<div id="image"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Подпись"><span>Подпись</span></div>'
   );
   context.select(context.document.getElementById("image"));
   await context.translateSelection();
@@ -213,4 +215,122 @@ test("image-only selections are stopped locally without spending tokens", async 
   assert.equal(context.ports.length, 0);
   const host = context.document.getElementById("__gpt_translate_popup_host__");
   assert.match(host.shadowRoot.querySelector(".err-t").textContent, /изображение/);
+});
+
+test("links inside a paragraph stay in the translated text", async () => {
+  const context = await setupContent(
+    '<p id="x">Paris is the capital of <a href="#">France</a>, home to <a href="#">2.1 million</a> people.</p>'
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+
+  assert.equal(
+    context.ports[0].posted[0].text,
+    "Paris is the capital of France, home to 2.1 million people."
+  );
+});
+
+test("inline formatting does not split words and paragraphs are kept", async () => {
+  const context = await setupContent(
+    '<div id="x"><p>This is un<em>believ</em>able.</p><p>Second<br>line.</p></div>'
+  );
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+
+  assert.equal(context.ports[0].posted[0].text, "This is unbelievable.\nSecond\nline.");
+});
+
+test("whole-page selection keeps the article and drops site noise", async () => {
+  const context = await setupContent(`<div id="x">
+    <header><nav><a href="/">Home</a> | <a href="/news">News</a></nav><button>Sign in</button></header>
+    <main><article>
+      <header><h1>City council approves new park</h1></header>
+      <p>The council voted<sup><a href="#n1">[1]</a></sup> to build a park near the <a href="/r">river</a>.</p>
+      <p>Area is 5 km<sup>2</sup>.</p>
+      <div><button> Share</button> <span role="button">12 comments</span></div>
+    </article></main>
+    <aside><a href="#">Trending celebrity news</a></aside>
+    <footer>Daily News · <a href="#">Privacy</a></footer>
+  </div>`);
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+
+  assert.equal(
+    context.ports[0].posted[0].text,
+    "City council approves new park\n" +
+      "The council voted to build a park near the river.\n" +
+      "Area is 5 km2."
+  );
+});
+
+test("a selected menu item alone is still translated", async () => {
+  const context = await setupContent('<nav><a id="x" href="#">Download the report</a></nav>');
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+
+  assert.equal(context.ports[0].posted[0].text, "Download the report");
+});
+
+function fakeChromeTranslator({ needsGesture = false } = {}) {
+  const state = { gesture: !needsGesture };
+  return {
+    state,
+    async availability() {
+      return "available";
+    },
+    async create({ sourceLanguage }) {
+      if (!state.gesture) {
+        const error = new Error("Requires a user gesture");
+        error.name = "NotAllowedError";
+        throw error;
+      }
+      return {
+        async translate(text) {
+          return `RU[${sourceLanguage}] ${text}`;
+        }
+      };
+    }
+  };
+}
+
+test("free mode translates on the device: card appears, nothing goes to OpenAI", async () => {
+  const context = await setupContent('<p id="x">The weather is nice today, let us go out.</p>', {
+    settings: { provider: "builtin" },
+    Translator: fakeChromeTranslator()
+  });
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  const host = context.document.getElementById("__gpt_translate_popup_host__");
+  assert.equal(
+    host.shadowRoot.querySelector(".live").textContent,
+    "RU[en] The weather is nice today, let us go out."
+  );
+});
+
+test("free mode: a missing language pack is downloaded by one click on the card", async () => {
+  const Translator = fakeChromeTranslator({ needsGesture: true });
+  const context = await setupContent('<p id="x">The weather is nice today, let us go out.</p>', {
+    settings: { provider: "builtin" },
+    Translator
+  });
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  const host = context.document.getElementById("__gpt_translate_popup_host__");
+  assert.match(host.shadowRoot.querySelector(".err-t").textContent, /скачать языковой пакет для перевода с английского/);
+  const button = host.shadowRoot.querySelector("[data-act=options]");
+  assert.equal(button.textContent, "Скачать");
+
+  Translator.state.gesture = true; // клик — это жест пользователя
+  button.click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const card = context.document.getElementById("__gpt_translate_popup_host__");
+  assert.equal(
+    card.shadowRoot.querySelector(".live").textContent,
+    "RU[en] The weather is nice today, let us go out."
+  );
 });

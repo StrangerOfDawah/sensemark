@@ -29,7 +29,7 @@ test("ignores Russian selections with small technical Latin insertions", () => {
 });
 
 test("still translates a real English phrase inside Russian text", () => {
-  assert.equal(isRussianOnly("Подпись на странице: Come close to Allah."), false);
+  assert.equal(isRussianOnly("Подпись на странице: Welcome to the city."), false);
 });
 
 test("does not treat distinct Ukrainian letters as Russian", () => {
@@ -50,8 +50,8 @@ test("detects Latin, Cyrillic, and Arabic as multiple scripts", () => {
   assert.equal(hasMultipleScripts(text), true);
 });
 
-test("detects Arabic with Quranic diacritics alongside English", () => {
-  assert.deepEqual(detectScripts("ذَٰلِكَ ٱلْكِتَٰبُ This is the Scripture"), ["Arabic", "Latin"]);
+test("detects Arabic with diacritics alongside English", () => {
+  assert.deepEqual(detectScripts("مَرْحَبًا بِكُمْ Welcome everyone"), ["Arabic", "Latin"]);
 });
 
 test("treats Japanese kanji and kana as one writing system", () => {

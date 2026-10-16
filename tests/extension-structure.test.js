@@ -19,6 +19,7 @@ test("toolbar action opens the manual popup with only packaged scripts", () => {
       "language-detection.js",
       "word-response.js",
       "text-response.js",
+      "builtin-translator.js",
       "manual-translation.js",
       "popup.js"
     ]
@@ -59,6 +60,7 @@ test("content runtime declares every helper in manifest and fallback injection",
     "word-response.js",
     "text-response.js",
     "ui-scale.js",
+    "builtin-translator.js",
     "content.js"
   ]);
 
