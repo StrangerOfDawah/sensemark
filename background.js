@@ -1,28 +1,101 @@
 const MENU_ID = "translate-selection";
+const AUTO_MENU_ID = "toggle-auto-translate";
 const API_URL = "https://api.openai.com/v1/chat/completions";
 const PRIVACY_CONSENT_VERSION = 1;
 
+// Самая дешёвая актуальная модель OpenAI (октябрь 2026): $0.10 / $0.50 за 1M токенов.
+const DEFAULT_MODEL = "gpt-6-luna";
+// Модели, которые OpenAI отключает до января 2027 — переводим на DEFAULT_MODEL.
+const RETIRED_MODELS = new Set([
+  "gpt-4o-mini",
+  "gpt-4o",
+  "gpt-4.1-mini",
+  "gpt-4.1",
+  "gpt-4.1-nano",
+  "gpt-5-nano",
+  "gpt-5-mini"
+]);
+
 const DEFAULTS = {
   apiKey: "",
-  model: "gpt-4o-mini",
+  model: DEFAULT_MODEL,
   targetLang: "русский",
   autoTranslate: false,
   privacyConsentVersion: 0
 };
 
-// Небольшой кэш, чтобы повторный перевод того же куска не стоил денег.
+// Кэш повторных переводов, чтобы тот же кусок не стоил денег дважды.
+// Service worker Chrome засыпает через ~30 с простоя и теряет память, поэтому
+// копия лежит в chrome.storage.session: она живёт до закрытия браузера и
+// никогда не пишется на диск.
 const cache = new Map();
 const CACHE_LIMIT = 200;
+const CACHE_STORAGE_KEY = "translationCache";
+let cacheLoaded = null;
 
-function cacheGet(key) {
+function loadCache() {
+  if (!cacheLoaded) {
+    cacheLoaded = (async () => {
+      try {
+        const stored = await chrome.storage.session?.get(CACHE_STORAGE_KEY);
+        for (const [key, value] of stored?.[CACHE_STORAGE_KEY] || []) {
+          if (!cache.has(key)) cache.set(key, value);
+        }
+      } catch {
+        // Без session storage работаем только с памятью.
+      }
+    })();
+  }
+  return cacheLoaded;
+}
+
+async function cacheGet(key) {
+  await loadCache();
   return cache.get(key);
 }
 
 function cacheSet(key, value) {
+  cache.delete(key);
   if (cache.size >= CACHE_LIMIT) {
     cache.delete(cache.keys().next().value);
   }
   cache.set(key, value);
+  chrome.storage.session
+    ?.set({ [CACHE_STORAGE_KEY]: [...cache] })
+    .catch(() => {});
+}
+
+// Параметры запроса под модель. Новые модели OpenAI «размышляют» перед
+// ответом: это медленнее и оплачивается как выходные токены, а temperature
+// они отклоняют. Для перевода размышления не нужны.
+function modelParams(model, maxOutputTokens) {
+  const name = String(model || "");
+  if (/^(?:gpt-6|gpt-5\.\d)/.test(name)) {
+    return { reasoning_effort: "none", max_completion_tokens: maxOutputTokens };
+  }
+  if (/^gpt-5(?:-|$)/.test(name)) {
+    return { reasoning_effort: "minimal", max_completion_tokens: maxOutputTokens };
+  }
+  if (/^o\d/.test(name)) {
+    return { reasoning_effort: "low", max_completion_tokens: maxOutputTokens };
+  }
+  return { temperature: 0.2, max_tokens: maxOutputTokens };
+}
+
+// Потолок длины ответа: перевод не бывает намного длиннее оригинала, а
+// случайно «разговорившаяся» модель не должна стоить лишних денег.
+function maxOutputTokens(text, wordMode) {
+  if (wordMode) return 300;
+  return Math.min(4096, 300 + Math.ceil(String(text || "").length * 0.8));
+}
+
+function requestBody(settings, messages, { text, wordMode, stream }) {
+  return JSON.stringify({
+    model: settings.model,
+    ...modelParams(settings.model, maxOutputTokens(text, wordMode)),
+    ...(stream ? { stream: true } : {}),
+    messages
+  });
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -32,24 +105,76 @@ chrome.runtime.onInstalled.addListener((details) => {
       title: "Перевести на русский",
       contexts: ["selection"]
     });
+    // Правый клик по значку Sensemark в панели Chrome.
+    chrome.contextMenus.create({
+      id: AUTO_MENU_ID,
+      title: "Включить автоперевод",
+      contexts: ["action"]
+    });
+    refreshAutoMenuTitle();
   });
 
-  // До первого перевода пользователь должен увидеть раскрытие обработки данных.
-  if (details.reason === "install") {
-    chrome.runtime.openOptionsPage();
-  } else if (details.reason === "update") {
-    chrome.storage.local.get({ privacyConsentVersion: 0 }).then((settings) => {
-      if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-        chrome.runtime.openOptionsPage();
-      }
+  // Режим перевода: у тех, кто уже ввёл ключ OpenAI, ничего не меняется;
+  // остальные начинают с бесплатного встроенного переводчика Chrome.
+  chrome.storage.local.get({ provider: "", apiKey: "", privacyConsentVersion: 0 }).then((settings) => {
+    const provider = settings.provider || (settings.apiKey ? "openai" : "builtin");
+    if (!settings.provider) chrome.storage.local.set({ provider });
+
+    // При установке показываем выбор режима. При обновлении настройки
+    // открываются, только если режиму OpenAI не хватает согласия.
+    if (details.reason === "install") {
+      chrome.runtime.openOptionsPage();
+    } else if (
+      details.reason === "update" &&
+      provider === "openai" &&
+      settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION
+    ) {
+      chrome.runtime.openOptionsPage();
+    }
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(onMenuClicked);
+
+async function onMenuClicked(info, tab) {
+  if (info.menuItemId === AUTO_MENU_ID) {
+    const { autoTranslate, autoPausedUntil } = await chrome.storage.local.get({
+      autoTranslate: false,
+      autoPausedUntil: 0
     });
+    const paused = autoTranslate && Date.now() < autoPausedUntil;
+    // На паузе пункт снимает паузу, иначе — переключает автоперевод.
+    await chrome.storage.local.set(
+      paused ? { autoPausedUntil: 0 } : { autoTranslate: !autoTranslate, autoPausedUntil: 0 }
+    );
+    return;
+  }
+  if (info.menuItemId !== MENU_ID || !tab?.id) return;
+  await ping(tab.id, info.frameId);
+}
+
+// Заголовок пункта на значке отражает текущее состояние автоперевода.
+async function refreshAutoMenuTitle() {
+  const { autoTranslate, autoPausedUntil } = await chrome.storage.local.get({
+    autoTranslate: false,
+    autoPausedUntil: 0
+  });
+  const title = !autoTranslate
+    ? "Включить автоперевод"
+    : Date.now() < autoPausedUntil
+      ? "Снять паузу автоперевода"
+      : "Выключить автоперевод";
+  chrome.contextMenus.update(AUTO_MENU_ID, { title }, () => void chrome.runtime.lastError);
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && (changes.autoTranslate || changes.autoPausedUntil)) {
+    refreshAutoMenuTitle();
   }
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== MENU_ID || !tab?.id) return;
-  ping(tab.id, info.frameId);
-});
+// Пауза кончается сама — обновляем заголовок, когда меню открывают.
+chrome.runtime.onStartup?.addListener(refreshAutoMenuTitle);
 
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command !== MENU_ID || !tab?.id) return;
@@ -78,6 +203,8 @@ async function ping(tabId, frameId) {
           "word-response.js",
           "text-response.js",
           "ui-scale.js",
+          "builtin-translator.js",
+          "card-theme.js",
           "content.js"
         ]
       });
@@ -99,13 +226,54 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "open-options") {
     chrome.runtime.openOptionsPage();
   }
+
+  if (message?.type === "get-font") {
+    loadFont(message.font)
+      .then((faces) => sendResponse({ ok: true, faces }))
+      .catch(() => sendResponse({ ok: false, faces: [] }));
+    return true;
+  }
 });
+
+// Шрифты перевода вшиты в расширение (лицензия OFL, папка fonts/). Страница
+// не может сама прочитать файлы расширения, поэтому content script получает
+// их отсюда — без web_accessible_resources, по которым сайт мог бы узнать о
+// расширении, и без загрузки из интернета.
+const FONT_FILES = {
+  golos: ["golos-text-latin-400.woff2", "golos-text-cyrillic-400.woff2"],
+  literata: ["literata-latin-400.woff2", "literata-cyrillic-400.woff2"]
+};
+const FONT_RANGES = {
+  latin:
+    "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, " +
+    "U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+  cyrillic: "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+};
+
+async function loadFont(font) {
+  const files = FONT_FILES[font];
+  if (!files) return [];
+  return Promise.all(
+    files.map(async (file) => {
+      const response = await fetch(chrome.runtime.getURL(`fonts/${file}`));
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      let binary = "";
+      for (let index = 0; index < bytes.length; index += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      }
+      return {
+        data: btoa(binary),
+        unicodeRange: file.includes("cyrillic") ? FONT_RANGES.cyrillic : FONT_RANGES.latin
+      };
+    })
+  );
+}
 
 // Разовый перевод без стриминга — используется кнопкой «Проверить ключ».
 async function translate(rawText, context, wordMode = false) {
   const { settings, cacheKey, messages } = await prepareRequest(rawText, context, wordMode);
 
-  const hit = cacheGet(cacheKey);
+  const hit = await cacheGet(cacheKey);
   if (hit) return hit;
 
   const response = await fetch(API_URL, {
@@ -114,11 +282,7 @@ async function translate(rawText, context, wordMode = false) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${settings.apiKey}`
     },
-    body: JSON.stringify({
-      model: settings.model,
-      temperature: 0.2,
-      messages
-    })
+    body: requestBody(settings, messages, { text: rawText, wordMode })
   });
 
   if (!response.ok) {
@@ -139,6 +303,7 @@ async function prepareRequest(rawText, context, wordMode = false, rawSourceScrip
   if (!text) throw new Error("Ничего не выделено.");
 
   const settings = await chrome.storage.local.get(DEFAULTS);
+  if (!settings.model || RETIRED_MODELS.has(settings.model)) settings.model = DEFAULT_MODEL;
   if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
     throw new Error(
       "Перед переводом подтвердите отправку текста в OpenAI в настройках расширения."
@@ -201,7 +366,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
       rawSourceScripts
     );
 
-    const hit = cacheGet(cacheKey);
+    const hit = await cacheGet(cacheKey);
     if (hit) {
       const cachedIssue = responseIssue(hit, wordMode, sourceScripts, rawText);
       if (!cachedIssue) {
@@ -230,12 +395,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
         "Content-Type": "application/json",
         Authorization: `Bearer ${settings.apiKey}`
       },
-      body: JSON.stringify({
-        model: settings.model,
-        temperature: 0.2,
-        stream: true,
-        messages
-      }),
+      body: requestBody(settings, messages, { text: rawText, wordMode, stream: true }),
       signal: abort.signal
     });
 
@@ -349,18 +509,6 @@ function normalizeComparable(value) {
     .trim();
 }
 
-function repeatsForeignSource(payload, sourceText) {
-  const normalizedPayload = normalizeComparable(payload);
-  const candidates = [sourceText, ...String(sourceText || "").split(/[\n.!?؟؛،]+/u)];
-
-  return candidates.some((candidate) => {
-    const letters = [...String(candidate || "")].filter((char) => /\p{L}/u.test(char));
-    if (letters.length < 4 || letters.every((char) => /[А-Яа-яЁё]/u.test(char))) return false;
-    const normalized = normalizeComparable(candidate);
-    return normalized.length >= 4 && normalizedPayload.includes(normalized);
-  });
-}
-
 function translatedBodies(value) {
   const sections = [
     ...String(value || "").matchAll(
@@ -370,47 +518,46 @@ function translatedBodies(value) {
   return sections.length ? sections : [responsePayload(value)];
 }
 
-function contentIssue(value, sourceText) {
+const FOREIGN_SCRIPT_LETTER =
+  /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u;
+
+// Проверка нарочно мягкая: каждый повторный запрос удваивает цену перевода.
+// Ловим только явно сломанный ответ, а не допустимые оставленные имена,
+// бренды и термины («GitHub Copilot», «API», «東京»).
+function contentIssue(value) {
   const payload = responsePayload(value);
-  if (/полный перевод на язык|перевод фрагмента|без пояснений и исходного текста/i.test(payload)) {
-    return "Ответ повторяет инструкцию вместо перевода.";
+  if (/full translation into|translate the text|полный перевод на язык|без пояснений и исходного текста/i.test(payload)) {
+    return "The answer repeats the instructions instead of a translation.";
   }
   if (/^(?:перевод|translation)\s*:/im.test(payload)) {
-    return "Ответ содержит лишнюю подпись «Перевод:» вместо чистого результата.";
-  }
-  if (repeatsForeignSource(payload, sourceText)) {
-    return "Ответ повторяет выделенный иностранный текст вместо чистого перевода.";
+    return "The answer contains a «Перевод:» label instead of a clean result.";
   }
 
-  if (
-    /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u.test(
-      payload
-    )
-  ) {
-    return "Ответ содержит текст исходной письменностью вместо русского перевода.";
+  const letters = [...payload].filter((char) => /\p{L}/u.test(char));
+  const foreign = letters.filter((char) => FOREIGN_SCRIPT_LETTER.test(char)).length;
+  if (letters.length && foreign / letters.length > 0.2) {
+    return "The answer is written in the source script instead of Russian.";
   }
 
-  const nonRussianBody = translatedBodies(value).find(
-    (body) => /\p{L}/u.test(body) && !/[А-Яа-яЁё]/u.test(body)
+  const untranslated = translatedBodies(value).find(
+    (body) => !/[А-Яа-яЁё]/u.test(body) && body.split(/\s+/).filter((word) => /\p{L}/u.test(word)).length >= 4
   );
-  return nonRussianBody
-    ? "Одна из секций содержит не русский перевод."
-    : "";
+  return untranslated ? "A section is not translated into Russian." : "";
 }
 
 function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
   const value = String(text || "").trim();
   if (/^\[\[skip\]\]/i.test(value)) {
-    return "Ответ ошибочно содержит запрещённую метку [[skip]].";
+    return "The answer contains the forbidden [[skip]] marker.";
   }
 
   const firstLine = value.split("\n", 1)[0].trim().toLowerCase();
   if (wordMode) {
     if (firstLine === "[[reference]]") return "";
     if (firstLine !== "[[translation]]") {
-      return "Для короткого фрагмента отсутствует формат [[translation]] или [[reference]].";
+      return "The answer must start with [[translation]] or [[reference]].";
     }
-    return contentIssue(value, sourceText);
+    return contentIssue(value);
   }
 
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
@@ -422,22 +569,22 @@ function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
   ].map((match) => match[1].trim());
   const unexpectedScripts = declaredScripts.filter((script) => !sourceScripts.includes(script));
   if (unexpectedScripts.length) {
-    return `Ответ добавил отсутствующие в выделении письменности: ${[
+    return `The answer added scripts that are not in the selection: ${[
       ...new Set(unexpectedScripts)
     ].join(", ")}.`;
   }
   if (sourceScripts.length > 1 && !multilingual && !unifiedParallelTitle) {
-    return "Для выделения с несколькими письменностями отсутствует формат [[multilingual]].";
+    return "The selection has several scripts, so the answer must use the [[multilingual]] format.";
   }
   if (sourceScripts.length < 2 && multilingual) {
     const languages = [
       ...value.matchAll(/^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:\s*([^\]]+)\]\]/gim)
     ].map((match) => match[1].trim().toLowerCase());
     if (new Set(languages).size < 2) {
-      return "Для текста на одном языке ошибочно выбран многоязычный формат.";
+      return "The text is in one language, so [[multilingual]] is wrong.";
     }
   } else if (!multilingual && firstLine !== "[[text]]") {
-    return "Для обычного текста отсутствует формат [[text]].";
+    return "The answer must start with [[text]].";
   }
 
   if (multilingual && sourceScripts.length > 1) {
@@ -453,11 +600,11 @@ function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
       return !section?.[1]?.trim();
     });
     if (missing.length) {
-      return `В ответе отсутствуют секции для письменностей: ${missing.join(", ")}.`;
+      return `Sections are missing for scripts: ${missing.join(", ")}.`;
     }
   }
 
-  return contentIssue(value, sourceText);
+  return contentIssue(value);
 }
 
 async function repairResponse(
@@ -472,10 +619,10 @@ async function repairResponse(
 ) {
   const parallelTitle = isParallelTitleCandidate(sourceText, sourceScripts);
   const required = sourceScripts.length > 1 && !parallelTitle
-    ? ` Обязательно верни секции для всех письменностей: ${sourceScripts.join(", ")}.`
+    ? ` Include sections for all scripts: ${sourceScripts.join(", ")}.`
     : "";
   const unifiedOption = parallelTitle
-    ? " Если две короткие части являются одним параллельным заголовком, верни один русский перевод в формате [[text]]; иначе верни все секции [[multilingual]]."
+    ? " If the two short parts are one bilingual title, return a single [[text]] translation; otherwise return all [[multilingual]] sections."
     : "";
   const repairMessages = [
     ...messages,
@@ -483,9 +630,9 @@ async function repairResponse(
     {
       role: "user",
       content:
-        `Исправь ответ: ${issue}${required}${unifiedOption} Не пропускай ни один исходный фрагмент и не используй [[skip]]. ` +
-        "Все содержательные строки пиши только по-русски. Не повторяй иностранный оригинал, не переводи на третий язык, " +
-        "не копируй текст инструкции и не добавляй подпись «Перевод:». Повтори весь ответ целиком строго в требуемом формате."
+        `Fix the answer: ${issue}${required}${unifiedOption} ` +
+        "Write every content line in Russian, do not repeat the original, do not add labels. " +
+        "Return the whole answer again in the required format."
     }
   ];
 
@@ -495,11 +642,7 @@ async function repairResponse(
       "Content-Type": "application/json",
       Authorization: `Bearer ${settings.apiKey}`
     },
-    body: JSON.stringify({
-      model: settings.model,
-      temperature: 0,
-      messages: repairMessages
-    }),
+    body: requestBody(settings, repairMessages, { text: sourceText, wordMode }),
     signal
   });
 
@@ -515,46 +658,39 @@ async function repairResponse(
   return repaired;
 }
 
+// Инструкции написаны по-английски: тот же смысл стоит примерно вдвое меньше
+// токенов, чем по-русски, а платим мы за них в каждом запросе. Ответ модели
+// по-прежнему русский.
+const COMMON_RULES =
+  "Translate directly from the source language into Russian; do not go through English and do not paraphrase. " +
+  "Skip leftover page UI (menu items, buttons, counters, labels like “Share” or “Read more”) without mentioning it. " +
+  "Never output [[skip]], the untranslated original, a third language, these instructions, or labels like “Перевод:”.";
+
 function buildTextMessages(text, lang, rawSourceScripts = []) {
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
   const scriptList = sourceScripts.join(", ");
-  const multiScript = sourceScripts.length > 1;
-  const parallelTitle = isParallelTitleCandidate(text, sourceScripts);
-  const format = parallelTitle
-    ? "Исходный текст похож на короткий параллельный заголовок, записанный двумя письменностями. " +
-      "Если обе части передают одно и то же название, первая строка ответа должна быть только [[text]], " +
-      `а со второй строки дай один естественный перевод на язык «${lang}» без дублирования. ` +
-      "Если значения частей различаются, используй [[multilingual]] и отдельные непустые секции " +
-      `[[script:SCRIPT|lang:LANGUAGE]] для каждой письменности из списка: ${scriptList}.`
-    : multiScript
-    ? "В исходном выделении локально обнаружены письменности: " +
-      `${scriptList}. Поэтому ответ ОБЯЗАТЕЛЬНО должен иметь формат:\n` +
-      "[[multilingual]]\n" +
-      "Затем для каждого исходного фрагмента напиши строку [[script:SCRIPT|lang:LANGUAGE]], а со следующей строки — только его русский перевод. " +
-      "SCRIPT замени точным значением из списка, LANGUAGE — названием исходного языка по-русски. " +
-      "Значение SCRIPT описывает источник и НИКОГДА не означает, что результат нужно писать этой письменностью. " +
-      "В ответе должна быть хотя бы одна непустая секция для КАЖДОЙ письменности из списка; ничего не пропускай."
-    : "Если весь исходный текст на одном языке, первая строка ответа должна быть только [[text]], " +
-      `а начиная со второй строки напиши сам перевод на язык «${lang}». ` +
-      "Только если в самом исходном тексте действительно несколько языков одной письменности, начни с [[multilingual]], " +
-      "затем для каждого языка добавь строку [[script:SCRIPT|lang:LANGUAGE]] и под ней русский перевод.";
+  const sections =
+    "[[multilingual]] on the first line, then for each consecutive fragment a line [[script:SCRIPT|lang:LANGUAGE]] " +
+    "followed by its Russian translation (Russian fragments verbatim). " +
+    `SCRIPT is one of: ${scriptList} — it names the source script, never write the result in it. ` +
+    "LANGUAGE is the source language name in Russian.";
+  const format = isParallelTitleCandidate(text, sourceScripts)
+    ? "The text looks like one short title written in two scripts. If both parts mean the same, answer [[text]] " +
+      `on the first line and one Russian translation below. Otherwise answer ${sections}`
+    : sourceScripts.length > 1
+      ? `The selection contains these scripts: ${scriptList}. Answer ${sections} ` +
+        "Every listed script needs at least one non-empty section."
+      : "Answer [[text]] on the first line and the Russian translation below. Only if the text truly mixes " +
+        "several languages of one script, answer [[multilingual]] on the first line, then for each language a line " +
+        "[[script:SCRIPT|lang:LANGUAGE]] and its Russian translation.";
 
   return [
     {
       role: "system",
       content:
-        `Ты профессиональный переводчик на язык «${lang}». Самостоятельно определи язык каждого предложения или смыслового фрагмента. ` +
-        "Не считай английский языком по умолчанию: в одном выделении могут одновременно встречаться русский, английский, арабский и другие языки. " +
-        "Переводи только фрагменты не на целевом языке; фрагменты уже на целевом языке сохраняй дословно. Сохраняй порядок, абзацы, имена собственные и технические термины. " +
-        "Определяй количество языков только по исходному пользовательскому тексту: русский язык результата не является вторым исходным языком.\n" +
-        "Метка [[skip]] запрещена: проверка русского текста уже выполнена локально до запроса. Служебные метки пиши точно как указано.\n" +
-        "Все содержательные строки ответа пиши только по-русски. Никогда не повторяй иностранный оригинал, не переводи его на третий язык, " +
-        "не копируй формулировки этой инструкции и не добавляй подписи «Перевод:» или «Translation:».\n" +
-        "Классический или коранический арабский переводи непосредственно с арабского с учётом грамматики и доступного контекста; не подменяй перевод толкованием или обратным переводом через другой язык.\n" +
-        `${format}\n` +
-        (parallelTitle
-          ? "Не добавляй никаких пояснений вне выбранного формата."
-          : "Создавай отдельную секцию для каждого последовательного предложения или блока исходного языка и сохраняй исходный порядок. Соседние фрагменты одного языка можно объединить. Не добавляй никаких пояснений вне секций.")
+        "You translate the user's text into Russian. Detect the language of each sentence yourself; never assume English. " +
+        "Keep parts already in Russian verbatim. Preserve order, paragraphs, line breaks, names and technical terms.\n" +
+        `${COMMON_RULES}\n${format}`
     },
     { role: "user", content: text }
   ];
@@ -564,33 +700,25 @@ function buildTextMessages(text, lang, rawSourceScripts = []) {
 // а нужно то единственное, в котором оно употреблено здесь.
 function buildWordMessages(text, context, lang, rawSourceScripts = []) {
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  const scriptHint = sourceScripts.length
-    ? ` Локально определённая письменность выделения: ${sourceScripts.join(", ")}.`
-    : "";
+  const scriptHint = sourceScripts.length ? ` Script: ${sourceScripts.join(", ")}.` : "";
   return [
     {
       role: "system",
       content:
-        `Ты профессиональный переводчик на ${lang} язык. Самостоятельно определи исходный язык выделенного фрагмента; не считай английский языком по умолчанию.${scriptHint} ` +
-        "Контекст, если он дан, нужен ТОЛЬКО для определения значения — переводить его целиком не нужно.\n" +
-        "Сначала определи, как фрагмент употреблён именно здесь. Заглавная буква сама по себе НЕ означает, что это имя или название: слово может стоять в начале предложения. Если контекста нет, но фрагмент является обычным словарным словом хотя бы одного языка, предпочти перевод. Например, «Why» — обычное английское слово и переводится как «почему».\n" +
-        "Используй режим reference только если по контексту фрагмент употреблён как имя, название, бренд или никнейм либо если это действительно опечатка или придуманное слово без словарного значения. Например, Apple в «Apple released an update» — бренд, а apple в «I ate an apple» — обычное слово. Не выдумывай значения и факты.\n" +
-        "Ответь строго в одном из двух форматов. Служебную метку пиши точно как указано.\n" +
-        "Метка [[skip]] запрещена. Даже если перевод не требуется, используй [[translation]] и верни фрагмент без изменений.\n" +
-        "Для обычного слова или выражения первая строка должна быть только [[translation]]. " +
-        `Со второй строки напиши сам перевод в подходящем по контексту значении на языке «${lang}». ` +
-        "При необходимости следующей строкой можно написать «другие значения:» и короткий список.\n" +
-        `Если фрагмент уже на языке «${lang}», верни его без изменений. Строку «другие значения» не пиши, если их нет.\n` +
-        "Не повторяй иностранный оригинал, не копируй формулировки инструкции и не добавляй отдельную строку «Перевод:».\n" +
-        "Классический или коранический арабский переводи непосредственно с арабского с учётом грамматики и контекста, не через английский и не в виде толкования.\n" +
-        "Для имени, названия, бренда, никнейма, опечатки или придуманного слова первая строка должна быть только [[reference]]. " +
-        "Со второй строки напиши одну категорию: название, имя, бренд, никнейм, опечатка или неизвестный термин. " +
-        `Со следующей строки дай одно короткое осторожное объяснение на языке «${lang}» по написанию и контексту; если определить нельзя, напиши, что это, вероятно, имя или название.\n` +
-        "Никакого другого текста в ответе быть не должно."
+        `Explain a selected word or short phrase to a Russian reader. Detect its language; never assume English.${scriptHint} ` +
+        "Use the context only to choose the meaning; do not translate the context. " +
+        "A capital letter alone does not make a name: “Why” is the word «почему»; “Apple released an update” is a brand, “I ate an apple” is a word. " +
+        "Prefer a normal translation whenever the fragment is a dictionary word.\n" +
+        `${COMMON_RULES}\n` +
+        "Ordinary word or phrase — answer exactly:\n[[translation]]\n<Russian translation in this context>\n" +
+        "другие значения: <short comma-separated list> (omit this line if there are none)\n" +
+        "Only for a name, title, brand, nickname, typo or made-up word — answer exactly:\n[[reference]]\n" +
+        "<one category in Russian: название, имя, бренд, никнейм, опечатка or неизвестный термин>\n" +
+        "<one short cautious explanation in Russian; do not invent facts; if unsure, say it is probably a name or a title>"
     },
     {
       role: "user",
-      content: `${context ? `Контекст: ${context}\n\n` : "Контекст не предоставлен.\n\n"}Выделенный фрагмент: ${text}`
+      content: `${context ? `Context: ${context}\n` : ""}Fragment: ${text}`
     }
   ];
 }

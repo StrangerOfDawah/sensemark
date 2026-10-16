@@ -237,22 +237,37 @@ test("old tabs receive all content helpers after an initial ping failure", async
       "word-response.js",
       "text-response.js",
       "ui-scale.js",
+      "builtin-translator.js",
+      "card-theme.js",
       "content.js"
     ]
   );
   assert.equal(background.__state.sentMessages.length, 2);
 });
 
-test("installation creates the context menu and opens mandatory consent settings", async () => {
-  const background = loadBackground();
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test("installation creates the context menu and opens the mode choice", async () => {
+  const background = loadBackground({ settings: { apiKey: "", provider: "" } });
   background.__events.installed.emit({ reason: "install" });
+  await tick();
   assert.equal(background.__state.menuItems[0].id, "translate-selection");
   assert.equal(background.__state.optionsOpened, 1);
+  assert.equal(background.__settings.provider, "builtin", "новые пользователи начинают бесплатно");
+});
 
-  const updated = loadBackground({ settings: { privacyConsentVersion: 0 } });
-  updated.__events.installed.emit({ reason: "update" });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(updated.__state.optionsOpened, 1);
+test("an update keeps OpenAI for users who already have a key", async () => {
+  const withKey = loadBackground({ settings: { provider: "", apiKey: "sk-old", privacyConsentVersion: 0 } });
+  withKey.__events.installed.emit({ reason: "update" });
+  await tick();
+  assert.equal(withKey.__settings.provider, "openai");
+  assert.equal(withKey.__state.optionsOpened, 1, "режиму OpenAI нужно согласие");
+
+  const free = loadBackground({ settings: { provider: "", apiKey: "", privacyConsentVersion: 0 } });
+  free.__events.installed.emit({ reason: "update" });
+  await tick();
+  assert.equal(free.__settings.provider, "builtin");
+  assert.equal(free.__state.optionsOpened, 0, "бесплатный режим не дёргает настройками");
 });
 
 test("runtime translate messages keep the response channel open", async () => {
@@ -271,4 +286,74 @@ test("runtime translate messages keep the response channel open", async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(response.ok, true);
   assert.equal(response.text, "[[text]]\nПривет.");
+});
+
+test("toolbar icon menu toggles auto-translation and lifts an active pause", async () => {
+  const background = loadBackground({ settings: { autoTranslate: true, autoPausedUntil: 0 } });
+  background.__events.installed.emit({ reason: "update" });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(background.__state.menuItems.map((item) => [item.id, item.contexts[0]]))),
+    [
+      ["translate-selection", "selection"],
+      ["toggle-auto-translate", "action"]
+    ]
+  );
+
+  await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
+  assert.equal(background.__settings.autoTranslate, false);
+
+  await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
+  assert.equal(background.__settings.autoTranslate, true);
+
+  background.__settings.autoPausedUntil = Date.now() + 60_000;
+  await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
+  assert.equal(background.__settings.autoTranslate, true, "снятие паузы не выключает автоперевод");
+  assert.equal(background.__settings.autoPausedUntil, 0);
+});
+
+test("toolbar icon menu title reflects off, paused and on states", async () => {
+  const background = loadBackground({ settings: { autoTranslate: false, autoPausedUntil: 0 } });
+  const titles = [];
+  const record = async () => {
+    await background.refreshAutoMenuTitle();
+    titles.push(background.__state.menuUpdates.at(-1).title);
+  };
+  await record();
+  background.__settings.autoTranslate = true;
+  background.__settings.autoPausedUntil = Date.now() + 60_000;
+  await record();
+  background.__settings.autoPausedUntil = 0;
+  await record();
+  assert.deepEqual(titles, [
+    "Включить автоперевод",
+    "Снять паузу автоперевода",
+    "Выключить автоперевод"
+  ]);
+});
+
+test("selection context menu item runs the same translation path as the hotkey", async () => {
+  const background = loadBackground();
+  await background.onMenuClicked({ menuItemId: "translate-selection", frameId: 3 }, { id: 7 });
+  assert.deepEqual(JSON.parse(JSON.stringify(background.__state.sentMessages[0])), [
+    7,
+    { type: "translate-selection" },
+    { frameId: 3 }
+  ]);
+});
+
+test("translation cache survives a service worker restart", async () => {
+  const sessionStore = {};
+  let calls = 0;
+  const fetch = async () => {
+    calls++;
+    return jsonResponse("[[text]]\nПривет, друзья мои.");
+  };
+  const first = loadBackground({ fetch, sessionStore });
+  assert.equal(await first.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Chrome усыпил service worker: память пропала, сессия браузера осталась.
+  const restarted = loadBackground({ fetch, sessionStore });
+  assert.equal(await restarted.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
+  assert.equal(calls, 1);
 });

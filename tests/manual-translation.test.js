@@ -11,15 +11,18 @@ const {
 } = require("../manual-translation.js");
 
 test("manual translation validates setup before a request", () => {
-  assert.equal(settingsIssue({ apiKey: "key", privacyConsentVersion: 0 }).code, "consent");
+  const openai = { provider: "openai" };
+  assert.equal(settingsIssue({ ...openai, apiKey: "key", privacyConsentVersion: 0 }).code, "consent");
   assert.equal(
-    settingsIssue({ apiKey: "  ", privacyConsentVersion: PRIVACY_CONSENT_VERSION }).code,
+    settingsIssue({ ...openai, apiKey: "  ", privacyConsentVersion: PRIVACY_CONSENT_VERSION }).code,
     "api-key"
   );
   assert.equal(
-    settingsIssue({ apiKey: "key", privacyConsentVersion: PRIVACY_CONSENT_VERSION }),
+    settingsIssue({ ...openai, apiKey: "key", privacyConsentVersion: PRIVACY_CONSENT_VERSION }),
     null
   );
+  // Бесплатный переводчик Chrome не требует ни ключа, ни согласия.
+  assert.equal(settingsIssue({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 }), null);
 });
 
 test("manual request plan rejects empty, oversized, and non-word input", () => {

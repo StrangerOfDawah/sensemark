@@ -15,10 +15,16 @@
 npm ci --ignore-scripts
 npm test
 npm run test:coverage
+npm run test:e2e
 npm run check
 bash scripts/package-extension.sh
 node scripts/validate-extension.js dist/sensemark-vX.Y.Z.zip
 ```
+
+`npm run test:e2e` загружает расширение в настоящий Chromium, подменяет OpenAI
+заглушкой и автоматически проходит основные пункты списка ниже. Скриншоты
+карточки и popup сохраняются в `dist/e2e-screenshots/` (в CI — артефакт
+`e2e-screenshots-N`) для визуальной проверки.
 
 Проверить распакованную сборку в отдельном профиле Chrome:
 

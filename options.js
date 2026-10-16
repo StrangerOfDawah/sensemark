@@ -1,9 +1,14 @@
+const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULTS = {
+  provider: "builtin",
   apiKey: "",
-  model: "gpt-4o-mini",
+  model: DEFAULT_MODEL,
   targetLang: "русский",
   autoTranslate: false,
-  privacyConsentVersion: 0
+  privacyConsentVersion: 0,
+  cardTheme: "auto",
+  cardFont: "system",
+  matchPageSize: true
 };
 const PRIVACY_CONSENT_VERSION = 1;
 
@@ -11,8 +16,20 @@ const fields = {
   apiKey: document.getElementById("apiKey"),
   model: document.getElementById("model"),
   autoTranslate: document.getElementById("autoTranslate"),
-  dataConsent: document.getElementById("dataConsent")
+  dataConsent: document.getElementById("dataConsent"),
+  matchPageSize: document.getElementById("matchPageSize")
 };
+const themeInputs = [...document.querySelectorAll('input[name="cardTheme"]')];
+const fontInputs = [...document.querySelectorAll('input[name="cardFont"]')];
+const preview = document.getElementById("preview");
+const previewText = document.getElementById("previewText");
+const PREVIEW_FONTS = {
+  system: "",
+  golos: '"Sensemark Golos", sans-serif',
+  literata: '"Sensemark Literata", Georgia, serif'
+};
+const providerInputs = [...document.querySelectorAll('input[name="provider"]')];
+const openaiSettings = document.getElementById("openaiSettings");
 const testBtn = document.getElementById("test");
 const testStatus = document.getElementById("testStatus");
 const toastEl = document.getElementById("toast");
@@ -43,15 +60,20 @@ const fitKey = () => {
 
 function init() {
   chrome.storage.local.get(DEFAULTS).then((settings) => {
-    // Модель, вписанную вручную в прошлой версии, сохраняем как пункт списка.
+    // Старые модели OpenAI отключаются — показываем и сохраняем актуальную.
     if (![...fields.model.options].some((o) => o.value === settings.model)) {
-      const custom = new Option(settings.model, settings.model);
-      fields.model.add(custom);
+      settings.model = DEFAULT_MODEL;
+      chrome.storage.local.set({ model: DEFAULT_MODEL }).catch(() => {});
     }
+    setProvider(settings.provider === "openai" ? "openai" : "builtin");
     fields.apiKey.value = settings.apiKey;
     fields.model.value = settings.model;
     fields.autoTranslate.checked = settings.autoTranslate;
     fields.dataConsent.checked = settings.privacyConsentVersion === PRIVACY_CONSENT_VERSION;
+    checkValue(themeInputs, settings.cardTheme, "auto");
+    checkValue(fontInputs, settings.cardFont, "system");
+    fields.matchPageSize.checked = settings.matchPageSize !== false;
+    updatePreview();
     fitKey();
   });
 
@@ -64,6 +86,18 @@ function init() {
   fields.apiKey.addEventListener("input", () => { fitKey(); scheduleSave(); });
   fields.model.addEventListener("change", scheduleSave);
   fields.autoTranslate.addEventListener("change", scheduleSave);
+  for (const input of [...themeInputs, ...fontInputs, fields.matchPageSize]) {
+    input.addEventListener("change", () => {
+      updatePreview();
+      save();
+    });
+  }
+  for (const input of providerInputs) {
+    input.addEventListener("change", () => {
+      setProvider(input.value);
+      save();
+    });
+  }
   fields.dataConsent.addEventListener("change", () => {
     save();
     if (!fields.dataConsent.checked) {
@@ -83,14 +117,45 @@ function init() {
   });
 }
 
+function currentProvider() {
+  return providerInputs.find((input) => input.checked)?.value === "openai" ? "openai" : "builtin";
+}
+
+// Настройки OpenAI (ключ, модель, согласие) видны только в режиме OpenAI.
+function setProvider(provider) {
+  for (const input of providerInputs) input.checked = input.value === provider;
+  openaiSettings.hidden = provider !== "openai";
+}
+
+function checkValue(inputs, value, fallback) {
+  const known = inputs.some((input) => input.value === value) ? value : fallback;
+  for (const input of inputs) input.checked = input.value === known;
+}
+
+function checkedValue(inputs, fallback) {
+  return inputs.find((input) => input.checked)?.value || fallback;
+}
+
+// Предпросмотр карточки: «Под страницу» показываем на обычной белой странице.
+function updatePreview() {
+  const theme = checkedValue(themeInputs, "auto");
+  preview.classList.toggle("dark", theme === "dark");
+  previewText.style.fontFamily = PREVIEW_FONTS[checkedValue(fontInputs, "system")] || "";
+  previewText.style.fontSize = fields.matchPageSize.checked ? "16px" : "15px";
+}
+
 function collect() {
   return {
+    provider: currentProvider(),
     apiKey: fields.apiKey.value.trim(),
     model: fields.model.value.trim() || DEFAULTS.model,
     // Язык зафиксирован — поля ввода нет, чтобы в промпт не попал произвольный текст.
     targetLang: DEFAULTS.targetLang,
     autoTranslate: fields.autoTranslate.checked,
-    privacyConsentVersion: fields.dataConsent.checked ? PRIVACY_CONSENT_VERSION : 0
+    privacyConsentVersion: fields.dataConsent.checked ? PRIVACY_CONSENT_VERSION : 0,
+    cardTheme: checkedValue(themeInputs, "auto"),
+    cardFont: checkedValue(fontInputs, "system"),
+    matchPageSize: fields.matchPageSize.checked
   };
 }
 
@@ -141,7 +206,12 @@ async function runTest() {
   testBtn.disabled = false;
 
   if (response?.ok) {
-    setTestStatus(`Работает — «${response.text}»`, "ok");
+    // Служебные метки ответа ([[text]] и т. п.) пользователю не показываем.
+    const shown = String(response.text || "")
+      .replace(/^\s*\[\[[^\]]+\]\]\s*/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    setTestStatus(`Работает — «${shown}»`, "ok");
   } else {
     setTestStatus(response?.error || "Не удалось выполнить запрос", "err");
   }

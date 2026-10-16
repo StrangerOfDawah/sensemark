@@ -6,82 +6,70 @@
     root.SensemarkSelectionText = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const ARABIC_LETTER = /\p{Script=Arabic}/u;
-  const COMBINING_MARK = /\p{M}/gu;
-  const DIRECTIONAL_CONTROL = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+  const DIRECTIONAL_CONTROL = /[؜‎‏‪-‮⁦-⁩]/gu;
+  // Мягкий перенос, zero-width space и BOM не видны и смысла не несут.
+  // ZWJ/ZWNJ (‌, ‍) не трогаем: они нужны персидскому, хинди и эмодзи.
+  const INVISIBLE_CHARS = /[­​﻿]/gu;
+  // Private Use Area — символы иконочных шрифтов (стрелки, «поделиться» и т. п.).
+  // Настоящий текст на любом языке в эти диапазоны не попадает.
+  const PRIVATE_USE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;
 
-  function normalizeSelectionText(value) {
+  function stripInvisible(value) {
     return String(value || "")
       .replace(DIRECTIONAL_CONTROL, "")
-      .replace(/\u00AD/gu, "")
-      .replace(/\s+/gu, " ")
+      .replace(INVISIBLE_CHARS, "")
+      .replace(PRIVATE_USE, "");
+  }
+
+  // Пробелы внутри строки схлопываются, переводы строк (абзацы) сохраняются.
+  function normalizeSelectionText(value) {
+    return stripInvisible(value)
+      .replace(/[^\S\n]+/gu, " ")
+      .replace(/ *\n */gu, "\n")
+      .replace(/\n{2,}/gu, "\n")
       .trim();
   }
 
-  function isQuranGlyphFont(value) {
-    return /^code_v\d+$/i.test(String(value || "").trim());
+  function partText(part) {
+    if (part?.lineBreak) return "\n";
+    const text = stripInvisible(part?.text);
+    // В обычной вёрстке перенос строки в исходнике HTML — это просто пробел.
+    // Только в preformatted-блоках (код, стихи) он настоящий.
+    return part?.preserveLines ? text.replace(/[^\S\n]+/gu, " ") : text.replace(/\s+/gu, " ");
   }
 
-  function arabicTokens(value) {
-    return normalizeSelectionText(value).split(/\s+/u).filter(Boolean);
-  }
-
-  // Quran.com already places two semantic Arabic copies beside its page-font
-  // glyphs. Prefer the simple Imlaei copy: it has the same words with fewer
-  // Quranic combining marks, which is cheaper and easier for the model to read.
-  function selectArabicAlternative(candidates, expectedWords = 0) {
-    return (Array.isArray(candidates) ? candidates : [])
-      .map((value, order) => {
-        const text = normalizeSelectionText(value);
-        const tokens = arabicTokens(text);
-        return {
-          text,
-          tokens,
-          order,
-          marks: (text.match(COMBINING_MARK) || []).length
-        };
-      })
-      .filter((candidate) => candidate.tokens.length > 0 && ARABIC_LETTER.test(candidate.text))
-      .sort((left, right) => {
-        const leftDistance = expectedWords
-          ? Math.abs(left.tokens.length - expectedWords)
-          : 0;
-        const rightDistance = expectedWords
-          ? Math.abs(right.tokens.length - expectedWords)
-          : 0;
-        return (
-          leftDistance - rightDistance ||
-          left.marks - right.marks ||
-          left.text.length - right.text.length ||
-          left.order - right.order
-        );
-      })[0]?.text || "";
-  }
-
-  function alternativeWord(value, oneBasedIndex) {
-    const index = Number(oneBasedIndex) - 1;
-    if (!Number.isInteger(index) || index < 0) return "";
-    return arabicTokens(value)[index] || "";
-  }
-
+  // parts — фрагменты выделения по порядку: { text, noise, block, lineBreak, preserveLines }.
+  // Фрагменты одного блока (абзаца) склеиваются как есть, между блоками — перенос строки.
+  // Без block (старый формат) фрагменты разделяются пробелом.
   function joinSelectionParts(parts) {
-    const normalized = (Array.isArray(parts) ? parts : [])
-      .map((part) => ({
-        text: normalizeSelectionText(part?.text),
-        noise: Boolean(part?.noise)
-      }))
-      .filter((part) => part.text);
+    const normalized = (Array.isArray(parts) ? parts : []).map((part) => ({
+      text: partText(part),
+      noise: Boolean(part?.noise),
+      block: part?.block,
+      lineBreak: Boolean(part?.lineBreak)
+    }));
 
-    const content = normalized.filter((part) => !part.noise);
-    const selected = content.length ? content : normalized;
-    return normalizeSelectionText(selected.map((part) => part.text).join(" "));
+    const meaningful = normalized.filter((part) => !part.lineBreak && part.text.trim());
+    if (!meaningful.length) return "";
+    // Если выделен только элемент интерфейса (например, одна кнопка), переводим его.
+    const keepNoise = meaningful.every((part) => part.noise);
+    const kept = normalized.filter((part) => keepNoise || !part.noise);
+
+    let result = "";
+    let previous = null;
+    for (const part of kept) {
+      if (previous) {
+        if (part.block === undefined || previous.block === undefined) result += " ";
+        else if (part.block !== previous.block) result += "\n";
+      }
+      result += part.text;
+      previous = part;
+    }
+    return normalizeSelectionText(result);
   }
 
   return {
-    alternativeWord,
-    isQuranGlyphFont,
     joinSelectionParts,
-    normalizeSelectionText,
-    selectArabicAlternative
+    normalizeSelectionText
   };
 });

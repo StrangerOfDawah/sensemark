@@ -25,6 +25,14 @@ zip -q -r "$ARCHIVE" \
   text-response.js \
   manual-translation.js \
   ui-scale.js \
+  builtin-translator.js \
+  card-theme.js \
+  fonts/golos-text-latin-400.woff2 \
+  fonts/golos-text-cyrillic-400.woff2 \
+  fonts/literata-latin-400.woff2 \
+  fonts/literata-cyrillic-400.woff2 \
+  fonts/OFL-GolosText.txt \
+  fonts/OFL-Literata.txt \
   content.js \
   popup.html \
   popup.css \

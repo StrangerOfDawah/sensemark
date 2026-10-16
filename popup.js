@@ -3,7 +3,7 @@
     typeof module === "object" && module.exports
       ? require("./manual-translation.js")
       : root.SensemarkManualTranslation;
-  const api = factory(manual);
+  const api = factory(manual, root);
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;
@@ -20,7 +20,7 @@
         .init();
     }
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, (manual) => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (manual, root) => {
   if (!manual) throw new Error("Sensemark: manual translation helper is unavailable.");
 
   function createPopupController(environment) {
@@ -31,6 +31,23 @@
     const autoTranslateDelayMs = environment.autoTranslateDelayMs ?? 850;
     const pasteTranslateDelayMs = environment.pasteTranslateDelayMs ?? 60;
     const scheduleTimeout = window.setTimeout?.bind(window) || setTimeout;
+    // Бесплатный режим — встроенный переводчик Chrome прямо в окне popup;
+    // режим OpenAI — запрос через background, как на странице.
+    const builtin = environment.builtin || root.SensemarkBuiltin;
+    let builtinEngine = null;
+    function openPort() {
+      if (settings.provider === "openai" || !builtin) {
+        return chrome.runtime.connect({ name: "translate" });
+      }
+      builtinEngine ||= builtin.createBuiltinTranslator({
+        Translator: environment.Translator ?? window.Translator,
+        detectLanguage: (text) => chrome.i18n.detectLanguage(text),
+        isRussianOnly: environment.language?.isRussianOnly ?? root.SensemarkLanguageDetection?.isRussianOnly,
+        detectScripts: (text) =>
+          (environment.language ?? root.SensemarkLanguageDetection)?.detectSignificantScripts?.(text) || []
+      });
+      return builtin.openLocalPort(builtinEngine);
+    }
     const cancelTimeout = window.clearTimeout?.bind(window) || clearTimeout;
 
     const elements = {
@@ -225,7 +242,7 @@
     function connect(plan, id) {
       let port;
       try {
-        port = chrome.runtime.connect({ name: "translate" });
+        port = openPort();
       } catch {
         fail("Расширение было обновлено. Закройте popup и откройте его снова.");
         return;
@@ -267,6 +284,8 @@
               // Канал уже закрыт.
             }
           }
+        } else if (message?.type === "status") {
+          if (!visible) setStatus(message.text, "busy");
         } else if (message?.type === "error") {
           release();
           fail(message.error);

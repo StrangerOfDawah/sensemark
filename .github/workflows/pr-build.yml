@@ -37,6 +37,21 @@ jobs:
       - name: Run required tests with coverage thresholds
         run: npm run test:coverage
 
+      - name: Install Chromium for end-to-end tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests in real Chromium
+        run: npm run test:e2e
+
+      - name: Upload end-to-end screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots-${{ github.run_number }}
+          path: dist/e2e-screenshots
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Build extension archive
         run: bash scripts/package-extension.sh
 

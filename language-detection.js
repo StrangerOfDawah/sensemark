@@ -54,8 +54,37 @@
     return [...scripts];
   }
 
+  // Письменности, которых в тексте заметная доля. Одно «π» или «東京» в
+  // английском абзаце не делает его многоязычным: иначе модель обязана
+  // отвечать секциями, а лишний формат — частая причина повторного запроса.
+  function detectSignificantScripts(text, { minLetters = 3, minShare = 0.15 } = {}) {
+    const counts = new Map();
+    let total = 0;
+    for (const char of String(text || "")) {
+      if (!LETTER.test(char)) continue;
+      const [script] = detectScripts(char);
+      counts.set(script, (counts.get(script) || 0) + 1);
+      total++;
+    }
+    // Японский: иероглифы и кана — одна письменность, как в detectScripts.
+    const merged = new Map();
+    for (const script of detectScripts(text)) merged.set(script, 0);
+    for (const [script, count] of counts) {
+      const target =
+        script === "Han" && merged.has("Japanese") ? "Japanese"
+          : script === "Han" && merged.has("Korean") ? "Korean"
+            : script;
+      if (merged.has(target)) merged.set(target, merged.get(target) + count);
+    }
+    const top = [...merged].sort((left, right) => right[1] - left[1])[0]?.[0];
+    // Порядок — как в тексте; самая крупная письменность остаётся всегда.
+    return [...merged]
+      .filter(([script, count]) => script === top || (count >= minLetters && count / total >= minShare))
+      .map(([script]) => script);
+  }
+
   function hasMultipleScripts(text) {
-    return detectScripts(text).length > 1;
+    return detectSignificantScripts(text).length > 1;
   }
 
   function isRussianOnly(text, detection = null) {
@@ -118,5 +147,5 @@
     return true;
   }
 
-  return { detectScripts, hasMultipleScripts, isRussianOnly };
+  return { detectScripts, detectSignificantScripts, hasMultipleScripts, isRussianOnly };
 });

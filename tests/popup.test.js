@@ -46,6 +46,7 @@ async function setupPopup(overrides = {}) {
   const ports = [];
   const storageChanges = eventHub();
   const settings = {
+    provider: "openai",
     apiKey: "test-key",
     model: "gpt-4o-mini",
     targetLang: "русский",
@@ -93,7 +94,10 @@ async function setupPopup(overrides = {}) {
     navigator,
     window: dom.window,
     autoTranslateDelayMs: overrides.autoTranslateDelayMs ?? 60_000,
-    pasteTranslateDelayMs: overrides.pasteTranslateDelayMs ?? 60_000
+    pasteTranslateDelayMs: overrides.pasteTranslateDelayMs ?? 60_000,
+    builtin: overrides.builtin,
+    Translator: overrides.Translator,
+    language: require("../language-detection.js")
   });
   await controller.init();
 
@@ -305,4 +309,29 @@ test("popup reacts to settings changes and supports the keyboard shortcut", asyn
   );
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(context.ports.length, 1);
+});
+
+test("popup in free mode translates on the device without a key or an API port", async () => {
+  const context = await setupPopup({
+    settings: { provider: "builtin", apiKey: "", privacyConsentVersion: 0 },
+    pasteTranslateDelayMs: 5,
+    builtin: require("../builtin-translator.js"),
+    Translator: {
+      async availability() {
+        return "available";
+      },
+      async create({ sourceLanguage }) {
+        return { translate: async (text) => `RU[${sourceLanguage}] ${text}` };
+      }
+    }
+  });
+
+  assert.equal(context.document.getElementById("setupBanner").hidden, true, "ключ не нужен");
+  setInput(context, "The new version is available now.", "insertFromPaste");
+  await wait(40);
+  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  assert.match(
+    context.document.getElementById("resultBody").textContent,
+    /RU\[en\] The new version is available now\./
+  );
 });

@@ -198,6 +198,53 @@
         line-height: 1.5;
       }
 
+      [hidden] { display: none !important; }
+
+      /* ── Выбор режима перевода ──────────────────────── */
+      .mode {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        cursor: pointer;
+      }
+      .mode input {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        margin-top: 3px;
+        accent-color: var(--a2);
+        cursor: pointer;
+      }
+      .mode-title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 7px;
+        font-size: 15px;
+        font-weight: 500;
+      }
+      .tag {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        line-height: 1;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--panel-border);
+        color: var(--sec);
+        background: var(--panel);
+      }
+      .tag.free {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+        background: color-mix(in srgb, var(--ok) 12%, transparent);
+      }
+      .tag.smart {
+        color: var(--a1);
+        border-color: color-mix(in srgb, var(--a2) 45%, transparent);
+        background: color-mix(in srgb, var(--a2) 15%, transparent);
+      }
+
       /* ── Поля ───────────────────────────────────────── */
       input[type="password"],
       input[type="text"],
@@ -402,6 +449,98 @@
         transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.21, 1.02, 0.36, 1);
       }
       #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+      /* ── Оформление карточки ────────────────────────── */
+      @font-face {
+        font-family: "Sensemark Golos";
+        src: url("fonts/golos-text-latin-400.woff2") format("woff2");
+        unicode-range: U+0000-00FF, U+2000-206F;
+      }
+      @font-face {
+        font-family: "Sensemark Golos";
+        src: url("fonts/golos-text-cyrillic-400.woff2") format("woff2");
+        unicode-range: U+0400-045F, U+0490-0491, U+2116;
+      }
+      @font-face {
+        font-family: "Sensemark Literata";
+        src: url("fonts/literata-latin-400.woff2") format("woff2");
+        unicode-range: U+0000-00FF, U+2000-206F;
+      }
+      @font-face {
+        font-family: "Sensemark Literata";
+        src: url("fonts/literata-cyrillic-400.woff2") format("woff2");
+        unicode-range: U+0400-045F, U+0490-0491, U+2116;
+      }
+      .segmented {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        padding: 3px;
+        border-radius: 11px;
+        background: var(--field);
+        border: 1px solid var(--field-border);
+      }
+      .segmented label { position: relative; cursor: pointer; }
+      .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+      .segmented span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 32px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--sec);
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+      .segmented input:checked + span { background: var(--grad); color: #fff; font-weight: 600; }
+      .segmented input:focus-visible + span { box-shadow: 0 0 0 2px var(--a2); }
+      .fonts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .fonts label { position: relative; cursor: pointer; }
+      .fonts input { position: absolute; opacity: 0; pointer-events: none; }
+      .font-card {
+        display: block;
+        border-radius: 13px;
+        border: 1px solid var(--field-border);
+        background: var(--field);
+        padding: 10px 12px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .font-sample { display: block; font-size: 24px; line-height: 1.1; }
+      .font-name { display: block; font-size: 12px; color: var(--sec); margin-top: 4px; }
+      .fonts input:checked + .font-card { border-color: var(--a2); box-shadow: 0 0 0 1px var(--a2), 0 0 22px var(--glow); }
+      .fonts input:focus-visible + .font-card { box-shadow: 0 0 0 2px var(--a2); }
+      .preview {
+        border-radius: 14px;
+        padding: 12px 16px;
+        background: #ffffff;
+        border: 1px solid #e3e3e8;
+        color: #16171c;
+        font-size: 16px;
+        line-height: 1.55;
+        transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+      }
+      .preview.dark { background: #1c1f26; border-color: #30363d; color: #eef2f7; }
+      .preview-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font: 600 12.5px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+        color: #62646f;
+        margin-bottom: 4px;
+      }
+      .preview.dark .preview-head { color: #a3adbb; }
+      .preview-head::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #64d2ff, #8f5bff);
+      }
     </style>
   </head>
   <body>
@@ -455,6 +594,37 @@
         <p class="app-sub">Выделите текст на любом языке — и нажмите <span id="kbd"></span></p>
       </header>
 
+      <div class="group-label">Режим перевода</div>
+      <section class="group" id="modeGroup">
+        <div class="row">
+          <label class="mode">
+            <input type="radio" name="provider" value="builtin" />
+            <span class="row-text">
+              <span class="mode-title">Встроенный переводчик Chrome <span class="tag free">Бесплатно</span></span>
+              <span class="row-cap" style="display:block">
+                Работает прямо на компьютере: без ключа и без оплаты, текст никуда не отправляется.
+                Обычный машинный перевод — слово переводится без учёта контекста.
+              </span>
+            </span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="mode">
+            <input type="radio" name="provider" value="openai" />
+            <span class="row-text">
+              <span class="mode-title">OpenAI <span class="tag smart">Умнее</span><span class="tag">≈ $1 в год</span></span>
+              <span class="row-cap" style="display:block">
+                Понимает контекст: выбирает нужное значение слова, объясняет имена и названия,
+                сам отбрасывает мусор со страницы и аккуратно разбирает смешанные языки.
+                Нужен свой ключ OpenAI с оплатой по факту — при ежедневном чтении это около $1 в год,
+                пополнения на $5 хватает на несколько лет.
+              </span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <div id="openaiSettings">
       <div class="group-label">Конфиденциальность</div>
       <section class="group">
         <div class="row">
@@ -484,7 +654,7 @@
         </div>
       </section>
 
-      <div class="group-label">Подключение</div>
+      <div class="group-label">Подключение OpenAI</div>
       <section class="group">
         <div class="row col">
           <div class="row-text">
@@ -503,22 +673,21 @@
           <span style="flex:1"></span>
           <span class="status" id="testStatus"></span>
         </div>
-      </section>
 
-      <div class="group-label">Перевод</div>
-      <section class="group">
         <div class="row">
           <div class="row-text">
             <div class="row-title">Модель</div>
-            <div class="row-cap">gpt-4o-mini — экономичная модель по умолчанию.</div>
+            <div class="row-cap">gpt-6-luna — самая экономичная актуальная модель OpenAI.</div>
           </div>
           <select id="model">
-            <option value="gpt-4o-mini">gpt-4o-mini</option>
-            <option value="gpt-4o">gpt-4o</option>
-            <option value="gpt-4.1-mini">gpt-4.1-mini</option>
-            <option value="gpt-4.1">gpt-4.1</option>
+            <option value="gpt-6-luna">gpt-6-luna</option>
           </select>
         </div>
+      </section>
+      </div>
+
+      <div class="group-label">Перевод</div>
+      <section class="group">
         <div class="row">
           <div class="row-text">
             <div class="row-title">Язык перевода</div>
@@ -529,12 +698,55 @@
         <div class="row">
           <div class="row-text">
             <div class="row-title">Автоперевод при выделении</div>
-            <div class="row-cap">Без горячей клавиши. Каждое выделение — отдельный запрос к API.</div>
+            <div class="row-cap">Переводит выделение мышью без горячей клавиши. Если сразу нажать ⌘C / Ctrl+C или правую кнопку — не переводит.</div>
           </div>
           <label class="switch">
             <input id="autoTranslate" type="checkbox" />
             <span class="knob"></span>
           </label>
+        </div>
+      </section>
+
+      <div class="group-label">Оформление</div>
+      <section class="group" id="appearanceGroup">
+        <div class="row col">
+          <div class="row-text">
+            <div class="row-title">Тема карточки</div>
+            <div class="row-cap">«Под страницу» берёт цвет фона и размер текста у сайта, который вы читаете.</div>
+          </div>
+          <div class="segmented" role="radiogroup" aria-label="Тема карточки">
+            <label><input type="radio" name="cardTheme" value="auto" /><span>Под страницу</span></label>
+            <label><input type="radio" name="cardTheme" value="light" /><span>Светлая</span></label>
+            <label><input type="radio" name="cardTheme" value="dark" /><span>Тёмная</span></label>
+          </div>
+        </div>
+        <div class="row col">
+          <div class="row-text">
+            <div class="row-title">Шрифт перевода</div>
+            <div class="row-cap">Лучший шрифт у каждого свой — попробуйте и оставьте тот, что читается легче.</div>
+          </div>
+          <div class="fonts" role="radiogroup" aria-label="Шрифт перевода">
+            <label><input type="radio" name="cardFont" value="system" /><span class="font-card"><span class="font-sample">Аа</span><span class="font-name">Системный</span></span></label>
+            <label><input type="radio" name="cardFont" value="golos" /><span class="font-card"><span class="font-sample" style="font-family: 'Sensemark Golos', sans-serif">Аа</span><span class="font-name">Golos Text</span></span></label>
+            <label><input type="radio" name="cardFont" value="literata" /><span class="font-card"><span class="font-sample" style="font-family: 'Sensemark Literata', serif">Аа</span><span class="font-name">Literata</span></span></label>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-text">
+            <div class="row-title">Размер текста как на странице</div>
+            <div class="row-cap">Перевод того же размера, что и текст, который вы читаете. Выключено — всегда 15 px.</div>
+          </div>
+          <label class="switch">
+            <input id="matchPageSize" type="checkbox" />
+            <span class="knob"></span>
+          </label>
+        </div>
+        <div class="row col">
+          <div class="row-cap">Предпросмотр</div>
+          <div class="preview" id="preview">
+            <div class="preview-head">Перевод · с английского</div>
+            <div id="previewText">Париж — столица и крупнейший город Франции, и по воскресным утрам его улицы тихие.</div>
+          </div>
         </div>
       </section>
 

@@ -21,8 +21,9 @@
   const MAX_CHARS = 5000;
   const PRIVACY_CONSENT_VERSION = 1;
   const SETTINGS_DEFAULTS = {
+    provider: "builtin",
     apiKey: "",
-    model: "gpt-4o-mini",
+    model: "gpt-6-luna",
     targetLang: "русский",
     autoTranslate: false,
     privacyConsentVersion: 0
@@ -49,6 +50,9 @@
   }
 
   function settingsIssue(settings = {}) {
+    // Бесплатный переводчик Chrome работает на устройстве: ни ключа, ни
+    // согласия на отправку текста ему не нужно.
+    if (settings.provider !== "openai") return null;
     if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
       return {
         code: "consent",
@@ -82,7 +86,7 @@
       return { kind: "russian", text };
     }
 
-    const sourceScripts = detectScripts(text);
+    const sourceScripts = (dependencies.language.detectSignificantScripts || detectScripts)(text);
     return {
       kind: "request",
       text,

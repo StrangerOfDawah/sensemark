@@ -2,9 +2,18 @@
 
 [Русский](PRIVACY.md)
 
-**Effective date:** July 23, 2026
+**Effective date:** October 16, 2026
 
 This policy applies to the **Sensemark** Chrome extension (the “Extension”). The Extension is an independent open-source project and is not affiliated with or endorsed by OpenAI.
+
+## Translation modes
+
+The Extension works in one of two modes chosen by the user in settings:
+
+- **Chrome's built-in translator** (the default). Translation runs on the user's device using Chrome. Selected or entered text **is not sent anywhere** — not to the developer, not to OpenAI, not to any other party. For a new language Chrome downloads a language pack once from its own servers; the user's text is not transmitted.
+- **OpenAI**. Text is sent to the OpenAI API as described below. This mode is enabled only explicitly and only after the user's consent.
+
+Everything below about sending data to OpenAI applies to OpenAI mode only.
 
 ## Data the Extension handles
 
@@ -17,7 +26,7 @@ The Extension handles only the data needed to translate text:
 - local preferences such as the selected model, automatic translation setting, and card size;
 - the user's consent status for sending text to OpenAI.
 
-Before transmission, the Extension locally removes hidden duplicates and interface elements from the selection. If a site renders text with page-font glyphs but provides a semantic text copy beside them, the cleaned text copy is included in the request. Images, screenshots, and page pixels are not sent to OpenAI.
+Before transmission, the Extension locally removes hidden duplicates and interface elements from the selection. Images, screenshots, and page pixels are not sent to OpenAI.
 
 ## How the data is used and shared
 
@@ -29,7 +38,7 @@ The developer does not receive this data, operate an intermediary server, sell d
 
 ## Storage and retention
 
-The API key, preferences, and consent status are stored locally in `chrome.storage.local` on the user's device. Translation results may be kept temporarily in the extension service worker's in-memory cache for faster repeated translations. This cache is not persistent and is discarded when Chrome stops the service worker.
+The API key, preferences, and consent status are stored locally in `chrome.storage.local` on the user's device. Translation results may be kept temporarily in the extension's session storage (`chrome.storage.session`) for faster repeated translations. It lives in memory, is never written to disk, and is cleared when the browser closes.
 
 The Extension does not maintain translation history, analytics, tracking identifiers, or developer-operated logs. OpenAI's own retention practices are described in the policies linked above.
 

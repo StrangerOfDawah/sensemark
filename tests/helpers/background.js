@@ -34,11 +34,14 @@ function loadBackground(overrides = {}) {
   const state = {
     executedScripts: [],
     menuItems: [],
+    menuUpdates: [],
     optionsOpened: 0,
     sentMessages: [],
     storageWrites: []
   };
   let sendMessage = overrides.sendMessage || (async () => ({}));
+  // Общая «сессия» браузера: переживает перезапуск service worker в тестах.
+  const sessionStore = overrides.sessionStore || {};
 
   const context = {
     AbortController,
@@ -63,6 +66,10 @@ function loadBackground(overrides = {}) {
         },
         create(item) {
           state.menuItems.push(item);
+        },
+        update(id, changes, callback) {
+          state.menuUpdates.push({ id, ...changes });
+          callback?.();
         }
       },
       action: {},
@@ -75,6 +82,15 @@ function loadBackground(overrides = {}) {
           async set(value) {
             Object.assign(settings, value);
             state.storageWrites.push(value);
+          }
+        },
+        onChanged: eventHub(),
+        session: {
+          async get(key) {
+            return key in sessionStore ? { [key]: sessionStore[key] } : {};
+          },
+          async set(value) {
+            Object.assign(sessionStore, JSON.parse(JSON.stringify(value)));
           }
         }
       },

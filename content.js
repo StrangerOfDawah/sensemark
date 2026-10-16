@@ -7,22 +7,22 @@
   const isRussianOnly = globalThis.SensemarkLanguageDetection?.isRussianOnly;
   const detectScripts = globalThis.SensemarkLanguageDetection?.detectScripts;
   const hasMultipleScripts = globalThis.SensemarkLanguageDetection?.hasMultipleScripts;
-  const alternativeWord = globalThis.SensemarkSelectionText?.alternativeWord;
-  const isQuranGlyphFont = globalThis.SensemarkSelectionText?.isQuranGlyphFont;
+  const detectSignificantScripts = globalThis.SensemarkLanguageDetection?.detectSignificantScripts;
   const joinSelectionParts = globalThis.SensemarkSelectionText?.joinSelectionParts;
-  const selectArabicAlternative = globalThis.SensemarkSelectionText?.selectArabicAlternative;
   const createScaleController = globalThis.SensemarkScale?.createScaleController;
+  const Builtin = globalThis.SensemarkBuiltin;
+  const CardTheme = globalThis.SensemarkCardTheme;
   if (
     !parseWordResponse ||
     !parseTextResponse ||
     !isRussianOnly ||
     !detectScripts ||
     !hasMultipleScripts ||
-    !alternativeWord ||
-    !isQuranGlyphFont ||
+    !detectSignificantScripts ||
     !joinSelectionParts ||
-    !selectArabicAlternative ||
-    !createScaleController
+    !createScaleController ||
+    !Builtin ||
+    !CardTheme
   ) {
     console.error("Sensemark: response helpers are unavailable.");
     return;
@@ -30,6 +30,7 @@
   window.__gptTranslateLoaded = true;
 
   const HOST_ID = "__gpt_translate_popup_host__";
+  const STATUS_HOST_ID = "__sensemark_status_host__";
   const MAX_CHARS = 5000;
 
   let host = null;
@@ -40,6 +41,14 @@
   let lastRect = null;
   let currentPort = null;
   let streamState = null;
+  let bracket = null;
+  // Где стоит карточка: anchor — у выделения, margin — на полях справа,
+  // drawer — панель у края окна. anchorInfo — выделение, к которому она
+  // привязана: при прокрутке карточка едет вместе с текстом.
+  let layout = { kind: "anchor" };
+  let anchorInfo = null;
+  let anchorOffset = null;
+  let lastStatusPoint = null;
 
   // Размеры карточки живут в storage, чтобы держаться на всех страницах.
   const VIEW_DEFAULTS = { uiScale: 1, cardWidth: 0, cardHeight: 0 };
@@ -48,11 +57,41 @@
 
   // Держим флаги локально, чтобы не будить service worker на каждое выделение.
   let autoTranslate = false;
+  let autoPausedUntil = 0; // пауза автоперевода (общая для всех вкладок), мс
+  // Режим перевода: "builtin" — бесплатный переводчик Chrome на устройстве,
+  // "openai" — свой ключ OpenAI через background.
+  let provider = "builtin";
+  // Оформление: тема (под страницу / светлая / тёмная), шрифт перевода и
+  // размер текста как на странице.
+  const APPEARANCE_DEFAULTS = { cardTheme: "auto", cardFont: "system", matchPageSize: true };
+  let appearance = { ...APPEARANCE_DEFAULTS };
+  const builtinEngine = Builtin.createBuiltinTranslator({
+    Translator: globalThis.Translator,
+    detectLanguage: (text) => chrome.i18n.detectLanguage(text),
+    isRussianOnly,
+    detectScripts: (text) => detectSignificantScripts(text)
+  });
+
+  function openTranslationPort() {
+    return provider === "openai"
+      ? chrome.runtime.connect({ name: "translate" })
+      : Builtin.openLocalPort(builtinEngine);
+  }
   let view = { ...VIEW_DEFAULTS };
   const scaleController = createScaleController();
 
-  chrome.storage.local.get({ autoTranslate: false, ...VIEW_DEFAULTS }).then((s) => {
+  const STORED_DEFAULTS = {
+    autoTranslate: false,
+    autoPausedUntil: 0,
+    provider: "builtin",
+    ...VIEW_DEFAULTS,
+    ...APPEARANCE_DEFAULTS
+  };
+  chrome.storage.local.get(STORED_DEFAULTS).then((s) => {
     autoTranslate = s.autoTranslate;
+    for (const key of Object.keys(APPEARANCE_DEFAULTS)) appearance[key] = s[key];
+    provider = s.provider === "openai" ? "openai" : "builtin";
+    autoPausedUntil = Number(s.autoPausedUntil) || 0;
     view = { uiScale: s.uiScale, cardWidth: s.cardWidth, cardHeight: s.cardHeight };
     if (card) applyView();
   });
@@ -60,6 +99,11 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.autoTranslate) autoTranslate = changes.autoTranslate.newValue;
+    if (changes.autoPausedUntil) autoPausedUntil = Number(changes.autoPausedUntil.newValue) || 0;
+    if (changes.provider) provider = changes.provider.newValue === "openai" ? "openai" : "builtin";
+    for (const key of Object.keys(APPEARANCE_DEFAULTS)) {
+      if (changes[key]) appearance[key] = changes[key].newValue ?? APPEARANCE_DEFAULTS[key];
+    }
     // Изменения из соседней вкладки применяем на лету.
     let touched = false;
     for (const key of Object.keys(VIEW_DEFAULTS)) {
@@ -82,6 +126,16 @@
   function applyView() {
     if (!card) return;
     card.style.setProperty("--ui-scale", view.uiScale);
+
+    // На полях и в панели ширину задаёт место на экране, а не сохранённый размер.
+    if (layout.kind !== "anchor") {
+      card.style.width = `${layout.width}px`;
+      card.style.maxWidth = "none";
+      card.style.height = "";
+      card.style.setProperty("--bd-max", "none");
+      return;
+    }
+    card.style.maxHeight = "";
 
     if (view.cardWidth) {
       card.style.width = `${view.cardWidth}px`;
@@ -108,13 +162,60 @@
     }
   });
 
+  // Автоперевод ждёт немного после выделения: если за это время человек
+  // копирует (⌘/Ctrl+C) или открывает контекстное меню, значит, он выделял
+  // не для перевода — запрос отменяется, пока карточка ещё не появилась.
+  const AUTO_DELAY = 500;
+  const PAUSE_MINUTES = 5;
   let autoTimer = null;
-  document.addEventListener("mouseup", (event) => {
-    if (!autoTranslate) return;
-    if (host && event.composedPath().includes(host)) return;
+  let autoPendingId = 0; // id автозапроса, карточка которого ещё не показана
+
+  function isAutoEnabled() {
+    return Boolean(autoTranslate) && Date.now() >= autoPausedUntil;
+  }
+
+  // Выделение внутри поля ввода или редактора — это правка, а не чтение.
+  function isEditableSelection() {
+    const active = document.activeElement;
+    if (active && (/^(?:INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) {
+      return true;
+    }
+    const anchor = window.getSelection()?.anchorNode;
+    const element = anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+    return Boolean(element?.isContentEditable);
+  }
+
+  function cancelPendingAuto() {
     clearTimeout(autoTimer);
-    autoTimer = setTimeout(handleSelection, 250);
+    autoTimer = null;
+    if (autoPendingId && autoPendingId === requestId) {
+      requestId++;
+      currentPort?.disconnect(); // background оборвёт запрос
+      currentPort = null;
+      hideStatus();
+    }
+    autoPendingId = 0;
+  }
+
+  document.addEventListener("mouseup", (event) => {
+    if (event.button !== 0) return; // правая/средняя кнопка — не выделение для чтения
+    if (!isAutoEnabled()) return;
+    if (host && event.composedPath().includes(host)) return;
+    if (isEditableSelection()) return;
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => handleSelection({ auto: true }), AUTO_DELAY);
   });
+
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      // event.code, а не key: на русской раскладке клавиша C даёт «с».
+      if ((event.metaKey || event.ctrlKey) && event.code === "KeyC") cancelPendingAuto();
+    },
+    true
+  );
+  document.addEventListener("copy", cancelPendingAuto, true);
+  document.addEventListener("contextmenu", cancelPendingAuto, true);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") close();
@@ -132,6 +233,7 @@
 
     const rect = range.getBoundingClientRect();
     if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+    const anchor = { range: range.cloneRange(), page: samplePage(range) };
 
     // OCR не запускаем автоматически: это дорого и ненадёжно для декоративных
     // шрифтов. Изображение без иностранного текстового слоя объясняем локально,
@@ -139,7 +241,7 @@
     const imageTextUnsupported =
       selectedImages.length > 0 && (text.length < 2 || isRussianOnly(text));
     if (imageTextUnsupported) {
-      return { text: "", rect, context: null, wordMode: false, sourceScripts: [], imageTextUnsupported };
+      return { ...anchor, text: "", rect, context: null, wordMode: false, sourceScripts: [], imageTextUnsupported };
     }
     if (text.length < 2) return null;
 
@@ -148,38 +250,134 @@
     const wordMode = isShort(text) && !hasMultipleScripts(text);
     const context = wordMode && text === rawText ? extractContext(range, text) : null;
 
-    return { text, rect, context, wordMode, sourceScripts: detectScripts(text) };
+    return { ...anchor, text, rect, context, wordMode, sourceScripts: detectSignificantScripts(text) };
+  }
+
+  // Цвет фона и текста там, где человек читает, — по ним карточка
+  // подстраивается под страницу. Прозрачные слои пропускаем до первого фона.
+  function samplePage(range) {
+    const node = range.startContainer;
+    const start = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) || document.body;
+    let background = null;
+    for (let element = start; element; element = element.parentElement) {
+      const color = CardTheme.parseColor(getComputedStyle(element).backgroundColor);
+      if (color && color.a >= 0.5) {
+        background = color;
+        break;
+      }
+    }
+    if (!background) {
+      // У страницы нет своего фона: Chrome рисует белый, а тёмный — только
+      // если сайт сам объявил тёмную схему.
+      const scheme = getComputedStyle(document.documentElement).colorScheme || "";
+      const dark = /dark/.test(scheme) && !/light/.test(scheme);
+      background = dark ? { r: 18, g: 18, b: 18, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
+    }
+    const style = getComputedStyle(start);
+    return { background, text: CardTheme.parseColor(style.color), fontSize: style.fontSize };
+  }
+
+  // Палитра, шрифт и размер для карточки и пилюли этого выделения.
+  function lookFor(info) {
+    const prefersDark = Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+    const palette = CardTheme.buildPalette({
+      mode: appearance.cardTheme,
+      background: info.page?.background || null,
+      text: info.page?.text || null,
+      prefersDark
+    });
+    return {
+      scheme: palette.scheme,
+      vars: CardTheme.cssVariables(palette, {
+        font: appearance.cardFont,
+        fontSize: CardTheme.readableSize(info.page?.fontSize, appearance.matchPageSize !== false)
+      })
+    };
+  }
+
+  function applyLook(element, look) {
+    if (!element || !look) return;
+    for (const [name, value] of Object.entries(look.vars)) element.style.setProperty(name, value);
+  }
+
+  // Шрифты Golos Text и Literata лежат в расширении; на страницу добавляются
+  // один раз и только если их выбрали в настройках.
+  const loadedFonts = new Map();
+  function ensureFont(font) {
+    if (font !== "golos" && font !== "literata") return Promise.resolve();
+    if (loadedFonts.has(font)) return loadedFonts.get(font);
+    const family = font === "golos" ? "Sensemark Golos" : "Sensemark Literata";
+    const loading = chrome.runtime
+      .sendMessage({ type: "get-font", font })
+      .then(async (response) => {
+        if (!response?.ok || typeof FontFace !== "function" || !document.fonts) return;
+        for (const face of response.faces) {
+          const bytes = Uint8Array.from(atob(face.data), (char) => char.charCodeAt(0));
+          const fontFace = new FontFace(family, bytes, { weight: "400", unicodeRange: face.unicodeRange });
+          await fontFace.load();
+          document.fonts.add(fontFace);
+        }
+      })
+      .catch(() => {});
+    loadedFonts.set(font, loading);
+    return loading;
   }
 
   function extractVisibleRangeText(range) {
     const root = range.commonAncestorContainer;
-    const textNodes = [];
-    const arabicAlternatives = new WeakMap();
+    const nodes = [];
+    // Кэши на одно выделение: при выделении всей страницы иначе getComputedStyle
+    // вызывается заново для каждого предка каждого текстового узла.
+    const cache = { visible: new Map(), block: new Map(), noise: new Map() };
 
     if (root.nodeType === Node.TEXT_NODE) {
-      textNodes.push(root);
+      nodes.push(root);
     } else {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) =>
+            node.nodeType === Node.TEXT_NODE || node.nodeName === "BR"
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_SKIP
+        }
+      );
       let node;
-      while ((node = walker.nextNode())) textNodes.push(node);
+      while ((node = walker.nextNode())) nodes.push(node);
     }
 
     const parts = [];
-    for (const node of textNodes) {
+    for (const node of nodes) {
       try {
-        if (!range.intersectsNode(node) || !isVisibleTextNode(node)) continue;
+        if (!range.intersectsNode(node)) continue;
+        const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        if (!element) continue;
+
+        if (node.nodeName === "BR") {
+          if (!isVisibleElement(element, cache.visible)) continue;
+          parts.push({
+            lineBreak: true,
+            block: blockOf(element, cache.block),
+            noise: isNoiseElement(element, cache.noise)
+          });
+          continue;
+        }
+
+        if (!isVisibleTextNode(node, cache.visible)) continue;
 
         let start = 0;
         let end = node.data.length;
         if (node === range.startContainer) start = range.startOffset;
         if (node === range.endContainer) end = range.endOffset;
-        const part = node.data.slice(start, end).trim();
+        const part = node.data.slice(start, end);
         if (!part) continue;
 
-        const semanticWord = semanticQuranWord(node, arabicAlternatives);
         parts.push({
-          text: semanticWord || part,
-          noise: !semanticWord && isInterfaceTextNode(node)
+          text: part,
+          block: blockOf(element, cache.block),
+          noise: isNoiseElement(element, cache.noise),
+          preserveLines: /^(?:pre|break-spaces)/.test(getComputedStyle(element).whiteSpace || "")
         });
       } catch {
         // Некоторые сложные Range на динамических страницах нельзя пересечь.
@@ -188,58 +386,47 @@
     return joinSelectionParts(parts);
   }
 
-  // Quran.com выводит каждое слово одним кодом шрифта code_v1/code_v2.
-  // Сам код не является буквами слова, но рядом сайт уже держит скрытую
-  // Imlaei-копию с data-word-location для точного сопоставления.
-  function semanticQuranWord(node, alternatives) {
-    const glyph = node.parentElement?.closest("[data-font]");
-    if (!glyph || !isQuranGlyphFont(glyph.dataset.font)) return "";
-
-    const word = glyph.closest("[data-word-location]");
-    const location = word?.dataset.wordLocation?.split(":");
-    const wordNumber = Number(location?.at(-1));
-    if (!Number.isInteger(wordNumber) || wordNumber < 1) return "";
-
-    const verseText = glyph.closest('[data-testid^="verse-arabic-"]');
-    const root = verseText?.parentElement;
-    if (!root) return "";
-
-    let alternative = alternatives.get(root);
-    if (alternative === undefined) {
-      const candidates = [];
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      let candidateNode;
-      while ((candidateNode = walker.nextNode())) {
-        const value = candidateNode.data.trim();
-        if (
-          value &&
-          /\p{Script=Arabic}/u.test(value) &&
-          !candidateNode.parentElement?.closest("[data-font]") &&
-          !isVisibleTextNode(candidateNode)
-        ) {
-          candidates.push(value);
-        }
-      }
-
-      const expectedWords = root.querySelectorAll(
-        '[data-word-location] [data-font^="code_v"]'
-      ).length;
-      alternative = selectArabicAlternative(candidates, expectedWords);
-      alternatives.set(root, alternative);
+  // Ближайший блочный предок: текст внутри одного блока — один абзац.
+  function blockOf(element, cache) {
+    if (cache.has(element)) return cache.get(element);
+    let current = element;
+    while (current && current !== document.body && current !== document.documentElement) {
+      const display = getComputedStyle(current).display;
+      if (display && !display.startsWith("inline") && display !== "contents") break;
+      current = current.parentElement;
     }
-
-    return alternativeWord(alternative, wordNumber);
+    const block = current || document.body;
+    cache.set(element, block);
+    return block;
   }
 
-  function isInterfaceTextNode(node) {
-    const element = node.parentElement;
-    if (!element) return false;
-    return Boolean(
-      element.closest(
-        "a, button, input, select, textarea, option, summary, sup, " +
-          '[role="button"], [role="menuitem"], [role="tooltip"], [role="dialog"]'
-      )
-    );
+  // Мусор интерфейса, общий для любого сайта: элементы управления, меню и
+  // навигация, шапка/подвал/боковая панель сайта, сноски-ссылки.
+  // Ссылки внутри текста — это содержимое, их не трогаем.
+  const CONTROL_SELECTOR =
+    "button, input, select, textarea, option, summary, nav, menu, " +
+    '[role="button"], [role="menuitem"], [role="menu"], [role="menubar"], ' +
+    '[role="navigation"], [role="toolbar"], [role="tablist"], [role="tab"], ' +
+    '[role="search"], [role="tooltip"]';
+  const SITE_CHROME_SELECTOR =
+    'header, footer, aside, [role="banner"], [role="contentinfo"], [role="complementary"]';
+  const CONTENT_SELECTOR = 'article, main, [role="main"], [role="article"]';
+
+  function isNoiseElement(element, cache) {
+    if (cache.has(element)) return cache.get(element);
+    let noise = Boolean(element.closest(CONTROL_SELECTOR));
+    if (!noise) {
+      // Шапка статьи с заголовком — содержимое; шапка всего сайта — нет.
+      const chrome = element.closest(SITE_CHROME_SELECTOR);
+      noise = Boolean(chrome && !chrome.closest(CONTENT_SELECTOR));
+    }
+    if (!noise) {
+      // Сноска вида [1] — ссылка в верхнем индексе. Обычный x² остаётся.
+      const sup = element.closest("sup");
+      noise = Boolean(sup && (sup.querySelector("a") || sup.closest("a")));
+    }
+    cache.set(element, noise);
+    return noise;
   }
 
   function extractSelectedImages(range) {
@@ -261,34 +448,33 @@
     });
   }
 
-  function isVisibleElement(element) {
-    let current = element;
-    while (current && current !== document.documentElement) {
-      const style = getComputedStyle(current);
-      const rect = current.getBoundingClientRect();
-      if (
-        current.hidden ||
-        current.inert ||
-        current.getAttribute("aria-hidden") === "true" ||
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.visibility === "collapse" ||
-        Number(style.opacity) === 0 ||
-        style.clipPath === "inset(50%)" ||
-        (style.position === "absolute" &&
-          style.overflow === "hidden" &&
-          rect.width <= 1 &&
-          rect.height <= 1)
-      ) {
-        return false;
-      }
-      current = current.parentElement;
-    }
-    return true;
+  function isVisibleElement(element, cache = new Map()) {
+    if (!element || element === document.documentElement) return true;
+    if (cache.has(element)) return cache.get(element);
+
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const hidden =
+      element.hidden ||
+      element.inert ||
+      element.getAttribute("aria-hidden") === "true" ||
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      Number(style.opacity) === 0 ||
+      style.clipPath === "inset(50%)" ||
+      (style.position === "absolute" &&
+        style.overflow === "hidden" &&
+        rect.width <= 1 &&
+        rect.height <= 1);
+
+    const visible = !hidden && isVisibleElement(element.parentElement, cache);
+    cache.set(element, visible);
+    return visible;
   }
 
-  function isVisibleTextNode(node) {
-    if (!node.parentElement || !isVisibleElement(node.parentElement)) return false;
+  function isVisibleTextNode(node, cache) {
+    if (!node.parentElement || !isVisibleElement(node.parentElement, cache)) return false;
 
     const probe = document.createRange();
     probe.selectNodeContents(node);
@@ -299,14 +485,22 @@
     return text.length <= 40 && text.split(/\s+/).length <= 3;
   }
 
-  async function shouldIgnoreSelection(text) {
+  // Русский ли это текст и с какого языка переводим — для подписи
+  // «Перевожу с английского…». Определяет сам Chrome, локально и бесплатно.
+  async function detectSource(text) {
     let detection = null;
     try {
       detection = await chrome.i18n?.detectLanguage?.(text);
     } catch {
       // Локальный CLD может не дать результат для очень короткого текста.
     }
-    return isRussianOnly(text, detection);
+    const top = detection?.languages?.[0];
+    const code = Builtin.normalizeLanguage(top?.language);
+    const known = code && code !== "ru" && (top?.percentage ?? 100) >= 60;
+    return {
+      ignore: isRussianOnly(text, detection),
+      language: known ? Builtin.languageGenitive(code) : ""
+    };
   }
 
   // Ближайший блочный предок — за его границы предложение не выходит.
@@ -367,7 +561,8 @@
     return sentence;
   }
 
-  async function handleSelection() {
+  async function handleSelection({ auto = false } = {}) {
+    autoTimer = null;
     const info = getSelectionInfo();
     if (!info) return; // в этом фрейме выделения нет — молчим
 
@@ -375,7 +570,7 @@
       ++requestId;
       currentPort?.disconnect();
       currentPort = null;
-      render(info.rect, {
+      render(info, {
         state: "error",
         message:
           "Выделенный фрагмент нарисован как изображение, а не как текст. " +
@@ -386,7 +581,7 @@
     }
 
     if (info.text.length > MAX_CHARS) {
-      render(info.rect, {
+      render(info, {
         state: "error",
         message: `Слишком длинный фрагмент: ${info.text.length} символов (максимум ${MAX_CHARS}).`
       });
@@ -394,28 +589,39 @@
     }
 
     const id = ++requestId;
+    autoPendingId = auto ? id : 0;
     currentPort?.disconnect();
     currentPort = null;
 
     // Русский текст уже является результатом перевода: не показываем карточку
     // и не отправляем лишний запрос в OpenAI.
-    if (await shouldIgnoreSelection(info.text)) {
+    const source = await detectSource(info.text);
+    if (source.ignore) {
       if (id !== requestId) return;
-      if (host) close();
+      close();
       return;
     }
     if (id !== requestId) return;
+    // Смешанный текст получает свою подпись «Несколько языков».
+    info.language = info.sourceScripts.length > 1 ? "" : source.language;
 
+    startTranslation(info, id);
+  }
+
+  function startTranslation(info, id) {
     // Старый результат убираем сразу, но пустую карточку для нового запроса не
-    // создаём. Она появится только вместе с первым содержательным фрагментом.
+    // создаём. Она появится только вместе с первым содержательным фрагментом,
+    // а пока ждём — только маленькая пилюля «Перевожу с английского…».
     if (host) close({ cancelRequest: false, animate: false });
+    hideStatus({ animate: false });
+    prepareCardFor(info);
 
     // Стриминг: перевод печатается по мере генерации, не дожидаясь всего ответа.
     let port;
     try {
-      port = chrome.runtime.connect({ name: "translate" });
+      port = openTranslationPort();
     } catch {
-      render(info.rect, { state: "error", message: "Расширение перезагружено — обновите страницу." });
+      render(info, { state: "error", message: "Расширение перезагружено — обновите страницу." });
       return;
     }
     currentPort = port;
@@ -424,8 +630,13 @@
     let finished = false;
     const release = () => {
       finished = true;
+      if (autoPendingId === id) autoPendingId = 0;
       if (currentPort === port) currentPort = null;
     };
+    // Бесплатный режим отвечает за ~30 мс — тогда пилюля не мелькает зря.
+    scheduleStatus(info, id, {
+      label: info.language ? `Перевожу с ${info.language}…` : "Перевожу…"
+    });
 
     port.onMessage.addListener((message) => {
       if (id !== requestId) return;
@@ -433,7 +644,7 @@
       if (message.type === "chunk" || message.type === "done") {
         if (!started && !hasVisibleStreamContent(message.text, info.wordMode)) {
           if (message.type === "done") {
-            render(info.rect, {
+            render(info, {
               state: "error",
               message: "Не удалось получить перевод — попробуйте ещё раз."
             });
@@ -443,20 +654,61 @@
           return;
         }
         if (!started) {
-          beginStreamCard(info.rect, info.text, info.wordMode);
+          if (autoPendingId === id) autoPendingId = 0; // карточка показана — больше не отменяем
+          hideStatus();
+          beginStreamCard(info);
           started = true;
         }
         updateStream(message.text);
-        position(lastRect);
+        place();
         if (message.type === "done") {
           finalizeStream();
           release();
           port.disconnect();
         }
+      } else if (message.type === "status") {
+        // Например, скачивание языкового пакета — кольцо заполняется по-настоящему.
+        if (!started) showStatus(info, id, statusFromMessage(message));
       } else if (message.type === "error") {
-        render(info.rect, { state: "error", message: message.error });
         release();
         port.disconnect();
+        if (message.code === "needs-download") {
+          // Chrome скачивает языковой пакет только по клику пользователя.
+          render(info, {
+            state: "error",
+            message: `${message.error} Это займёт несколько секунд.`,
+            action: {
+              label: "Скачать",
+              run: async () => {
+                const downloadId = ++requestId;
+                close({ cancelRequest: false, animate: false });
+                const name = Builtin.languageName(message.language);
+                showStatus(info, downloadId, { label: `Скачиваю ${name}…`, kind: "download", progress: 0 });
+                try {
+                  await builtinEngine.prepare(message.language, (progress) => {
+                    if (downloadId !== requestId) return;
+                    showStatus(info, downloadId, {
+                      label: `Скачиваю ${name} · ${Math.round(progress * 100)}%`,
+                      kind: "download",
+                      progress
+                    });
+                  });
+                } catch {
+                  if (downloadId !== requestId) return;
+                  render(info, {
+                    state: "error",
+                    message: "Не удалось скачать языковой пакет — проверьте интернет и попробуйте ещё раз."
+                  });
+                  return;
+                }
+                if (downloadId !== requestId) return;
+                startTranslation(info, downloadId);
+              }
+            }
+          });
+          return;
+        }
+        render(info, { state: "error", message: message.error });
       }
     });
 
@@ -464,7 +716,7 @@
     port.onDisconnect.addListener(() => {
       if (id !== requestId || finished) return;
       release();
-      render(info.rect, { state: "error", message: "Соединение прервано — попробуйте ещё раз." });
+      render(info, { state: "error", message: "Соединение прервано — попробуйте ещё раз." });
     });
 
     port.postMessage({
@@ -476,6 +728,204 @@
     });
   }
 
+  // Оформление и место карточки решаются до ответа, чтобы пилюля стояла
+  // там же, где потом раскроется карточка, и была того же цвета.
+  function prepareCardFor(info) {
+    ensureFont(appearance.cardFont);
+    info.look = lookFor(info);
+    info.paragraphs = CardTheme.countParagraphs(info.text);
+    info.long = CardTheme.isLongSelection(info.text);
+    info.layout = CardTheme.chooseLayout({
+      text: info.text,
+      rect: info.rect,
+      viewportWidth: window.innerWidth
+    });
+  }
+
+  function statusFromMessage(message) {
+    if (message.kind !== "download") return { label: message.text, kind: "info" };
+    const name = Builtin.languageName(message.language || "");
+    const progress = typeof message.progress === "number" ? message.progress : null;
+    return {
+      label: progress === null ? `Скачиваю ${name}…` : `Скачиваю ${name} · ${Math.round(progress * 100)}%`,
+      kind: "download",
+      progress,
+      hint: message.text
+    };
+  }
+
+  // ---------- пилюля статуса → кружок ----------
+  // Пока перевода нет, у выделения видна небольшая пилюля, через секунду она
+  // сжимается в кружок, а дуга продолжает бежать. Она отдельно от карточки:
+  // пустую карточку до первого фрагмента перевода мы не показываем.
+  const STATUS_DELAY = 200;
+  const COLLAPSE_AFTER = { translate: 1200, info: 4000, download: 3000 };
+  let statusHost = null;
+  let statusEl = null;
+  let statusInfo = null;
+  let statusTimer = null;
+  let collapseTimer = null;
+
+  function scheduleStatus(info, id, status) {
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => {
+      statusTimer = null;
+      if (id === requestId && !card) showStatus(info, id, status);
+    }, STATUS_DELAY);
+  }
+
+  function showStatus(info, id, { label, kind = "translate", progress = null, hint = "" }) {
+    if (id !== requestId) return;
+    clearTimeout(statusTimer);
+    statusTimer = null;
+    const fresh = !statusEl;
+    if (fresh) {
+      statusHost = document.createElement("div");
+      statusHost.id = STATUS_HOST_ID;
+      statusHost.style.cssText = "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
+      const root = statusHost.attachShadow({ mode: "open" });
+      root.innerHTML = `${STATUS_STYLE}
+        <div class="status" role="status" aria-live="polite">
+          <svg class="ring" viewBox="0 0 20 20" aria-hidden="true">
+            <circle class="track" cx="10" cy="10" r="7.5"/>
+            <circle class="arc" cx="10" cy="10" r="7.5" pathLength="100"/>
+          </svg>
+          <span class="lbl"></span>
+        </div>`;
+      document.documentElement.appendChild(statusHost);
+      statusEl = root.querySelector(".status");
+    }
+    statusInfo = info;
+    applyLook(statusHost, info.look);
+    statusEl.dataset.scheme = info.look?.scheme || "light";
+    statusEl.classList.toggle("drawer", info.layout?.kind === "drawer");
+
+    const labelEl = statusEl.querySelector(".lbl");
+    const changedKind = statusEl.dataset.kind !== kind;
+    labelEl.textContent = label;
+    statusEl.title = hint || label;
+    statusEl.setAttribute("aria-label", label);
+    statusEl.dataset.kind = kind;
+    const determinate = typeof progress === "number";
+    statusEl.classList.toggle("determinate", determinate);
+    if (determinate) statusEl.style.setProperty("--progress", String(Math.round(progress * 100)));
+
+    if (fresh || changedKind) {
+      statusEl.classList.remove("mini");
+      clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(() => statusEl?.classList.add("mini"), COLLAPSE_AFTER[kind] || 1200);
+    }
+    placeStatus();
+    if (fresh) requestAnimationFrame(() => statusEl?.classList.add("in"));
+  }
+
+  function placeStatus() {
+    if (!statusEl || !statusInfo) return;
+    const rect = liveRect(statusInfo);
+    const kind = statusInfo.layout?.kind || "anchor";
+    if (kind === "drawer") {
+      lastStatusPoint = { x: window.innerWidth - 16, y: 16, fixed: true };
+      return;
+    }
+    let x;
+    let y;
+    if (kind === "margin") {
+      x = rect.right + 28;
+      y = Math.max(rect.top, Math.min(16, rect.bottom - 28));
+    } else {
+      x = Math.max(10, Math.min(rect.left, window.innerWidth - 200));
+      y = rect.bottom + 8 + 28 > window.innerHeight ? rect.top - 8 - 28 : rect.bottom + 8;
+    }
+    statusEl.style.left = `${x + window.scrollX}px`;
+    statusEl.style.top = `${y + window.scrollY}px`;
+    lastStatusPoint = { x, y: y + 14 };
+  }
+
+  function hideStatus({ animate = true } = {}) {
+    clearTimeout(statusTimer);
+    clearTimeout(collapseTimer);
+    statusTimer = null;
+    collapseTimer = null;
+    if (!statusHost) {
+      lastStatusPoint = null;
+      return;
+    }
+    const dying = statusHost;
+    if (animate && statusEl) {
+      statusEl.classList.add("out");
+      setTimeout(() => dying.remove(), 160);
+    } else {
+      dying.remove();
+    }
+    statusHost = null;
+    statusEl = null;
+    statusInfo = null;
+  }
+
+  const STATUS_STYLE = `
+      <style>
+        :host { all: initial; }
+        .status {
+          position: absolute;
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          height: 28px;
+          padding: 0 12px 0 7px;
+          box-sizing: border-box;
+          border-radius: 999px;
+          background: var(--surface, #fff);
+          border: 1px solid var(--border, #e3e3e8);
+          box-shadow: var(--shadow, 0 10px 26px rgba(0, 0, 0, 0.12));
+          color: var(--sec, #62646f);
+          font: 500 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+          letter-spacing: -0.003em;
+          -webkit-font-smoothing: antialiased;
+          white-space: nowrap;
+          opacity: 0;
+          transform: translateY(3px) scale(0.96);
+          transform-origin: 14px 50%;
+          transition:
+            opacity 0.2s ease,
+            transform 0.24s cubic-bezier(0.21, 1.02, 0.36, 1),
+            padding 0.38s cubic-bezier(0.32, 0.72, 0, 1),
+            gap 0.38s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .status.in { opacity: 1; transform: none; }
+        .status.out { opacity: 0; transform: scale(0.9); }
+        .status.drawer { position: fixed; top: 16px; right: 16px; }
+        .lbl {
+          display: inline-block;
+          max-width: 280px;
+          overflow: hidden;
+          transition: max-width 0.38s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease;
+        }
+        /* Кружок: подпись уезжает, остаётся кольцо прогресса. */
+        .status.mini { gap: 0; padding: 0 6px; }
+        .status.mini .lbl { max-width: 0; opacity: 0; }
+        .ring { width: 14px; height: 14px; flex: none; animation: spin 0.9s linear infinite; }
+        .ring circle { fill: none; stroke-width: 2.4; }
+        .track { stroke: var(--track, #e6e6ef); }
+        .arc {
+          stroke: var(--accent, #5e5ce6);
+          stroke-linecap: round;
+          stroke-dasharray: 26 100;
+          transform: rotate(-90deg);
+          transform-origin: 50% 50%;
+          transition: stroke-dasharray 0.3s ease;
+        }
+        .status.determinate .ring { animation: none; }
+        .status.determinate .arc { stroke-dasharray: var(--progress, 0) 100; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+          .status, .lbl { transition: opacity 0.2s ease; }
+          .ring { animation-duration: 2.4s; }
+        }
+        @media (prefers-contrast: more) {
+          .status { border-color: var(--text, #16171c); color: var(--text, #16171c); }
+        }
+      </style>`;
+
   const ICONS = {
     close:
       '<svg viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
@@ -485,6 +935,8 @@
       '<svg viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6 6.6 12l6.2-7.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     chevron:
       '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.5 10 8l-4 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pause:
+      '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.2v7.6M10 4.2v7.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
     warn:
       '<svg viewBox="0 0 16 16" fill="none"><path d="M8 2.4 14.5 13a1 1 0 0 1-.86 1.5H2.36A1 1 0 0 1 1.5 13L8 2.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".9" fill="currentColor"/></svg>'
   };
@@ -495,47 +947,49 @@
     host = document.createElement("div");
     host.id = HOST_ID;
     // Стили самого хоста задаём инлайном, чтобы CSS страницы не мог их перебить.
+    // position: absolute — координаты страницы: карточка едет вместе с текстом.
     host.style.cssText =
-      "all: initial; position: fixed; z-index: 2147483647; top: 0; left: 0;";
+      "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
     shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `
       <style>
-        :host { all: initial; }
+        /* Цвета приходят переменными из card-theme.js (на самом хосте):
+           под страницу, светлая или тёмная. Здесь — только запасные значения;
+           они стоят на :host, чтобы не перекрывать цвета страницы. */
+        :host {
+          all: initial;
+          --surface: #ffffff;
+          --border: #e3e3e8;
+          --text: #16171c;
+          --sec: #62646f;
+          --hair: rgba(22, 23, 28, 0.06);
+          --fill: rgba(22, 23, 28, 0.06);
+          --fill-hover: rgba(22, 23, 28, 0.11);
+          --accent: #5e5ce6;
+        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         .card {
-          --text: #1d1d1f;
-          --sec: #6e6e73;
-          --hair: rgba(0, 0, 0, 0.09);
-          --fill: rgba(120, 120, 128, 0.10);
-          --fill-hover: rgba(120, 120, 128, 0.18);
-          --accent: #007aff;
           --warn: #ff9500;
           --ok: #34c759;
-          position: fixed;
+          --notch-x: 28px;
+          position: absolute;
           width: max-content;
-          min-width: 230px;
-          max-width: 400px;
-          border-radius: 18px;
-          border: 1px solid transparent;
-          background:
-            linear-gradient(rgba(250, 250, 253, 0.80), rgba(250, 250, 253, 0.80)) padding-box,
-            linear-gradient(135deg, rgba(100, 210, 255, 0.55), rgba(94, 92, 230, 0.35) 50%, rgba(191, 90, 242, 0.5)) border-box;
-          -webkit-backdrop-filter: blur(28px) saturate(1.9);
-          backdrop-filter: blur(28px) saturate(1.9);
-          box-shadow:
-            0 1px 2px rgba(0, 0, 0, 0.06),
-            0 12px 44px rgba(0, 0, 0, 0.20),
-            0 0 34px rgba(94, 92, 230, 0.16);
+          min-width: 240px;
+          max-width: 420px;
+          border-radius: 16px;
+          border: 1px solid var(--border);
+          background: var(--surface);
+          box-shadow: var(--shadow, 0 14px 36px rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.05));
           color: var(--text);
           /* Всё внутри задано в em — карточка целиком тянется от этого размера. */
           font: calc(14px * var(--ui-scale, 1)) / 1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
           -webkit-font-smoothing: antialiased;
           opacity: 0;
-          overflow: hidden;
           display: flex;
           flex-direction: column;
         }
+        .card[data-scheme="dark"] { --warn: #ff9f0a; --ok: #30d158; }
         .card.in {
           opacity: 1;
           animation: pop 0.34s cubic-bezier(0.21, 1.02, 0.36, 1);
@@ -544,57 +998,88 @@
             left 0.28s cubic-bezier(0.32, 0.72, 0, 1),
             font-size 0.09s ease-out;
         }
+        /* При прокрутке карточка следует за текстом без задержки. */
+        .card.in.tracking { transition: none; }
         .card.out {
           opacity: 0;
           transform: translateY(4px) scale(0.98);
           transition: opacity 0.16s ease, transform 0.16s ease;
         }
         @keyframes pop {
-          from { opacity: 0; transform: translateY(8px) scale(0.97); }
+          from { opacity: 0; transform: scale(0.94); }
           to { opacity: 1; transform: none; }
         }
-        @media (prefers-color-scheme: dark) {
-          .card {
-            --text: #f5f5f7;
-            --sec: #98989d;
-            --hair: rgba(255, 255, 255, 0.12);
-            --fill: rgba(120, 120, 128, 0.24);
-            --fill-hover: rgba(120, 120, 128, 0.36);
-            --accent: #0a84ff;
-            --warn: #ff9f0a;
-            --ok: #30d158;
-            background:
-              linear-gradient(rgba(22, 23, 34, 0.74), rgba(22, 23, 34, 0.74)) padding-box,
-              linear-gradient(135deg, rgba(100, 210, 255, 0.5), rgba(94, 92, 230, 0.35) 50%, rgba(191, 90, 242, 0.5)) border-box;
-            box-shadow:
-              0 1px 2px rgba(0, 0, 0, 0.3),
-              0 12px 44px rgba(0, 0, 0, 0.5),
-              0 0 38px rgba(94, 92, 230, 0.22);
-          }
-        }
 
-        .card.reference {
-          --accent: #d97706;
-          background:
-            linear-gradient(rgba(255, 251, 242, 0.88), rgba(255, 251, 242, 0.88)) padding-box,
-            linear-gradient(135deg, rgba(255, 159, 10, 0.72), rgba(255, 214, 10, 0.34) 55%, rgba(255, 107, 64, 0.42)) border-box;
-          box-shadow:
-            0 1px 2px rgba(0, 0, 0, 0.06),
-            0 12px 44px rgba(0, 0, 0, 0.2),
-            0 0 34px rgba(255, 159, 10, 0.16);
+        /* Носик к выделению. */
+        .card.anchor::before {
+          content: "";
+          position: absolute;
+          top: -6px;
+          left: var(--notch-x);
+          width: 11px;
+          height: 11px;
+          margin-left: -5.5px;
+          transform: rotate(45deg);
+          background: var(--surface);
+          border-left: 1px solid var(--border);
+          border-top: 1px solid var(--border);
+          border-radius: 2px 0 0 0;
         }
-        @media (prefers-color-scheme: dark) {
-          .card.reference {
-            --accent: #ff9f0a;
-            background:
-              linear-gradient(rgba(30, 27, 20, 0.82), rgba(30, 27, 20, 0.82)) padding-box,
-              linear-gradient(135deg, rgba(255, 159, 10, 0.8), rgba(255, 214, 10, 0.38) 55%, rgba(255, 107, 64, 0.5)) border-box;
-            box-shadow:
-              0 1px 2px rgba(0, 0, 0, 0.32),
-              0 12px 44px rgba(0, 0, 0, 0.5),
-              0 0 38px rgba(255, 159, 10, 0.14);
-          }
+        .card.anchor.above::before {
+          top: auto;
+          bottom: -6px;
+          border: 0;
+          border-right: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+          border-radius: 0 0 2px 0;
         }
+        .card.anchor.free::before { display: none; }
+
+        /* Заметка на полях справа от длинного выделения. */
+        .card.margin { max-width: none; }
+        .bracket {
+          position: absolute;
+          width: 10px;
+          border: 2px solid var(--accent, #5e5ce6);
+          border-left: 0;
+          border-radius: 0 8px 8px 0;
+          opacity: 0.5;
+          pointer-events: none;
+        }
+        .bracket[hidden] { display: none; }
+
+        /* Панель у правого края окна, когда справа от текста нет места. */
+        .card.drawer {
+          position: fixed;
+          top: 0;
+          right: 0;
+          bottom: 0;
+          max-width: none;
+          border-radius: 0;
+          border-width: 0 0 0 1px;
+        }
+        .card.drawer.in { animation: slide 0.32s cubic-bezier(0.21, 1.02, 0.36, 1); }
+        @keyframes slide {
+          from { opacity: 0; transform: translateX(28px); }
+          to { opacity: 1; transform: none; }
+        }
+        .card.margin .bd, .card.drawer .bd { min-height: 0; }
+        .card.drawer .hd { padding-top: 1.1em; padding-bottom: 0.6em; border-bottom: 1px solid var(--hair); }
+        .card.drawer .bd { padding-top: 1em; display: flex; flex-direction: column; }
+        .card.margin .acts, .card.drawer .acts {
+          position: sticky;
+          bottom: -0.93em;
+          margin: 0.79em -1.14em -0.93em;
+          padding: 0.5em 1.14em 0.7em;
+          background: var(--surface);
+          border-top: 1px solid var(--hair);
+        }
+        /* В панели кнопки прижаты к низу окна. */
+        .card.drawer .acts { margin-top: auto; }
+        .card.margin .grip, .card.drawer .grip { display: none; }
+
+        .card.reference { --accent: #c56a00; border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+        .card.reference[data-scheme="dark"] { --accent: #ff9f0a; }
 
         .hd {
           display: flex;
@@ -606,33 +1091,29 @@
           display: inline-flex;
           align-items: center;
           gap: 0.5em;
-          font-size: 0.79em;
+          font-size: 0.86em;
           font-weight: 600;
-          letter-spacing: 0.09em;
-          text-transform: uppercase;
           color: var(--sec);
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .badge::before {
           content: "";
-          width: 0.55em;
-          height: 0.55em;
+          width: 0.5em;
+          height: 0.5em;
           border-radius: 50%;
-          background: linear-gradient(135deg, #64d2ff, #bf5af2);
-          box-shadow: 0 0 9px rgba(100, 210, 255, 0.9);
+          background: linear-gradient(135deg, #64d2ff, #8f5bff);
           flex: none;
         }
         .card.reference .badge { color: var(--accent); }
         .card.multilingual .badge { color: var(--accent); }
-        .card.reference .badge::before {
-          background: linear-gradient(135deg, #ffd60a, #ff7a00);
-          box-shadow: 0 0 10px rgba(255, 159, 10, 0.75);
-        }
+        .card.reference .badge::before { background: linear-gradient(135deg, #ffd60a, #ff7a00); }
         .sp { flex: 1; }
 
         .bd {
           flex: 1;
-          padding: 0.5em 1.14em 0.93em;
+          padding: 0.43em 1.14em 0.93em;
           max-height: var(--bd-max, 340px);
           overflow-y: auto;
           animation: fade 0.22s ease;
@@ -645,8 +1126,10 @@
         }
 
         .tr {
-          font-size: 1.04em;
-          letter-spacing: -0.01em;
+          font-family: var(--tr-font, inherit);
+          font-size: calc(var(--tr-size, 15px) * var(--ui-scale, 1));
+          line-height: 1.55;
+          letter-spacing: -0.003em;
           white-space: pre-wrap;
           overflow-wrap: break-word;
           user-select: text;
@@ -654,7 +1137,7 @@
           cursor: text;
         }
         .card.reference .tr {
-          font-size: 1.14em;
+          font-size: calc(var(--tr-size, 15px) * 1.08 * var(--ui-scale, 1));
           font-weight: 650;
         }
 
@@ -671,6 +1154,9 @@
           letter-spacing: 0.07em;
           text-transform: uppercase;
         }
+        /* display: inline-flex выше перебивает атрибут hidden — без этой строки
+           пустой бейджик категории виден в каждой обычной карточке. */
+        .term-kind[hidden] { display: none; }
         .reference-note {
           margin-top: 0.3em;
           color: var(--sec);
@@ -703,7 +1189,9 @@
           color: var(--sec);
         }
         .segment-text {
-          font-size: 1em;
+          font-family: var(--tr-font, inherit);
+          font-size: calc(var(--tr-size, 15px) * var(--ui-scale, 1));
+          line-height: 1.55;
           white-space: pre-wrap;
           overflow-wrap: break-word;
           user-select: text;
@@ -724,48 +1212,29 @@
           margin-bottom: 0.21em;
         }
         .alt-t {
-          font-size: 0.89em;
+          font-family: var(--tr-font, inherit);
+          font-size: 0.93em;
           color: var(--sec);
           overflow-wrap: break-word;
-        }
-
-        .src {
-          overflow: hidden;
-          max-height: 0;
-          opacity: 0;
-          transition: max-height 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease, margin-top 0.28s ease;
-        }
-        .src.open { opacity: 1; margin-top: 0.64em; }
-        .src-t {
-          font-size: 0.89em;
-          color: var(--sec);
-          padding: 0.14em 0 0.14em 0.71em;
-          border-left: 2px solid var(--hair);
-          white-space: pre-wrap;
-          overflow-wrap: break-word;
-          max-height: 9.4em;
-          overflow-y: auto;
-          user-select: text;
-          -webkit-user-select: text;
         }
 
         .acts {
           display: flex;
           align-items: center;
-          gap: 0.43em;
-          margin-top: 0.79em;
+          gap: 0.29em;
+          margin-top: 0.64em;
           transition: opacity 0.25s ease;
         }
         .acts.pending { opacity: 0; pointer-events: none; }
 
         .caret {
           display: inline-block;
-          width: 0.14em;
+          width: 2px;
           height: 1.05em;
-          margin-left: 0.14em;
+          margin-left: 1px;
           vertical-align: -0.18em;
           border-radius: 1px;
-          background: linear-gradient(180deg, #64d2ff, #bf5af2);
+          background: var(--accent);
           animation: blink 1s steps(2) infinite;
         }
         @keyframes blink { 50% { opacity: 0; } }
@@ -774,20 +1243,21 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          width: 2em;
-          height: 2em;
+          width: 2.14em;
+          height: 2.14em;
           border: none;
           border-radius: 0.57em;
-          background: transparent;
+          background: var(--fill);
           color: var(--sec);
           cursor: pointer;
           transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
         }
-        .icon-btn:hover { background: var(--fill); color: var(--text); }
+        .icon-btn:hover { background: var(--fill-hover); color: var(--text); }
         .icon-btn:active { transform: scale(0.92); }
-        .icon-btn svg { width: 1.07em; height: 1.07em; }
+        .icon-btn svg { width: 1em; height: 1em; }
         .icon-btn.ok { color: var(--ok); }
-        .icon-btn.xs { width: 1.71em; height: 1.71em; border-radius: 0.5em; }
+        .icon-btn.xs { width: 1.86em; height: 1.86em; border-radius: 0.5em; background: transparent; }
+        .icon-btn.xs:hover { background: var(--fill); }
         .icon-btn.xs svg { width: 0.86em; height: 0.86em; }
 
         .chip {
@@ -796,18 +1266,32 @@
           gap: 0.21em;
           border: none;
           border-radius: 999px;
-          padding: 0.36em 0.79em 0.36em 0.5em;
+          padding: 0.43em 0.86em;
           font: 600 0.86em/1 -apple-system, BlinkMacSystemFont, sans-serif;
-          background: transparent;
+          background: var(--fill);
           color: var(--sec);
           cursor: pointer;
           transition: background 0.15s ease, color 0.15s ease;
         }
-        .chip:hover { background: var(--fill); color: var(--text); }
-        .chip svg { width: 1em; height: 1em; transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1); }
-        .chip.open svg { transform: rotate(90deg); }
-        .chip.accent { color: var(--accent); padding: 6px 13px; }
-        .chip.accent:hover { background: var(--fill); color: var(--accent); }
+        .chip:hover { background: var(--fill-hover); color: var(--text); }
+        .chip.accent { color: var(--accent); }
+        .chip.accent:hover { color: var(--accent); }
+        .icon-btn.open { background: var(--fill-hover); color: var(--text); }
+        .icon-btn[hidden], .auto-menu[hidden], .auto-note[hidden] { display: none; }
+
+        .auto-menu {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 0.29em;
+          margin-top: 0.43em;
+        }
+        .auto-note {
+          margin-top: 0.57em;
+          color: var(--sec);
+          font-size: 0.82em;
+          line-height: 1.45;
+        }
 
         .err {
           display: flex;
@@ -834,10 +1318,10 @@
         .grip::after {
           content: "";
           position: absolute;
-          right: 4px;
-          bottom: 4px;
-          width: 8px;
-          height: 8px;
+          right: 5px;
+          bottom: 5px;
+          width: 7px;
+          height: 7px;
           border-right: 1.5px solid var(--sec);
           border-bottom: 1.5px solid var(--sec);
           border-bottom-right-radius: 3px;
@@ -851,8 +1335,19 @@
           color: var(--accent);
           font-variant-numeric: tabular-nums;
         }
+
+        @media (prefers-reduced-motion: reduce) {
+          .card.in, .card.drawer.in, .bd { animation: none; }
+          .card.in { transition: none; }
+          .caret { animation: none; }
+        }
+        @media (prefers-contrast: more) {
+          .card { border-color: var(--text); }
+          .badge, .cap, .reference-note, .auto-note { color: var(--text); }
+        }
       </style>
-      <div class="card" role="dialog" aria-label="Перевод">
+      <div class="bracket" hidden></div>
+      <div class="card anchor" role="dialog" aria-label="Перевод">
         <div class="hd">
           <span class="badge">Перевод</span>
           <span class="zoom" hidden></span>
@@ -867,6 +1362,7 @@
 
     card = shadow.querySelector(".card");
     bodyEl = shadow.querySelector(".bd");
+    bracket = shadow.querySelector(".bracket");
     shadow.querySelector("[data-act=close]").addEventListener("click", close);
 
     applyView();
@@ -874,20 +1370,36 @@
     setupResize();
 
     document.addEventListener("mousedown", onOutsideClick, true);
-    window.addEventListener("scroll", onScroll, { passive: true, capture: true });
-    window.addEventListener("resize", close, { passive: true });
   }
 
   function onOutsideClick(event) {
     if (host && !event.composedPath().includes(host)) close();
   }
 
-  // Прокрутка внутри карточки не должна её закрывать — иначе длинный
-  // перевод невозможно домотать до конца.
-  function onScroll(event) {
-    if (host && event.composedPath?.().includes(host)) return;
-    close();
-  }
+  // Прокрутка больше не закрывает карточку: она привязана к тексту и едет
+  // вместе с ним, в том числе внутри прокручиваемых блоков страницы.
+  window.addEventListener(
+    "scroll",
+    (event) => {
+      if (host && event.composedPath?.().includes(host)) return; // прокрутка внутри карточки
+      if (card) placeNow({ decide: false });
+      if (statusEl) placeStatus();
+    },
+    { passive: true, capture: true }
+  );
+  window.addEventListener(
+    "resize",
+    () => {
+      if (card && anchorInfo) {
+        setLayout(
+          CardTheme.chooseLayout({ text: anchorInfo.text, rect: liveRect(anchorInfo), viewportWidth: window.innerWidth })
+        );
+        place();
+      }
+      if (statusEl) placeStatus();
+    },
+    { passive: true }
+  );
 
   // Cmd/Ctrl + колесо — масштаб карточки. preventDefault обязателен,
   // иначе браузер зумит всю страницу.
@@ -917,7 +1429,7 @@
         clearTimeout(scalePositionTimer);
         scalePositionTimer = setTimeout(() => {
           scalePositionTimer = null;
-          if (host && lastRect) position(lastRect);
+          if (host) place();
         }, 180);
       },
       { passive: false }
@@ -966,7 +1478,7 @@
         grip.removeEventListener("pointermove", onMove);
         grip.removeEventListener("pointerup", onUp);
         saveView();
-        if (lastRect) position(lastRect);
+        place();
       };
 
       grip.addEventListener("pointermove", onMove);
@@ -980,7 +1492,7 @@
       applyView();
       showZoom();
       saveView();
-      if (lastRect) position(lastRect);
+      place();
     });
   }
 
@@ -994,22 +1506,61 @@
       reference ? "Объяснение фрагмента" : multilingual ? "Перевод с нескольких языков" : "Перевод"
     );
     const badge = shadow.querySelector(".badge");
-    if (badge) badge.textContent = reference ? "Объяснение" : multilingual ? "Несколько языков" : "Перевод";
+    if (badge) {
+      badge.textContent = reference
+        ? "Объяснение"
+        : multilingual
+          ? "Несколько языков"
+          : CardTheme.headerLabel({
+              language: anchorInfo?.language || "",
+              paragraphs: anchorInfo?.paragraphs || 1,
+              long: layout.kind !== "anchor"
+            });
+    }
   }
 
-  function render(rect, payload) {
+  // Карточка привязывается к выделению, берёт его оформление и место.
+  function attachCard(info, cardLayout) {
     ensureHost();
-    lastRect = rect;
+    hideStatus({ animate: false });
+    anchorInfo = info;
+    anchorOffset = null;
+    lastRect = info.rect;
+    info.look ||= lookFor(info);
+    applyLook(host, info.look);
+    card.dataset.scheme = info.look.scheme;
+    setLayout(cardLayout);
+  }
+
+  function setLayout(next) {
+    layout = next || { kind: "anchor" };
+    if (!card) return;
+    for (const kind of ["anchor", "margin", "drawer"]) card.classList.toggle(kind, layout.kind === kind);
+    if (bracket) bracket.hidden = layout.kind !== "margin";
+    applyView();
+  }
+
+  // Ошибки и подсказки короткие — всегда карточкой у выделения.
+  function render(info, payload) {
+    attachCard(info, { kind: "anchor" });
     setCardPresentation("translation");
 
     if (payload.state === "error") {
       bodyEl.innerHTML = `
-        <div class="err">${ICONS.warn}<p class="err-t"></p></div>
+        <div class="err">${payload.icon === false ? "" : ICONS.warn}<p class="err-t"></p></div>
         <div class="acts"><span class="sp"></span><button class="chip accent" data-act="options">Открыть настройки</button></div>`;
       bodyEl.querySelector(".err-t").textContent = payload.message;
-      bodyEl.querySelector("[data-act=options]").addEventListener("click", () => {
-        chrome.runtime.sendMessage({ type: "open-options" });
-      });
+      const button = bodyEl.querySelector("[data-act=options]");
+      if (payload.action === null) {
+        button.remove();
+      } else if (payload.action) {
+        button.textContent = payload.action.label;
+        button.addEventListener("click", payload.action.run);
+      } else {
+        button.addEventListener("click", () => {
+          chrome.runtime.sendMessage({ type: "open-options" });
+        });
+      }
     }
 
     // Перезапускаем появление контента.
@@ -1017,16 +1568,17 @@
     void bodyEl.offsetWidth;
     bodyEl.style.animation = "";
 
-    position(rect);
+    place();
   }
 
   // Каркас карточки для стриминга: текст пишется в .live, действия скрыты до конца.
   // wordMode — только для коротких фрагментов: там модель отдаёт перевод первой
   // строкой, а ниже — другие значения или объяснение несловарного фрагмента.
   // У обычного текста переносы строк — это просто абзацы, и разбирать их нельзя.
-  function beginStreamCard(rect, source, wordMode) {
-    ensureHost();
-    lastRect = rect;
+  function beginStreamCard(info) {
+    const source = info.text;
+    const wordMode = info.wordMode;
+    attachCard(info, info.layout);
     setCardPresentation("translation");
     bodyEl.innerHTML = `
       <div class="term-kind" hidden></div>
@@ -1034,12 +1586,16 @@
       <div class="segments" hidden></div>
       <p class="reference-note" hidden>Не переводится как обычное слово</p>
       <div class="alt" hidden><div class="cap">Другие значения</div><p class="alt-t"></p></div>
-      <div class="src"><p class="src-t"></p></div>
       <div class="acts pending">
-        <button class="chip" data-act="orig">${ICONS.chevron}<span>Оригинал</span></button>
         <span class="sp"></span>
+        <button class="icon-btn" data-act="auto" title="Автоперевод" hidden>${ICONS.pause}</button>
         <button class="icon-btn" data-act="copy" title="Скопировать">${ICONS.copy}</button>
-      </div>`;
+      </div>
+      <div class="auto-menu" hidden>
+        <button class="chip accent" data-act="pause">Пауза на ${PAUSE_MINUTES} минут</button>
+        <button class="chip" data-act="off">Выключить автоперевод</button>
+      </div>
+      <p class="auto-note" hidden></p>`;
 
     const state = {
       main: "",
@@ -1059,18 +1615,7 @@
     };
     streamState = state;
 
-    const src = bodyEl.querySelector(".src");
-    src.querySelector(".src-t").textContent = source || "";
-
-    const origBtn = bodyEl.querySelector("[data-act=orig]");
-    if (!source) origBtn.hidden = true;
-    origBtn.addEventListener("click", () => {
-      const opening = !src.classList.contains("open");
-      origBtn.classList.toggle("open", opening);
-      src.classList.toggle("open", opening);
-      src.style.maxHeight = opening ? `${src.scrollHeight}px` : "0";
-      if (opening && lastRect) setTimeout(() => position(lastRect), 290);
-    });
+    setupAutoControls();
 
     const copyBtn = bodyEl.querySelector("[data-act=copy]");
     copyBtn.addEventListener("click", async () => {
@@ -1081,6 +1626,46 @@
         copyBtn.classList.remove("ok");
         copyBtn.innerHTML = ICONS.copy;
       }, 1400);
+    });
+  }
+
+  // Кнопка «пауза» в карточке: пауза на 5 минут или полное выключение
+  // автоперевода. Ручной перевод (правый клик, горячая клавиша) работает всегда.
+  function setupAutoControls() {
+    const toggle = bodyEl.querySelector("[data-act=auto]");
+    const menu = bodyEl.querySelector(".auto-menu");
+    const note = bodyEl.querySelector(".auto-note");
+    toggle.hidden = !isAutoEnabled();
+
+    const hotkey = /Mac/i.test(navigator.platform) ? "⌘⇧Y" : "Ctrl+Shift+Y";
+    const manualHint = `Переводите вручную: правый клик → «Перевести на русский» или ${hotkey}.`;
+    const finish = (message) => {
+      menu.hidden = true;
+      toggle.hidden = true;
+      note.textContent = message;
+      note.hidden = false;
+      place();
+    };
+
+    toggle.addEventListener("click", () => {
+      menu.hidden = !menu.hidden;
+      toggle.classList.toggle("open", !menu.hidden);
+      place();
+    });
+    menu.querySelector("[data-act=pause]").addEventListener("click", () => {
+      const until = Date.now() + PAUSE_MINUTES * 60 * 1000;
+      autoPausedUntil = until;
+      chrome.storage.local.set({ autoPausedUntil: until }).catch(() => {});
+      const time = new Date(until).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      finish(`Автоперевод на паузе до ${time}. ${manualHint}`);
+    });
+    menu.querySelector("[data-act=off]").addEventListener("click", () => {
+      autoTranslate = false;
+      chrome.storage.local.set({ autoTranslate: false, autoPausedUntil: 0 }).catch(() => {});
+      finish(
+        `Автоперевод выключен. ${manualHint} ` +
+          "Включить снова — в настройках или правым кликом по значку Sensemark."
+      );
     });
   }
 
@@ -1131,7 +1716,9 @@
       streamState.segments.hidden = true;
       streamState.main = parsed.text;
       streamState.copyText = parsed.text;
-      streamState.live.textContent = parsed.text;
+      // В длинном переводе (поля, панель) абзацы разделяем пустой строкой,
+      // иначе они сливаются в сплошной текст. Копируется перевод как есть.
+      streamState.live.textContent = layout.kind === "anchor" ? parsed.text : parsed.text.replace(/\n+/g, "\n\n");
       streamState.live.after(streamState.caret);
       return;
     }
@@ -1225,29 +1812,114 @@
     }
   }
 
-  function position(rect) {
-    requestAnimationFrame(() => {
-      if (!card) return;
+  // Текущее место выделения на экране. Range живой: после прокрутки или
+  // перестройки страницы он даёт новые координаты.
+  function liveRect(info) {
+    try {
+      const rect = info?.range?.getBoundingClientRect();
+      if (rect && (rect.width || rect.height)) return rect;
+    } catch {
+      // Узлы выделения убраны со страницы — остаёмся на последнем месте.
+    }
+    return info?.rect || lastRect;
+  }
+
+  function place() {
+    requestAnimationFrame(() => placeNow({ decide: true }));
+  }
+
+  // decide — заново выбрать сторону (снизу/сверху) и сдвиг. При прокрутке
+  // сторона не меняется, карточка просто едет вместе с текстом.
+  function placeNow({ decide }) {
+    if (!card || !anchorInfo) return;
+    const rect = liveRect(anchorInfo);
+    if (!rect) return;
+    const sx = window.scrollX;
+    const sy = window.scrollY;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    card.classList.toggle("tracking", !decide);
+
+    if (layout.kind === "drawer") {
+      card.style.top = "";
+      card.style.left = "";
+      card.style.maxHeight = "";
+      reveal(null);
+      return;
+    }
+
+    if (layout.kind === "margin") {
+      card.style.maxHeight = `${vh - 32}px`;
       const box = card.getBoundingClientRect();
+      // Пока выделение на экране, заметка держится рядом с ним, но не уходит
+      // ниже его конца.
+      const top = Math.max(rect.top, Math.min(16, rect.bottom - box.height));
+      const left = rect.right + 28;
+      card.style.left = `${left + sx}px`;
+      card.style.top = `${top + sy}px`;
+      bracket.style.left = `${rect.right + 10 + sx}px`;
+      bracket.style.top = `${rect.top + sy}px`;
+      bracket.style.height = `${Math.max(16, rect.height)}px`;
+      reveal({ left, top });
+      return;
+    }
+
+    const box = card.getBoundingClientRect();
+    if (decide || !anchorOffset) {
+      const gap = 12;
       const margin = 10;
-
-      let top = rect.bottom + margin;
-      if (top + box.height > window.innerHeight - margin) {
-        top = rect.top - box.height - margin; // не влезает снизу — показываем сверху
+      let top;
+      let side;
+      if (rect.bottom + gap + box.height <= vh - margin) {
+        side = "below";
+        top = rect.bottom + gap;
+      } else if (rect.top - gap - box.height >= margin) {
+        side = "above";
+        top = rect.top - gap - box.height;
+      } else {
+        side = "free"; // не влезает ни снизу, ни сверху — внутри экрана, без носика
+        top = Math.max(margin, Math.min(rect.bottom + gap, vh - box.height - margin));
       }
-      top = Math.max(margin, Math.min(top, window.innerHeight - box.height - margin));
+      const wide = rect.width > box.width;
+      const pointX = wide ? rect.left + 28 : rect.left + rect.width / 2;
+      let left = wide ? rect.left - 6 : pointX - box.width / 2;
+      left = Math.max(margin, Math.min(left, vw - box.width - margin));
+      card.classList.toggle("above", side === "above");
+      card.classList.toggle("free", side === "free");
+      card.style.setProperty("--notch-x", `${Math.max(18, Math.min(pointX - left, box.width - 18))}px`);
+      anchorOffset = { x: left - rect.left, y: side === "above" ? top + box.height - rect.top : top - rect.bottom, side };
+    }
+    const left = rect.left + anchorOffset.x;
+    const top =
+      anchorOffset.side === "above" ? rect.top + anchorOffset.y - box.height : rect.bottom + anchorOffset.y;
+    card.style.left = `${left + sx}px`;
+    card.style.top = `${top + sy}px`;
+    reveal({ left, top });
+  }
 
-      let left = rect.left + rect.width / 2 - box.width / 2;
-      left = Math.max(margin, Math.min(left, window.innerWidth - box.width - margin));
-
-      card.style.top = `${top}px`;
-      card.style.left = `${left}px`;
-      card.classList.add("in");
-    });
+  // Первое появление: карточка раскрывается из того места, где был кружок.
+  function reveal(point) {
+    if (card.classList.contains("in")) return;
+    if (point && lastStatusPoint && !lastStatusPoint.fixed) {
+      card.style.transformOrigin = `${lastStatusPoint.x - point.left}px ${lastStatusPoint.y - point.top}px`;
+    }
+    lastStatusPoint = null;
+    card.classList.add("in");
   }
 
   function close({ cancelRequest = true, animate = true } = {}) {
-    if (!host) return;
+    if (!host) {
+      if (cancelRequest) {
+        // Пилюля ещё ждёт ответа — Esc и клик мимо отменяют и её.
+        if (statusHost) {
+          requestId++;
+          currentPort?.disconnect();
+          currentPort = null;
+        }
+        hideStatus({ animate });
+      }
+      return;
+    }
     clearTimeout(scalePositionTimer);
     scalePositionTimer = null;
     if (cancelRequest) {
@@ -1258,8 +1930,7 @@
     streamState = null;
 
     document.removeEventListener("mousedown", onOutsideClick, true);
-    window.removeEventListener("scroll", onScroll, true);
-    window.removeEventListener("resize", close);
+    if (cancelRequest) hideStatus({ animate: false });
 
     const dying = host;
     if (animate) {
@@ -1273,5 +1944,9 @@
     shadow = null;
     card = null;
     bodyEl = null;
+    bracket = null;
+    anchorInfo = null;
+    anchorOffset = null;
+    layout = { kind: "anchor" };
   }
 })();
