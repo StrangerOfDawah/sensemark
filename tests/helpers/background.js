@@ -57,7 +57,9 @@ function loadBackground(overrides = {}) {
         onConnect: events.connect,
         openOptionsPage() {
           state.optionsOpened++;
-        }
+        },
+        // Только в Safari: мост к приложению Sensemark.
+        ...(overrides.sendNativeMessage ? { sendNativeMessage: overrides.sendNativeMessage } : {})
       },
       contextMenus: {
         onClicked: events.contextClick,

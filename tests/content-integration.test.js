@@ -99,8 +99,12 @@ async function setupContent(markup, options = {}) {
       },
       async sendMessage(message) {
         sentMessages.push(message);
+        if (message?.type === "native" && options.native) return options.native(message.payload);
         return { ok: false, faces: [] };
-      }
+      },
+      // Safari отдаёт адреса safari-web-extension:// — так расширение
+      // узнаёт, что работает в Safari.
+      ...(options.runtimeURL ? { getURL: (file = "") => `${options.runtimeURL}${file}` } : {})
     },
     storage: {
       local: {
@@ -529,4 +533,74 @@ test("manual light theme ignores a dark page; chosen font is loaded from the ext
   assert.match(host.style.getPropertyValue("--tr-font"), /Sensemark Literata/);
   assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "размер как на странице");
   assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [{ type: "get-font", font: "literata" }]);
+});
+
+
+// ---------- Safari: бесплатный режим через переводчик Apple ----------
+
+function fakeAppleNative({ installed = ["en"] } = {}) {
+  const calls = [];
+  const native = async (payload) => {
+    calls.push(payload);
+    if (payload.op === "detect") {
+      return { ok: true, isReliable: true, languages: [{ language: /[ぁ-ん]/u.test(payload.text) ? "ja" : "en", percentage: 99 }] };
+    }
+    if (payload.op === "availability") {
+      return { ok: true, status: installed.includes(payload.source) ? "installed" : "supported" };
+    }
+    if (payload.op === "translate") return { ok: true, text: `APPLE ${payload.text}` };
+    if (payload.op === "openApp") {
+      // Человек скачивает язык в приложении Sensemark.
+      setTimeout(() => installed.push(payload.source), 50);
+      return { ok: true };
+    }
+    return { ok: false };
+  };
+  return { native, calls };
+}
+
+test("Safari free mode: the card shows the Apple translation and nothing goes to OpenAI", async () => {
+  const apple = fakeAppleNative();
+  const context = await setupContent('<p id="x">The weather is nice today, let us go out.</p>', {
+    settings: { provider: "builtin" },
+    runtimeURL: "safari-web-extension://ABC/",
+    native: apple.native
+  });
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await wait(30);
+
+  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  const root = context.document.getElementById(CARD_HOST).shadowRoot;
+  assert.equal(root.querySelector(".live").textContent, "APPLE The weather is nice today, let us go out.");
+  assert.ok(apple.calls.some((call) => call.op === "translate" && call.source === "en" && call.target === "ru"));
+});
+
+test("Safari free mode: a missing language offers «Скачать», which opens the Sensemark app", async () => {
+  const apple = fakeAppleNative({ installed: [] });
+  const context = await setupContent('<p id="x">今日はとてもいい天気ですね、散歩に行きましょう。</p>', {
+    settings: { provider: "builtin" },
+    runtimeURL: "safari-web-extension://ABC/",
+    native: apple.native
+  });
+  context.select(context.document.getElementById("x"));
+  await context.translateSelection();
+  await wait(30);
+
+  const root = context.document.getElementById(CARD_HOST).shadowRoot;
+  assert.match(root.querySelector(".err-t").textContent, /приложение Sensemark/);
+  const download = [...root.querySelectorAll("button")].find((button) => button.textContent.includes("Скачать"));
+  assert.ok(download, "есть кнопка «Скачать»");
+  download.click();
+  await wait(30);
+  assert.ok(apple.calls.some((call) => call.op === "openApp" && call.source === "ja"));
+  const pill = context.document.getElementById(STATUS_HOST)?.shadowRoot.querySelector(".status");
+  assert.ok(pill, "пока язык скачивается — пилюля статуса");
+  assert.match(pill.querySelector(".lbl").textContent, /приложении Sensemark/);
+  assert.equal(pill.classList.contains("determinate"), false, "без выдуманного процента");
+
+  // Язык скачан — карточка сама продолжает перевод (опрос раз в 2 секунды).
+  await wait(2300);
+  const card = context.document.getElementById(CARD_HOST).shadowRoot;
+  assert.match(card.querySelector(".live").textContent, /^APPLE /);
 });

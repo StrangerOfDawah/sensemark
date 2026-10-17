@@ -58,7 +58,29 @@ const fitKey = () => {
   fields.apiKey.style.width = `calc(${len}ch + 44px)`;
 };
 
+// В Safari бесплатный режим — это переводчик Apple, а не Chrome: меняем
+// только подписи, вёрстка та же.
+function adaptForSafari() {
+  let safari = false;
+  try {
+    safari = /^safari-web-extension:/i.test(chrome.runtime.getURL(""));
+  } catch {
+    safari = false;
+  }
+  if (!safari) return;
+  const builtin = document.querySelector('input[name="provider"][value="builtin"]')?.closest(".mode");
+  const title = builtin?.querySelector(".mode-title");
+  if (title?.firstChild?.nodeType === Node.TEXT_NODE) title.firstChild.textContent = "Переводчик Apple ";
+  const caption = builtin?.querySelector(".row-cap");
+  if (caption) {
+    caption.textContent =
+      "Работает прямо на Mac: без ключа и без оплаты, текст никуда не отправляется. " +
+      "Языки скачиваются один раз в приложении Sensemark. Слово переводится без учёта контекста.";
+  }
+}
+
 function init() {
+  adaptForSafari();
   chrome.storage.local.get(DEFAULTS).then((settings) => {
     // Старые модели OpenAI отключаются — показываем и сохраняем актуальную.
     if (![...fields.model.options].some((o) => o.value === settings.model)) {

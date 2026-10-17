@@ -65,9 +65,13 @@
   // размер текста как на странице.
   const APPEARANCE_DEFAULTS = { cardTheme: "auto", cardFont: "system", matchPageSize: true };
   let appearance = { ...APPEARANCE_DEFAULTS };
+  // Chrome — встроенный Translator API; Safari — переводчик Apple через
+  // приложение Sensemark (см. builtin-translator.js → platformDeps).
+  const platform = Builtin.platformDeps(chrome);
   const builtinEngine = Builtin.createBuiltinTranslator({
-    Translator: globalThis.Translator,
-    detectLanguage: (text) => chrome.i18n.detectLanguage(text),
+    Translator: platform.Translator,
+    detectLanguage: platform.detectLanguage,
+    labels: platform.labels,
     isRussianOnly,
     detectScripts: (text) => detectSignificantScripts(text)
   });
@@ -507,7 +511,7 @@
 
   async function detectLanguageSafe(text) {
     try {
-      return await chrome.i18n?.detectLanguage?.(text);
+      return await platform.detectLanguage(text);
     } catch {
       return null; // локальный CLD может не дать результат для очень короткого текста
     }
@@ -693,7 +697,14 @@
                 const downloadId = ++requestId;
                 close({ cancelRequest: false, animate: false });
                 const name = Builtin.languageName(message.language);
-                showStatus(info, downloadId, { label: `Скачиваю ${name}…`, kind: "download", progress: 0 });
+                // Chrome сообщает настоящий процент; переводчик Apple скачивает
+                // язык в приложении Sensemark — там кольцо просто крутится.
+                const labels = builtinEngine.labels;
+                showStatus(info, downloadId, {
+                  label: labels.downloading(name),
+                  kind: "download",
+                  progress: labels.reportsProgress ? 0 : null
+                });
                 try {
                   await builtinEngine.prepare(message.language, (progress) => {
                     if (downloadId !== requestId) return;

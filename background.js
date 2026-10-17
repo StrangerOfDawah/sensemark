@@ -105,13 +105,17 @@ chrome.runtime.onInstalled.addListener((details) => {
       title: "Перевести на русский",
       contexts: ["selection"]
     });
-    // Правый клик по значку Sensemark в панели Chrome.
-    chrome.contextMenus.create({
-      id: AUTO_MENU_ID,
-      title: "Включить автоперевод",
-      contexts: ["action"]
-    });
-    refreshAutoMenuTitle();
+    // Правый клик по значку Sensemark в панели Chrome. Safari такого меню
+    // у значка не поддерживает — там автоперевод включается в настройках.
+    try {
+      chrome.contextMenus.create(
+        { id: AUTO_MENU_ID, title: "Включить автоперевод", contexts: ["action"] },
+        () => void chrome.runtime.lastError
+      );
+      refreshAutoMenuTitle();
+    } catch {
+      // Контекст "action" недоступен в этом браузере.
+    }
   });
 
   // Режим перевода: у тех, кто уже ввёл ключ OpenAI, ничего не меняется;
@@ -225,6 +229,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "open-options") {
     chrome.runtime.openOptionsPage();
+  }
+
+  // Safari: перевод и определение языка системой Apple через приложение
+  // Sensemark (SafariWebExtensionHandler.swift). В Chrome нативной части нет.
+  if (message?.type === "native") {
+    const runtime = globalThis.browser?.runtime || chrome.runtime;
+    if (typeof runtime.sendNativeMessage !== "function") {
+      sendResponse({ ok: false, code: "unavailable" });
+      return;
+    }
+    Promise.resolve()
+      .then(() => runtime.sendNativeMessage("application.id", message.payload))
+      .then((reply) => sendResponse(reply || { ok: false, code: "failed" }))
+      .catch((error) => sendResponse({ ok: false, code: "failed", error: String(error?.message || error) }));
+    return true;
   }
 
   if (message?.type === "get-font") {

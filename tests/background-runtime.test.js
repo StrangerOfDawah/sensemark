@@ -357,3 +357,47 @@ test("translation cache survives a service worker restart", async () => {
   assert.equal(await restarted.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
   assert.equal(calls, 1);
 });
+
+// ---------- Safari: мост к приложению Sensemark ----------
+
+function askBackground(background, message) {
+  return new Promise((resolve) => {
+    const results = background.__events.message.emit(message, {}, resolve);
+    if (!results.includes(true)) resolve(undefined);
+  });
+}
+
+test("Safari: native messages go to the Sensemark app and the reply comes back", async () => {
+  const calls = [];
+  const background = loadBackground({
+    sendNativeMessage: async (application, payload) => {
+      calls.push({ application, payload });
+      return { ok: true, text: "Привет" };
+    }
+  });
+  const reply = await askBackground(background, {
+    type: "native",
+    payload: { op: "translate", text: "Hello", source: "en", target: "ru" }
+  });
+  assert.equal(reply.ok, true);
+  assert.equal(reply.text, "Привет");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].payload.op, "translate");
+});
+
+test("Safari: a failing native call is reported, not thrown", async () => {
+  const background = loadBackground({
+    sendNativeMessage: async () => {
+      throw new Error("extension host is not running");
+    }
+  });
+  const reply = await askBackground(background, { type: "native", payload: { op: "detect", text: "Hi" } });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.code, "failed");
+});
+
+test("Chrome has no native app: native messages answer «unavailable» right away", async () => {
+  const background = loadBackground();
+  const reply = await askBackground(background, { type: "native", payload: { op: "detect", text: "Hi" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(reply)), { ok: false, code: "unavailable" });
+});
