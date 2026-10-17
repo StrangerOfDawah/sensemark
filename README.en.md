@@ -82,6 +82,12 @@ The free mode works right after installation — nothing to configure. In the se
 
 <br>
 
+## Safari
+
+There is a Safari build for macOS 26.4+. Its free mode uses Apple's on-device translator; the OpenAI mode works as in Chrome. It is not on the App Store: you build it in Xcode with a regular Apple ID. Step-by-step guide (in Russian): [safari/README.md](safari/README.md).
+
+<br>
+
 ## Install
 
 1. Download the archive from the [**Releases**](https://github.com/StrangerOfDawah/sensemark/releases/latest) page and unpack it

@@ -82,6 +82,12 @@
 
 <br>
 
+## Safari
+
+Есть версия для Safari на Mac (macOS 26.4+). Бесплатный режим там переводит системным переводчиком Apple, режим OpenAI работает так же, как в Chrome. Публикации в App Store нет: расширение собирается в Xcode с обычным Apple ID. Пошагово — в [safari/README.md](safari/README.md).
+
+<br>
+
 ## Установка
 
 1. Скачайте архив со страницы [**Releases**](https://github.com/StrangerOfDawah/sensemark/releases/latest) и распакуйте

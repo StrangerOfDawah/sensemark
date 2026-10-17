@@ -35,13 +35,22 @@
     // режим OpenAI — запрос через background, как на странице.
     const builtin = environment.builtin || root.SensemarkBuiltin;
     let builtinEngine = null;
+    // Определение языка: в Chrome — chrome.i18n, в Safari — система Apple
+    // через приложение Sensemark.
+    function detectLanguage(text) {
+      const platform = builtin?.platformDeps?.(chrome, window);
+      if (platform?.platform === "safari") return platform.detectLanguage(text);
+      return chrome.i18n?.detectLanguage?.(text);
+    }
     function openPort() {
       if (settings.provider === "openai" || !builtin) {
         return chrome.runtime.connect({ name: "translate" });
       }
+      const platform = builtin.platformDeps ? builtin.platformDeps(chrome, window) : null;
       builtinEngine ||= builtin.createBuiltinTranslator({
-        Translator: environment.Translator ?? window.Translator,
-        detectLanguage: (text) => chrome.i18n.detectLanguage(text),
+        Translator: environment.Translator ?? platform?.Translator ?? window.Translator,
+        detectLanguage: platform?.detectLanguage ?? ((text) => chrome.i18n.detectLanguage(text)),
+        labels: platform?.labels,
         isRussianOnly: environment.language?.isRussianOnly ?? root.SensemarkLanguageDetection?.isRussianOnly,
         detectScripts: (text) =>
           (environment.language ?? root.SensemarkLanguageDetection)?.detectSignificantScripts?.(text) || []
@@ -329,7 +338,7 @@
 
       let detection = null;
       try {
-        detection = await chrome.i18n?.detectLanguage?.(elements.source.value);
+        detection = await detectLanguage(elements.source.value);
       } catch {
         // Для короткого текста локальный определитель может не вернуть язык.
       }

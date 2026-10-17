@@ -93,6 +93,22 @@ background.js → OpenAI streaming API
 - Translator API есть только в защищённом контексте: на `http://` страницах
   показывается объяснение.
 
+## Safari
+
+Та же папка расширения работает в Safari. Отличия:
+
+- `builtin-translator.js` → `platformDeps()` узнаёт Safari по адресу
+  `safari-web-extension://` и вместо Translator API берёт `createAppleBridge`:
+  content script и popup шлют `{type: "native", payload}` в background, а тот —
+  `runtime.sendNativeMessage` в приложение;
+- `safari/native/SafariWebExtensionHandler.swift` отвечает на операции
+  `detect`, `availability`, `translate`, `openApp`;
+- `safari/native/ViewController.swift` — окно приложения: список языков
+  и их скачивание (`.translationTask`), состояние расширения в Safari;
+- `scripts/build-safari-kit.js` собирает `dist/sensemark-safari-vX.zip`
+  с Safari-манифестом (+`nativeMessaging`), Swift-файлами и `install.sh`,
+  который на Mac создаёт Xcode-проект шаблоном Apple и подставляет их.
+
 ## Режимы запроса
 
 Короткий фрагмент может идти в word mode с контекстом предложения. Остальной
