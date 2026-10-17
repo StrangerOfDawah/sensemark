@@ -140,6 +140,8 @@ jobs:
         run: |
           unzip -q dist/sensemark-safari-v*.zip -d "$RUNNER_TEMP/kit"
           bash "$RUNNER_TEMP"/kit/sensemark-safari-v*/install.sh
+          pbxproj="$(find "$SENSEMARK_PROJECT_DIR" -name project.pbxproj -print -quit)"
+          echo "::notice title=Bundle identifiers::$(grep -h 'PRODUCT_BUNDLE_IDENTIFIER' "$pbxproj" | sort -u | tr -s ' \t\n' ' ')"
 
       - name: Build the app and the extension without signing
         env:
