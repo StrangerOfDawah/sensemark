@@ -63,4 +63,7 @@ cp "${KIT}/native/ViewController.swift" "${VIEW_CONTROLLER}"
 rsync -a --delete "${KIT}/extension/" "$(dirname "${MANIFEST}")/"
 
 echo "Done: ${XCODEPROJ}"
-open "${XCODEPROJ}"
+# CI builds the project itself and has no Xcode window to open.
+if [ -z "${SENSEMARK_NO_OPEN:-}" ]; then
+  open "${XCODEPROJ}"
+fi

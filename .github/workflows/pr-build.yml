@@ -106,3 +106,54 @@ jobs:
             echo
             echo "Use a separate Chrome profile for testing so the development API key and settings do not overlap with the installed release."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  safari:
+    name: Safari app (Xcode)
+    # Builds the Swift part of the Safari kit exactly as install.sh does on a
+    # Mac, without signing, so a Swift error shows up here and not on a user's Mac.
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build the Safari kit
+        run: npm run safari:kit
+
+      - name: Show Xcode and SDK versions
+        run: |
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Create the Xcode project with install.sh
+        env:
+          SENSEMARK_PROJECT_DIR: ${{ runner.temp }}/Sensemark-Safari
+          SENSEMARK_NO_OPEN: "1"
+        run: |
+          unzip -q dist/sensemark-safari-v*.zip -d "$RUNNER_TEMP/kit"
+          bash "$RUNNER_TEMP"/kit/sensemark-safari-v*/install.sh
+
+      - name: Build the app and the extension without signing
+        env:
+          PROJECT_DIR: ${{ runner.temp }}/Sensemark-Safari
+        run: |
+          project="$(find "$PROJECT_DIR" -maxdepth 3 -name '*.xcodeproj' -print -quit)"
+          xcodebuild -list -project "$project"
+          xcodebuild build \
+            -project "$project" \
+            -scheme Sensemark \
+            -configuration Debug \
+            -destination "platform=macOS" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tail -n 60
+          exit "${PIPESTATUS[0]}"
