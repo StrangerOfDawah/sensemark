@@ -56,6 +56,15 @@ fi
 PBXPROJ="${XCODEPROJ}/project.pbxproj"
 if [ -f "${PBXPROJ}" ]; then
   sed -i '' -E 's/MACOSX_DEPLOYMENT_TARGET = [0-9.]+;/MACOSX_DEPLOYMENT_TARGET = 15.0;/g' "${PBXPROJ}"
+  # The converter names the app after the company prefix (com.sensemark.Sensemark)
+  # but the extension after --bundle-identifier, and Xcode refuses to embed an
+  # extension whose identifier does not start with the app's. The app window also
+  # expects "<app id>.Extension". Set both explicitly.
+  sed -i '' -E \
+    -e "s/(PRODUCT_BUNDLE_IDENTIFIER = )[^;]*[.]Extension;/\1__SENSEMARK_EXTENSION__;/g" \
+    -e "s/(PRODUCT_BUNDLE_IDENTIFIER = )[^_;][^;]*;/\1${BUNDLE_ID};/g" \
+    -e "s/__SENSEMARK_EXTENSION__/${BUNDLE_ID}.Extension/g" \
+    "${PBXPROJ}"
 fi
 
 cp "${KIT}/native/SafariWebExtensionHandler.swift" "${HANDLER}"
