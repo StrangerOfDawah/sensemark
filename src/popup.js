@@ -1,9 +1,8 @@
 (function exposePopup(root, factory) {
-  const manual =
-    typeof module === "object" && module.exports
-      ? require("./manual-translation.js")
-      : root.SensemarkManualTranslation;
-  const api = factory(manual, root);
+  const node = typeof module === "object" && module.exports;
+  const manual = node ? require("./manual-translation.js") : root.SensemarkManualTranslation;
+  const I18n = node ? require("./i18n.js") : root.SensemarkI18n;
+  const api = factory(manual, I18n, root);
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;
@@ -20,11 +19,13 @@
         .init();
     }
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, (manual, root) => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (manual, I18n, root) => {
   if (!manual) throw new Error("Sensemark: manual translation helper is unavailable.");
+  const { t } = I18n;
 
   function createPopupController(environment) {
     const document = environment.document;
+    I18n.localize(document);
     const chrome = environment.chrome;
     const navigator = environment.navigator || {};
     const window = environment.window || {};
@@ -125,7 +126,7 @@
       elements.resultBody.textContent = "";
       elements.copy.disabled = true;
       elements.copy.classList.remove("copied");
-      elements.copyLabel.textContent = "Копировать";
+      elements.copyLabel.textContent = t("actionCopy");
     }
 
     function applySetupState() {
@@ -172,8 +173,8 @@
         }
       }
       if (announce) {
-        setStatus("Перевод остановлен", "error");
-        showMessage("Запрос остановлен — незавершённая генерация отменена.");
+        setStatus(t("statusStopped"), "error");
+        showMessage(t("messageStopped"));
       }
     }
 
@@ -183,7 +184,7 @@
       if (view.detail) {
         const detail = createElement("div", "detail");
         detail.append(
-          createElement("div", "detail-label", view.detailLabel || "Другие значения"),
+          createElement("div", "detail-label", view.detailLabel || t("labelOtherMeanings")),
           createElement("p", "detail-text", view.detail)
         );
         elements.resultBody.appendChild(detail);
@@ -194,7 +195,7 @@
       elements.resultBody.append(
         createElement("span", "reference-category", view.category),
         createElement("p", "reference-title", view.title),
-        createElement("p", "reference-note", "Не переводится как обычное слово")
+        createElement("p", "reference-note", t("referenceNote"))
       );
       if (view.detail) {
         const detail = createElement("div", "detail");
@@ -209,8 +210,10 @@
     function renderMultilingual(view) {
       for (const section of view.sections) {
         const item = createElement("section", "segment");
-        const isRussian = /^русск/i.test(section.language);
-        const label = isRussian ? `${section.language} · без изменений` : `${section.language} → русский`;
+        const isRussian = new RegExp(t("patternTargetLanguage"), "i").test(section.language);
+        const label = isRussian
+          ? t("sectionKept", section.language)
+          : t("sectionTranslated", section.language);
         item.append(
           createElement("div", `segment-language${isRussian ? " kept" : ""}`, label),
           createElement("p", "segment-text", section.text)
@@ -224,10 +227,10 @@
       elements.result.className = `result ${view.kind}`;
       elements.resultLabel.textContent =
         view.kind === "reference"
-          ? "Объяснение"
+          ? t("labelReference")
           : view.kind === "multilingual"
-            ? "Несколько языков"
-            : "Перевод";
+            ? t("labelMultilingual")
+            : t("labelTranslation");
 
       if (view.kind === "reference") renderReference(view);
       else if (view.kind === "multilingual") renderMultilingual(view);
@@ -241,9 +244,9 @@
 
     function fail(message) {
       setBusy(false);
-      setStatus("Нужна проверка", "error");
+      setStatus(t("statusNeedsCheck"), "error");
       clearResult();
-      showMessage(message || "Не удалось выполнить перевод.", "error");
+      showMessage(message || t("errorTranslationFailed"), "error");
     }
 
     function connect(plan, id) {
@@ -251,7 +254,7 @@
       try {
         port = openPort();
       } catch {
-        fail("Расширение было обновлено. Закройте popup и откройте его снова.");
+        fail(t("errorPopupReload"));
         return;
       }
 
@@ -274,14 +277,14 @@
             visible = true;
             renderView(view);
             setStatus(
-              message.type === "done" ? "Готово" : "Перевод поступает…",
+              message.type === "done" ? t("statusDone") : t("statusStreaming"),
               message.type === "done" ? "success" : "busy"
             );
           }
 
           if (message.type === "done") {
             if (!visible) {
-              fail("Не удалось получить перевод — попробуйте ещё раз.");
+              fail(t("errorNoTranslation"));
             } else {
               release();
             }
@@ -307,7 +310,7 @@
       port.onDisconnect.addListener(() => {
         if (id !== requestId || finished) return;
         release();
-        fail("Соединение прервано — попробуйте ещё раз.");
+        fail(t("errorConnectionLost"));
       });
 
       port.postMessage({
@@ -322,7 +325,7 @@
     async function translate() {
       clearScheduled();
       if (setupIssue) {
-        setStatus("Требуется настройка", "error");
+        setStatus(t("statusSetupRequired"), "error");
         showMessage(setupIssue.message, "error");
         return;
       }
@@ -332,7 +335,7 @@
       clearResult();
       showMessage("");
       setBusy(true);
-      setStatus("Определяю язык…");
+      setStatus(t("statusDetecting"));
 
       let detection = null;
       try {
@@ -349,12 +352,12 @@
       }
       if (plan.kind === "russian") {
         setBusy(false);
-        setStatus("Уже на русском", "local");
-        showMessage("Текст уже на русском — перевод не требуется.", "local");
+        setStatus(t("statusAlreadyRussian"), "local");
+        showMessage(t("messageAlreadyRussian"), "local");
         return;
       }
 
-      setStatus("Подключаю перевод…");
+      setStatus(t("statusConnecting"));
       connect(plan, id);
     }
 
@@ -380,10 +383,10 @@
 
       if (copied) {
         elements.copy.classList.add("copied");
-        elements.copyLabel.textContent = "Скопировано";
+        elements.copyLabel.textContent = t("actionCopied");
         setTimeout(() => {
           elements.copy.classList.remove("copied");
-          elements.copyLabel.textContent = "Копировать";
+          elements.copyLabel.textContent = t("actionCopy");
         }, 1100);
       }
       return copied;
@@ -395,7 +398,7 @@
       updateCount();
       clearResult();
       showMessage("");
-      setStatus("Перевод начнётся автоматически");
+      setStatus(t("statusAutoStart"));
       elements.source.focus();
     }
 
@@ -403,16 +406,16 @@
       clearScheduled();
       const expectedText = elements.source.value.trim();
       if (!expectedText) {
-        setStatus("Перевод начнётся автоматически");
+        setStatus(t("statusAutoStart"));
         return;
       }
       if (setupIssue) {
-        setStatus("Требуется настройка", "error");
+        setStatus(t("statusSetupRequired"), "error");
         return;
       }
 
       const delay = fromPaste ? pasteTranslateDelayMs : autoTranslateDelayMs;
-      setStatus(fromPaste ? "Начинаю перевод…" : "Переведу после паузы…");
+      setStatus(fromPaste ? t("statusStarting") : t("statusAfterPause"));
       autoTimer = scheduleTimeout(() => {
         autoTimer = null;
         if (elements.source.value.trim() !== expectedText) return;
@@ -464,24 +467,21 @@
       initialized = true;
       bind();
       updateCount();
-      setStatus("Загружаю настройки…");
+      setStatus(t("statusLoadingSettings"));
 
       try {
         settings = await chrome.storage.local.get(manual.SETTINGS_DEFAULTS);
         applySetupState();
-        setStatus(
-          setupIssue ? "Требуется настройка" : "Перевод начнётся автоматически",
-          setupIssue ? "error" : ""
-        );
+        setStatus(setupIssue ? t("statusSetupRequired") : t("statusAutoStart"), setupIssue ? "error" : "");
       } catch {
         setupIssue = {
           code: "storage",
-          message: "Не удалось прочитать настройки расширения."
+          message: t("errorReadSettings")
         };
         elements.setup.hidden = false;
         elements.setupText.textContent = setupIssue.message;
         refreshControls();
-        setStatus("Настройки недоступны");
+        setStatus(t("statusSettingsUnavailable"));
       }
 
       elements.source.focus();

@@ -1,6 +1,6 @@
 <div align="center">
 
-[Русский](README.md) · **English**
+[Russian](README.md) · **English**
 
 </div>
 
@@ -8,7 +8,7 @@
 
 <div align="center">
 
-[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free or OpenAI · [Privacy](PRIVACY.en.md)
+[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free or OpenAI · [Privacy](PRIVACY.md)
 
 [![CI](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml/badge.svg)](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml)
 [![Release](https://img.shields.io/github/v/release/StrangerOfDawah/sensemark)](https://github.com/StrangerOfDawah/sensemark/releases/latest)
@@ -16,9 +16,9 @@
 
 </div>
 
-> The interface is in Russian and the extension translates **into** Russian — the source language is detected automatically. To target another language, change `targetLang` in `DEFAULTS` inside `src/background.js` and `src/options.js`.
+> The interface is in Russian and the extension translates **into** Russian — the source language is detected automatically. All interface text lives in `src/_locales/ru/messages.json`.
 
-A Russian selection is ignored without opening the card or calling the API, including small technical insertions such as `dev-секрет`, `APP_ENV`, a URL, or the ChatGPT name. When a selection contains genuinely separate Russian and foreign-language sentences, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
+A Russian selection is ignored without opening the card or calling the API, including small technical insertions such as a Russian word with a Latin suffix, `APP_ENV`, a URL, or the ChatGPT name. When a selection contains genuinely separate Russian and foreign-language sentences, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
 
 Before a request, Sensemark cleans the selection locally: it removes menus, site header and footer, buttons, footnote markers, hidden text, icon-font symbols, and Unicode control characters. Links inside the text, paragraphs, and line breaks are kept. Even when a whole page is selected, the model mostly receives the text itself and skips leftover interface labels on its own.
 
@@ -26,7 +26,7 @@ Before a request, Sensemark cleans the selection locally: it removes menus, site
 
 ## No waiting for the translation
 
-The response streams: the card opens together with the first translated characters while the rest is still being written. No empty loading card is shown — if the response is slow, a small "Перевожу с английского…" pill appears next to the selection and shrinks into a circle with a running arc.
+The response streams: the card opens together with the first translated characters while the rest is still being written. No empty loading card is shown — if the response is slow, a small "Translating from English…" pill (in Russian) appears next to the selection and shrinks into a circle with a running arc.
 
 <img src="docs/images/feature-stream.png" alt="The status pill, then the circle, then the card with the translation">
 
@@ -36,7 +36,7 @@ Close the card mid-translation and the request aborts — unfinished tokens aren
 
 ## A card that matches the page
 
-The card takes the colours of the site you are reading: white on a white page, dark on a dark one, warm on a sepia one, and the translation uses the page's text size. In the "Оформление" settings you can pin a light or dark theme, pick the translation font (System, Golos Text or Literata) and turn off "same size as the page".
+The card takes the colours of the site you are reading: white on a white page, dark on a dark one, warm on a sepia one, and the translation uses the page's text size. In the Appearance settings you can pin a light or dark theme, pick the translation font (System, Golos Text or Literata) and turn off "same size as the page".
 
 <img src="docs/images/feature-chameleon.png" alt="The card on a white, a dark and a sepia page">
 
@@ -64,7 +64,7 @@ Selected a single word? The extension picks up the surrounding sentence and asks
 
 If the selection is not a common word — for example, it is a name, title, username, brand, or typo — Sensemark does not invent a translation. The card switches to a separate amber **Explanation** state, shows the fragment category, and gives a brief, cautious description based on its spelling and context. If there is not enough information, it identifies the fragment as a likely proper name or title.
 
-<img src="docs/images/feature-context.png" alt="The word bank in two contexts: банк and берег">
+<img src="docs/images/feature-context.png" alt="The word bank in two contexts: a financial bank and a river bank">
 
 The card lives in a Shadow DOM, so site styles can't break it.
 
@@ -135,7 +135,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 
 1. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and top up your balance
 2. Click the extension icon, then the settings button in the top-right corner
-3. Choose the **OpenAI** mode, paste the key and hit **Проверить ключ** (Test key)
+3. Choose the **OpenAI** mode, paste the key and hit **Test key**
 
 **On cost.** The default is the cheapest current model, `gpt-6-luna`, with reasoning turned off; instructions are short and in English. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
@@ -146,7 +146,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 | Method | How |
 | --- | --- |
 | Keyboard shortcut | Select text → <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Mac) or <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Windows) |
-| Context menu | Select text → right-click → «Перевести на русский» |
+| Context menu | Select text → right-click → Translate into Russian |
 | Automatic | On right after installation — a mouse selection is translated after half a second. Turn it off in settings or with the ⏸ button in the card. Pressing <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>C</kbd> or the right mouse button right away cancels it; selections inside input fields are ignored |
 | Pause | The ⏸ button on the card pauses auto-translation for 5 minutes or turns it off. Turn it back on in settings or by right-clicking the Sensemark toolbar icon |
 | Manual | Click the extension icon → paste text; translation starts automatically |
@@ -171,12 +171,13 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 | `src/content/` | Everything on the page: card, status pill, context extraction, placement, styles |
 | `src/popup.*` · `manual-translation.js` | Manual translation popup from the toolbar icon |
 | `src/options.*` | Settings page |
+| `src/_locales/ru/messages.json` · `i18n.js` | Every interface string and the Russian words of the model protocol; none live in code |
 | `src/fonts/` · `src/icons/` | Golos Text and Literata fonts (OFL licence) and icons |
 | `platforms/safari/` | Safari version: the Swift part and the installer |
 
 Details are in the [architecture overview](docs/architecture.md).
 
-In free mode the text is translated on the device and is not sent anywhere. In OpenAI mode the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
+In free mode the text is translated on the device and is not sent anywhere. In OpenAI mode the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.md) for details.
 
 Repeat translations of the same fragment come from an in-memory cache in the service worker (last 200) and cost nothing. Selections are capped at 5000 characters so an accidental <kbd>⌘</kbd><kbd>A</kbd> doesn't send a whole page to the API.
 

@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const Builtin = require("../../src/builtin-translator.js");
 const language = require("../../src/language-detection.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 // A fake of Chrome's built-in translator (Translator API).
 function fakeTranslator({ unsupported = [], needsGesture = [], streaming = true } = {}) {
@@ -42,7 +44,7 @@ function fakeTranslator({ unsupported = [], needsGesture = [], streaming = true 
 
 // A fake chrome.i18n.detectLanguage: decides by script.
 async function detectLanguage(text) {
-  const code = /[А-Яа-яЁё]/u.test(text)
+  const code = /[\u0410-\u044F\u0401\u0451]/u.test(text)
     ? "ru"
     : /\p{Script=Arabic}/u.test(text)
       ? "ar"
@@ -87,18 +89,19 @@ test("a word gets its sentence translated too, because the built-in translator i
   // The language comes from the sentence (German), not from the single word.
   assert.equal(
     result,
-    "[[translation]]\nRU[de] Bank\nв предложении: RU[de] Ich war gestern bei der Bank, um Geld für die Miete abzuheben."
+    `[[translation]]\nRU[de] Bank\n${t("protocolInSentence")}: RU[de] Ich war gestern bei der Bank, um Geld für die Miete abzuheben.`
   );
 });
 
 test("mixed text keeps Russian and translates each language in its own section", async () => {
   const result = await engine(fakeTranslator()).run({
-    text: "Привет! How are you? مرحبا بك.",
+    text: `${RU.helloExclaim} How are you? مرحبا بك.`,
     sourceScripts: ["Cyrillic", "Latin", "Arabic"]
   });
   assert.equal(
     result,
-    "[[multilingual]]\n[[lang:русский]]\nПривет!\n[[lang:английский]]\nRU[en] How are you?\n[[lang:арабский]]\nRU[ar] مرحبا بك."
+    `[[multilingual]]\n[[lang:${RU.langRussian}]]\n${RU.helloExclaim}\n[[lang:${RU.langEnglish}]]\nRU[en] How are you?\n` +
+      `[[lang:${RU.langArabic}]]\nRU[ar] مرحبا بك.`
   );
 });
 
@@ -119,7 +122,7 @@ test("an unsupported language explains how to switch to OpenAI", async () => {
     }),
     (error) => {
       assert.equal(error.code, "unsupported");
-      assert.match(error.message, /не умеет переводить с японского/);
+      assert.equal(error.message, t("engineUnsupported", t("engineChrome"), RU.langJapaneseGenitive));
       assert.match(error.message, /OpenAI/);
       return true;
     }
@@ -131,10 +134,13 @@ test("a missing language pack needs one click, then translation works", async ()
   const translator = engine(Translator);
   await assert.rejects(
     translator.run({ text: "日本の保育園です", sourceScripts: ["Japanese"] }),
-    (error) => error.code === "needs-download" && error.language === "ja" && /с японского/.test(error.message)
+    (error) =>
+      error.code === "needs-download" &&
+      error.language === "ja" &&
+      error.message === t("chromeNeedsDownload", RU.langJapaneseGenitive)
   );
 
-  Translator.state.gesture = true; // the user pressed «Скачать»
+  Translator.state.gesture = true; // the user pressed the download button
   const progress = [];
   const create = Translator.create;
   Translator.create = async (options) => {
@@ -145,7 +151,7 @@ test("a missing language pack needs one click, then translation works", async ()
     return create(options);
   };
   await translator.prepare("ja", (value) => progress.push(value));
-  assert.deepEqual(progress, [0.25, 1], "прогресс скачивания доходит до кружка");
+  assert.deepEqual(progress, [0.25, 1], "download progress reaches the ring");
   assert.equal(
     await translator.run({ text: "日本の保育園です", sourceScripts: ["Japanese"] }),
     "[[text]]\nRU[ja] 日本の保育園です"
@@ -186,7 +192,7 @@ test("local port behaves like the OpenAI port: chunks, done, cancellation", asyn
   cancelled.postMessage({ type: "start", text: "Good morning everyone.", sourceScripts: ["Latin"] });
   cancelled.disconnect();
   await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.deepEqual(late, [], "после закрытия карточки ничего не приходит");
+  assert.deepEqual(late, [], "nothing arrives after the card is closed");
 });
 
 test("local port turns engine errors into user-facing messages with a code", async () => {
@@ -198,7 +204,7 @@ test("local port turns engine errors into user-facing messages with a code", asy
   assert.equal(messages[0].type, "error");
   assert.equal(messages[0].code, "needs-download");
   assert.equal(messages[0].language, "ar");
-  assert.match(messages[0].error, /с арабского/);
+  assert.equal(messages[0].error, t("chromeNeedsDownload", RU.langArabicGenitive));
 
   const broken = Builtin.openLocalPort({
     run: async () => {
@@ -211,7 +217,7 @@ test("local port turns engine errors into user-facing messages with a code", asy
   broken.postMessage({ type: "ignored" });
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(errors.length, 1);
-  assert.match(errors[0].error, /не смог перевести/);
+  assert.equal(errors[0].error, t("chromeFailed"));
 });
 
 test("language codes and names", () => {
@@ -221,12 +227,12 @@ test("language codes and names", () => {
   assert.equal(Builtin.normalizeLanguage("iw"), "he");
   assert.equal(Builtin.normalizeLanguage("pt-BR"), "pt");
   assert.equal(Builtin.normalizeLanguage("und"), "");
-  assert.equal(Builtin.languageGenitive("en"), "английского");
-  assert.equal(Builtin.languageName("de"), "немецкий");
-  assert.deepEqual(Builtin.splitUnits("One. Two?\nТри"), [
+  assert.equal(Builtin.languageGenitive("en"), RU.langEnglishGenitive);
+  assert.equal(Builtin.languageName("de"), RU.langGerman);
+  assert.deepEqual(Builtin.splitUnits(`One. Two?\n${RU.three}`), [
     { text: "One.", newline: false },
     { text: "Two?", newline: false },
-    { text: "Три", newline: true }
+    { text: RU.three, newline: true }
   ]);
 });
 
@@ -249,8 +255,8 @@ test("downloading a language pack shows progress and gives up after a timeout", 
     ),
     (error) => error.code === "download-failed" && /OpenAI/.test(error.message)
   );
-  assert.match(statuses[0], /Скачиваю языковой пакет для перевода с английского — это нужно один раз…$/);
-  assert.match(statuses[1], /… 40%$/);
+  assert.equal(statuses[0], t("downloadingPack", RU.langEnglishGenitive));
+  assert.equal(statuses[1], t("downloadingPackPercent", RU.langEnglishGenitive, 40));
   // Data for the progress ring: the language and the downloaded share.
   assert.deepEqual(metas[0], { kind: "download", language: "en", progress: null });
   assert.deepEqual(metas[1], { kind: "download", language: "en", progress: 0.4 });
@@ -259,8 +265,8 @@ test("downloading a language pack shows progress and gives up after a timeout", 
 test("local port forwards download progress as a status message", async () => {
   const port = Builtin.openLocalPort({
     run: async (_message, { onStatus }) => {
-      onStatus("Скачиваю…", { kind: "download", language: "ja", progress: 0.42 });
-      return "[[text]]\nготово";
+      onStatus("Downloading…", { kind: "download", language: "ja", progress: 0.42 });
+      return `[[text]]\n${RU.ready}`;
     }
   });
   const messages = [];
@@ -273,7 +279,7 @@ test("local port forwards download progress as a status message", async () => {
   );
   assert.deepEqual(messages[0], {
     type: "status",
-    text: "Скачиваю…",
+    text: "Downloading…",
     kind: "download",
     language: "ja",
     progress: 0.42

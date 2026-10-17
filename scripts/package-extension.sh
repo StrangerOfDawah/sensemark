@@ -21,6 +21,7 @@ cd "$ROOT_DIR/src"
 zip -q -r "$ARCHIVE" \
   manifest.json \
   background.js \
+  i18n.js \
   language-detection.js \
   selection-text.js \
   word-response.js \
@@ -45,13 +46,13 @@ zip -q -r "$ARCHIVE" \
   popup.js \
   options.html \
   options.js \
+  _locales/ru/messages.json \
   icons
 
 # Legal documents ship with the extension.
 cd "$ROOT_DIR"
 zip -q "$ARCHIVE" \
   LICENSE \
-  PRIVACY.md \
-  PRIVACY.en.md
+  PRIVACY.md
 
 echo "$ARCHIVE"

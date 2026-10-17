@@ -57,6 +57,7 @@ response parser → on-page card or toolbar popup
 | Layer             | Files                                      | Responsibility                                                               |
 | ----------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
 | Manifest          | `src/manifest.json`                        | Permissions, content scripts, service worker, popup and commands             |
+| Messages          | `src/_locales/ru/messages.json`, `src/i18n.js` | Every user-facing string and the Russian words of the model protocol     |
 | Detection         | `src/language-detection.js`                | Scripts, Russian text, small technical Latin inserts                         |
 | Selection text    | `src/selection-text.js`                    | Joining fragments, invisible characters, icon-font glyphs                    |
 | Request & stream  | `src/background.js`                        | Prompt, OpenAI, SSE, cache, repair, answer validation, model parameters      |
@@ -75,6 +76,13 @@ response parser → on-page card or toolbar popup
 | Settings          | `src/options.html`, `options.js`           | Mode, API key, model, consent, auto-translate, appearance                    |
 | Safari native     | `platforms/safari/native/*.swift`          | Apple translation, language detection, language download window             |
 | Checks & packaging | `tests/`, `scripts/`, `.github/workflows/` | Regressions, coverage, manifest, zip, Safari kit, release assets           |
+
+User-facing text lives only in `src/_locales/ru/messages.json` and is read through
+`chrome.i18n` by `src/i18n.js`, which also fills static HTML: each `<!--t:key-->`
+comment becomes a text node and `data-i18n-title`, `data-i18n-aria-label` and
+`data-i18n-placeholder` set attributes, so the DOM keeps its exact shape. The same
+file holds the Russian words of the model protocol (for example the "other
+meanings" prefix), so the prompt and the parsers never disagree.
 
 Content scripts are classic scripts, not modules. Each shared file uses a small
 UMD wrapper: in the browser it publishes `globalThis.SensemarkX`; under Node it
@@ -172,7 +180,7 @@ must contain every section.
 - scripts that were not in the selection;
 - a repeated foreign original;
 - a translation into a third language;
-- copied instructions and a `Перевод:` label.
+- copied instructions and a translation label (`protocolTranslationLabel`).
 
 Repair is an exceptional second request after a concrete defect
 ([ADR 0005](adr/0005-repair-is-an-exception.md)). A correct single translation

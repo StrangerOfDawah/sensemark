@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { JSDOM } = require("jsdom");
+const { getMessage, t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 const { createPopupController } = require("../../src/popup.js");
 
@@ -49,7 +51,7 @@ async function setupPopup(overrides = {}) {
     provider: "openai",
     apiKey: "test-key",
     model: "gpt-4o-mini",
-    targetLang: "русский",
+    targetLang: t("targetLanguage"),
     autoTranslate: false,
     privacyConsentVersion: 1,
     ...overrides.settings
@@ -58,6 +60,7 @@ async function setupPopup(overrides = {}) {
   const copied = [];
   const chrome = {
     i18n: {
+      getMessage,
       detectLanguage:
         overrides.detectLanguage ||
         (async () => ({
@@ -178,12 +181,12 @@ test("popup ignores Russian manual input without opening an API port", async () 
     })
   });
 
-  setInput(context, "Этот текст уже на русском языке.");
+  setInput(context, RU.alreadyRussian);
   await context.controller.translate();
 
   assert.equal(context.ports.length, 0);
-  assert.match(context.document.getElementById("message").textContent, /уже на русском/);
-  assert.match(context.document.getElementById("status").textContent, /Уже на русском/);
+  assert.equal(context.document.getElementById("message").textContent, t("messageAlreadyRussian"));
+  assert.equal(context.document.getElementById("status").textContent, t("statusAlreadyRussian"));
 });
 
 test("popup streams a word translation without exposing protocol markers", async () => {
@@ -204,22 +207,22 @@ test("popup streams a word translation without exposing protocol markers", async
   port.serverMessage({ type: "chunk", text: "[[translation]]\n" });
   assert.equal(context.document.getElementById("result").hidden, true);
 
-  port.serverMessage({ type: "chunk", text: "[[translation]]\nпо" });
+  port.serverMessage({ type: "chunk", text: `[[translation]]\n${RU.by}` });
   assert.equal(context.document.getElementById("result").hidden, false);
-  assert.equal(context.document.querySelector(".translation-text").textContent, "по");
+  assert.equal(context.document.querySelector(".translation-text").textContent, RU.by);
 
   port.serverMessage({
     type: "done",
-    text: "[[translation]]\nпочему\nдругие значения: зачем"
+    text: `[[translation]]\n${RU.why}\n${t("protocolOtherMeanings")}: ${RU.whatFor}`
   });
-  assert.equal(context.document.querySelector(".translation-text").textContent, "почему");
-  assert.equal(context.document.querySelector(".detail-text").textContent, "зачем");
+  assert.equal(context.document.querySelector(".translation-text").textContent, RU.why);
+  assert.equal(context.document.querySelector(".detail-text").textContent, RU.whatFor);
   assert.equal(context.document.getElementById("activity").classList.contains("busy"), false);
   assert.equal(port.disconnected, true);
 
   await context.controller.copyResult();
-  assert.deepEqual(context.copied, ["почему"]);
-  assert.equal(context.document.querySelector("#copyButton span").textContent, "Скопировано");
+  assert.deepEqual(context.copied, [RU.why]);
+  assert.equal(context.document.querySelector("#copyButton span").textContent, t("actionCopied"));
 });
 
 test("popup renders multilingual output with source-language labels", async () => {
@@ -234,14 +237,14 @@ test("popup renders multilingual output with source-language labels", async () =
     type: "done",
     text:
       "[[multilingual]]\n" +
-      "[[script:Latin|lang:английский]]\nПривет.\n" +
-      "[[script:Arabic|lang:арабский]]\nДобро пожаловать."
+      `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.helloDot}\n` +
+      `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.welcome}`
   });
 
-  assert.equal(context.document.getElementById("resultLabel").textContent, "Несколько языков");
+  assert.equal(context.document.getElementById("resultLabel").textContent, t("labelMultilingual"));
   assert.deepEqual(
     [...context.document.querySelectorAll(".segment-language")].map((item) => item.textContent),
-    ["английский → русский", "арабский → русский"]
+    [t("sectionTranslated", RU.langEnglish), t("sectionTranslated", RU.langArabic)]
   );
 });
 
@@ -251,13 +254,13 @@ test("popup renders unknown terms in the amber explanation state", async () => {
   await context.controller.translate();
   context.ports[0].serverMessage({
     type: "done",
-    text: "[[reference]]\nназвание\nВероятно, название проекта."
+    text: `[[reference]]\n${RU.title}\n${RU.probablyProjectName}`
   });
 
   assert.equal(context.document.getElementById("result").classList.contains("reference"), true);
-  assert.equal(context.document.getElementById("resultLabel").textContent, "Объяснение");
+  assert.equal(context.document.getElementById("resultLabel").textContent, t("labelReference"));
   assert.equal(context.document.querySelector(".reference-title").textContent, "Sensemark");
-  assert.equal(context.document.querySelector(".reference-category").textContent, "название");
+  assert.equal(context.document.querySelector(".reference-category").textContent, RU.title);
 });
 
 test("popup aborts stale work when the user edits or clears the field", async () => {
@@ -280,13 +283,13 @@ test("popup surfaces model errors and unexpected disconnects", async () => {
   const context = await setupPopup();
   setInput(context, "Translate this text.");
   await context.controller.translate();
-  context.ports[0].serverMessage({ type: "error", error: "Недостаточно средств." });
-  assert.match(context.document.getElementById("message").textContent, /Недостаточно средств/);
+  context.ports[0].serverMessage({ type: "error", error: RU.insufficientFunds });
+  assert.equal(context.document.getElementById("message").textContent, RU.insufficientFunds);
 
   setInput(context, "Try once more.");
   await context.controller.translate();
   context.ports[1].disconnect();
-  assert.match(context.document.getElementById("message").textContent, /Соединение прервано/);
+  assert.equal(context.document.getElementById("message").textContent, t("errorConnectionLost"));
 });
 
 test("popup reacts to settings changes and supports the keyboard shortcut", async () => {
@@ -328,10 +331,10 @@ test("popup in free mode translates on the device without a key or an API port",
     }
   });
 
-  assert.equal(context.document.getElementById("setupBanner").hidden, true, "ключ не нужен");
+  assert.equal(context.document.getElementById("setupBanner").hidden, true, "no key needed");
   setInput(context, "The new version is available now.", "insertFromPaste");
   await wait(40);
-  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  assert.equal(context.ports.length, 0, "nothing is sent to OpenAI");
   assert.match(
     context.document.getElementById("resultBody").textContent,
     /RU\[en\] The new version is available now\./

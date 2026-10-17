@@ -74,7 +74,7 @@ If any final check fails, the release is not published.
 
 ## 6. Chrome Web Store
 
-Upload `sensemark-vX.Y.Z.zip` in the Developer Dashboard. Listing copy and images
-are in [store/chrome-web-store.md](../store/chrome-web-store.md) and
-`store/assets/`. The privacy policy link points to `PRIVACY.md` on `main`, so that
+Upload `sensemark-vX.Y.Z.zip` in the Developer Dashboard. The dashboard values are in
+[store/chrome-web-store.md](../store/chrome-web-store.md), the Russian listing text in
+[store/listing.ru.txt](../store/listing.ru.txt) and the images in `store/assets/`. The privacy policy link points to `PRIVACY.md` on `main`, so that
 file must stay at the repository root.

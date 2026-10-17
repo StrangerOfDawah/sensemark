@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const Theme = require("../../src/card-theme.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 const rgb = (value) => Theme.parseColor(value);
 
@@ -24,9 +26,12 @@ test("dark page gets a dark card one step lighter than the page", () => {
   const palette = Theme.buildPalette({ background, text: rgb("rgb(201, 209, 217)") });
   assert.equal(palette.scheme, "dark");
   const surface = Theme.parseColor(`rgb(${hexParts(palette.surface)})`);
-  assert.ok(Theme.luminance(surface) > Theme.luminance(background), "карточка светлее фона");
-  assert.ok(Theme.luminance(surface) < 0.05, "но остаётся тёмной");
-  assert.ok(Theme.contrast(surface, hexRgb(palette.text)) >= 7, "текст читается");
+  assert.ok(
+    Theme.luminance(surface) > Theme.luminance(background),
+    "the card is lighter than the background"
+  );
+  assert.ok(Theme.luminance(surface) < 0.05, "but stays dark");
+  assert.ok(Theme.contrast(surface, hexRgb(palette.text)) >= 7, "the text is readable");
 });
 
 test("sepia page gets a warm card with readable text", () => {
@@ -34,7 +39,7 @@ test("sepia page gets a warm card with readable text", () => {
   const palette = Theme.buildPalette({ background, text: rgb("rgb(59, 47, 32)") });
   const surface = hexRgb(palette.surface);
   assert.notEqual(palette.surface, "#ffffff");
-  assert.ok(surface.r > surface.b, "тёплый оттенок сохраняется");
+  assert.ok(surface.r > surface.b, "the warm tint is kept");
   assert.ok(Theme.contrast(surface, hexRgb(palette.text)) >= 7);
 });
 
@@ -69,11 +74,11 @@ test("translation size follows the page within readable limits", () => {
 
 test("long selection: more than one paragraph or at least 300 characters", () => {
   assert.equal(Theme.isLongSelection("One short paragraph."), false);
-  assert.equal(Theme.isLongSelection("First.\nSecond."), false, "два коротких абзаца остаются карточкой");
+  assert.equal(Theme.isLongSelection("First.\nSecond."), false, "two short paragraphs stay a card");
   assert.equal(
     Theme.isLongSelection(`${"a".repeat(70)}\n${"b".repeat(60)}`),
     true,
-    "два абзаца от 120 символов"
+    "two paragraphs of 120+ characters"
   );
   assert.equal(Theme.isLongSelection("a".repeat(299)), false);
   assert.equal(Theme.isLongSelection("a".repeat(300)), true);
@@ -111,15 +116,19 @@ test("layout: short text under the selection, long text on the margin or in a dr
 });
 
 test("header label names paragraphs and the source language", () => {
-  assert.equal(Theme.headerLabel({ language: "английского" }), "Перевод · с английского");
+  const label = t("labelTranslation");
+  const fromEnglish = t("fromLanguage", RU.langEnglishGenitive);
+  assert.equal(Theme.headerLabel({ language: RU.langEnglishGenitive }), `${label} · ${fromEnglish}`);
   assert.equal(
-    Theme.headerLabel({ language: "английского", paragraphs: 3, long: true }),
-    "Перевод · 3 абзаца с английского"
+    Theme.headerLabel({ language: RU.langEnglishGenitive, paragraphs: 3, long: true }),
+    `${label} · ${t("paragraphsFew", 3)} ${fromEnglish}`
   );
-  assert.equal(Theme.headerLabel({ paragraphs: 5, long: true }), "Перевод · 5 абзацев");
-  assert.equal(Theme.headerLabel({ paragraphs: 3 }), "Перевод");
-  assert.equal(Theme.paragraphsLabel(21), "21 абзац");
-  assert.equal(Theme.paragraphsLabel(12), "12 абзацев");
+  assert.equal(Theme.headerLabel({ paragraphs: 5, long: true }), `${label} · ${t("paragraphsMany", 5)}`);
+  assert.equal(Theme.headerLabel({ paragraphs: 3 }), label);
+  // Russian plural forms: 21 takes "one", 12 takes "many", 22 takes "few".
+  assert.equal(Theme.paragraphsLabel(21), t("paragraphsOne", 21));
+  assert.equal(Theme.paragraphsLabel(12), t("paragraphsMany", 12));
+  assert.equal(Theme.paragraphsLabel(22), t("paragraphsFew", 22));
 });
 
 function hexRgb(value) {

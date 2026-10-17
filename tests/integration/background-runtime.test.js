@@ -2,6 +2,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { eventHub, loadBackground } = require("../helpers/background.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
+
+const sseChunk = (content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
 
 function createPort() {
   const onDisconnect = eventHub();
@@ -49,15 +53,13 @@ function sseResponse(chunks) {
 }
 
 test("request preparation blocks missing consent, key, and empty text", async () => {
-  await assert.rejects(
-    loadBackground({ settings: { privacyConsentVersion: 0 } }).prepareRequest("Hello"),
-    /подтвердите отправку/i
-  );
-  await assert.rejects(
-    loadBackground({ settings: { apiKey: "" } }).prepareRequest("Hello"),
-    /Не задан API-ключ/
-  );
-  await assert.rejects(loadBackground().prepareRequest("   "), /Ничего не выделено/);
+  await assert.rejects(loadBackground({ settings: { privacyConsentVersion: 0 } }).prepareRequest("Hello"), {
+    message: t("errorConsentRequired")
+  });
+  await assert.rejects(loadBackground({ settings: { apiKey: "" } }).prepareRequest("Hello"), {
+    message: t("errorNoApiKey")
+  });
+  await assert.rejects(loadBackground().prepareRequest("   "), { message: t("errorNothingSelected") });
 });
 
 test("source scripts are sanitized, deduplicated, and included in cache identity", async () => {
@@ -77,13 +79,13 @@ test("non-streaming translation caches repeated requests", async () => {
   const background = loadBackground({
     fetch: async () => {
       fetchCount++;
-      return jsonResponse("[[text]]\nПривет, мир!");
+      return jsonResponse(`[[text]]\n${RU.helloWorld}`);
     }
   });
 
   const first = await background.translate("Hello, world!", null, false);
   const second = await background.translate("Hello, world!", null, false);
-  assert.equal(first, "[[text]]\nПривет, мир!");
+  assert.equal(first, `[[text]]\n${RU.helloWorld}`);
   assert.equal(second, first);
   assert.equal(fetchCount, 1);
 });
@@ -94,8 +96,8 @@ test("streaming translation emits cumulative chunks, completion, and cache hits"
     fetch: async () => {
       fetchCount++;
       return sseResponse([
-        'data: {"choices":[{"delta":{"content":"[[text]]\\nПри"}}]}\n\n',
-        'data: {"choices":[{"delta":{"content":"вет."}}]}\n\ndata: [DONE]\n\n'
+        sseChunk(`[[text]]\n${RU.helloFirstHalf}`),
+        `${sseChunk(RU.helloSecondHalf)}data: [DONE]\n\n`
       ]);
     }
   });
@@ -106,15 +108,15 @@ test("streaming translation emits cumulative chunks, completion, and cache hits"
     firstPort.messages.map((message) => message.type),
     ["chunk", "chunk", "done"]
   );
-  assert.equal(firstPort.messages[0].text, "[[text]]\nПри");
-  assert.equal(firstPort.messages.at(-1).text, "[[text]]\nПривет.");
+  assert.equal(firstPort.messages[0].text, `[[text]]\n${RU.helloFirstHalf}`);
+  assert.equal(firstPort.messages.at(-1).text, `[[text]]\n${RU.helloDot}`);
 
   const cachedPort = createPort();
   await background.streamTranslate(cachedPort, "Hello.", null, false, ["Latin"]);
   assert.equal(fetchCount, 1);
   assert.equal(cachedPort.messages.length, 1);
   assert.equal(cachedPort.messages[0].type, "done");
-  assert.equal(cachedPort.messages[0].text, "[[text]]\nПривет.");
+  assert.equal(cachedPort.messages[0].text, `[[text]]\n${RU.helloDot}`);
 });
 
 test("parallel bilingual title accepts one streamed translation without a repair request", async () => {
@@ -122,10 +124,7 @@ test("parallel bilingual title accepts one streamed translation without a repair
   const background = loadBackground({
     fetch: async () => {
       fetchCount++;
-      return sseResponse([
-        'data: {"choices":[{"delta":{"content":"[[text]]\\nЯпонские детские сады"}}]}\n\n',
-        "data: [DONE]\n\n"
-      ]);
+      return sseResponse([sseChunk(`[[text]]\n${RU.japaneseDaycares}`), "data: [DONE]\n\n"]);
     }
   });
   const port = createPort();
@@ -137,7 +136,7 @@ test("parallel bilingual title accepts one streamed translation without a repair
 
   assert.equal(fetchCount, 1);
   assert.equal(port.messages.at(-1).type, "done");
-  assert.equal(port.messages.at(-1).text, "[[text]]\nЯпонские детские сады");
+  assert.equal(port.messages.at(-1).text, `[[text]]\n${RU.japaneseDaycares}`);
   assert.equal(
     port.messages.some((message) => message.type === "error"),
     false
@@ -188,24 +187,24 @@ test("failed repair is rejected instead of displaying malformed output", async (
   await assert.rejects(
     background.repairResponse(
       { apiKey: "key", model: "gpt-4o-mini" },
-      [{ role: "system", content: "Переведи." }],
+      [{ role: "system", content: RU.translateIt }],
       "[[skip]]",
-      "Запрещённая метка.",
+      RU.forbiddenLabel,
       true,
       ["Latin"],
       "Why",
       new AbortController().signal
     ),
-    /Не удалось получить полный перевод/
+    { message: t("errorIncompleteTranslation") }
   );
 });
 
-test("API errors receive actionable Russian descriptions", async () => {
+test("API errors receive actionable descriptions", async () => {
   const background = loadBackground();
-  assert.match(await background.describeError(jsonResponse("", 401)), /Неверный API-ключ/);
-  assert.match(await background.describeError(jsonResponse("", 403)), /Доступ запрещён/);
+  assert.equal(await background.describeError(jsonResponse("", 401)), t("errorApi401"));
+  assert.equal(await background.describeError(jsonResponse("", 403)), t("errorApi403"));
   assert.match(await background.describeError(jsonResponse("", 404, "unknown model")), /unknown model/);
-  assert.match(await background.describeError(jsonResponse("", 429)), /баланс/);
+  assert.equal(await background.describeError(jsonResponse("", 429)), t("errorApi429"));
   assert.match(await background.describeError(jsonResponse("", 500, "server")), /500.*server/);
 });
 
@@ -224,6 +223,7 @@ test("old tabs receive all content helpers after an initial ping failure", async
   assert.deepEqual(
     [...background.__state.executedScripts[0].files],
     [
+      "i18n.js",
       "language-detection.js",
       "selection-text.js",
       "word-response.js",
@@ -249,7 +249,7 @@ test("installation creates the context menu and opens the mode choice", async ()
   await tick();
   assert.equal(background.__state.menuItems[0].id, "translate-selection");
   assert.equal(background.__state.optionsOpened, 1);
-  assert.equal(background.__settings.provider, "builtin", "новые пользователи начинают бесплатно");
+  assert.equal(background.__settings.provider, "builtin", "new users start in free mode");
 });
 
 test("an update keeps OpenAI for users who already have a key", async () => {
@@ -257,18 +257,18 @@ test("an update keeps OpenAI for users who already have a key", async () => {
   withKey.__events.installed.emit({ reason: "update" });
   await tick();
   assert.equal(withKey.__settings.provider, "openai");
-  assert.equal(withKey.__state.optionsOpened, 1, "режиму OpenAI нужно согласие");
+  assert.equal(withKey.__state.optionsOpened, 1, "OpenAI mode needs consent");
 
   const free = loadBackground({ settings: { provider: "", apiKey: "", privacyConsentVersion: 0 } });
   free.__events.installed.emit({ reason: "update" });
   await tick();
   assert.equal(free.__settings.provider, "builtin");
-  assert.equal(free.__state.optionsOpened, 0, "бесплатный режим не дёргает настройками");
+  assert.equal(free.__state.optionsOpened, 0, "free mode does not open settings");
 });
 
 test("runtime translate messages keep the response channel open", async () => {
   const background = loadBackground({
-    fetch: async () => jsonResponse("[[text]]\nПривет.")
+    fetch: async () => jsonResponse(`[[text]]\n${RU.helloDot}`)
   });
   let response = null;
   const returns = background.__events.message.emit({ type: "translate", text: "Hello." }, {}, (value) => {
@@ -277,7 +277,7 @@ test("runtime translate messages keep the response channel open", async () => {
   assert.equal(returns[0], true);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(response.ok, true);
-  assert.equal(response.text, "[[text]]\nПривет.");
+  assert.equal(response.text, `[[text]]\n${RU.helloDot}`);
 });
 
 test("toolbar icon menu toggles auto-translation and lifts an active pause", async () => {
@@ -299,7 +299,7 @@ test("toolbar icon menu toggles auto-translation and lifts an active pause", asy
 
   background.__settings.autoPausedUntil = Date.now() + 60_000;
   await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
-  assert.equal(background.__settings.autoTranslate, true, "снятие паузы не выключает автоперевод");
+  assert.equal(background.__settings.autoTranslate, true, "lifting the pause keeps auto-translate on");
   assert.equal(background.__settings.autoPausedUntil, 0);
 });
 
@@ -316,7 +316,7 @@ test("toolbar icon menu title reflects off, paused and on states", async () => {
   await record();
   background.__settings.autoPausedUntil = 0;
   await record();
-  assert.deepEqual(titles, ["Включить автоперевод", "Снять паузу автоперевода", "Выключить автоперевод"]);
+  assert.deepEqual(titles, [t("autoMenuEnable"), t("autoMenuResume"), t("autoMenuDisable")]);
 });
 
 test("selection context menu item runs the same translation path as the hotkey", async () => {
@@ -334,31 +334,28 @@ test("translation cache survives a service worker restart", async () => {
   let calls = 0;
   const fetch = async () => {
     calls++;
-    return jsonResponse("[[text]]\nПривет, друзья мои.");
+    return jsonResponse(`[[text]]\n${RU.helloFriends}`);
   };
   const first = loadBackground({ fetch, sessionStore });
-  assert.equal(
-    await first.translate("Hello, my dear friends.", null, false),
-    "[[text]]\nПривет, друзья мои."
-  );
+  assert.equal(await first.translate("Hello, my dear friends.", null, false), `[[text]]\n${RU.helloFriends}`);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   // Chrome put the service worker to sleep: memory is gone, the browser session stays.
   const restarted = loadBackground({ fetch, sessionStore });
   assert.equal(
     await restarted.translate("Hello, my dear friends.", null, false),
-    "[[text]]\nПривет, друзья мои."
+    `[[text]]\n${RU.helloFriends}`
   );
   assert.equal(calls, 1);
 });
 
-test("toolbar icon menu offers «Выключить автоперевод» on a fresh install (on by default)", async () => {
+test("toolbar icon menu offers to turn auto-translate off on a fresh install (on by default)", async () => {
   const background = loadBackground();
   delete background.__settings.autoTranslate;
   await background.refreshAutoMenuTitle();
-  assert.equal(background.__state.menuUpdates.at(-1).title, "Выключить автоперевод");
+  assert.equal(background.__state.menuUpdates.at(-1).title, t("autoMenuDisable"));
   await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
-  assert.equal(background.__settings.autoTranslate, false, "первый клик выключает");
+  assert.equal(background.__settings.autoTranslate, false, "the first click turns it off");
 });
 
 test("an update never touches a saved OpenAI key, consent or retired model's key", async () => {
@@ -370,9 +367,9 @@ test("an update never touches a saved OpenAI key, consent or retired model's key
   assert.equal(background.__settings.apiKey, "sk-saved");
   assert.equal(background.__settings.provider, "openai");
   assert.equal(background.__settings.privacyConsentVersion, 1);
-  assert.equal(background.__state.optionsOpened, 0, "согласие уже есть — настройки не открываются");
+  assert.equal(background.__state.optionsOpened, 0, "consent already given, settings stay closed");
   for (const write of background.__state.storageWrites) {
-    assert.equal("apiKey" in write, false, "при обновлении ключ не перезаписывается");
+    assert.equal("apiKey" in write, false, "an update never overwrites the key");
   }
 });
 
@@ -390,7 +387,7 @@ test("Safari: native messages go to the Sensemark app and the reply comes back",
   const background = loadBackground({
     sendNativeMessage: async (application, payload) => {
       calls.push({ application, payload });
-      return { ok: true, text: "Привет" };
+      return { ok: true, text: RU.hello };
     }
   });
   const reply = await askBackground(background, {
@@ -398,7 +395,7 @@ test("Safari: native messages go to the Sensemark app and the reply comes back",
     payload: { op: "translate", text: "Hello", source: "en", target: "ru" }
   });
   assert.equal(reply.ok, true);
-  assert.equal(reply.text, "Привет");
+  assert.equal(reply.text, RU.hello);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].payload.op, "translate");
 });

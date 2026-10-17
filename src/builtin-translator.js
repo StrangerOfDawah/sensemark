@@ -4,13 +4,16 @@
 // Results use the same format as the OpenAI answer ([[text]],
 // [[translation]], [[multilingual]]), so the card and the popup do not change.
 (function exposeBuiltinTranslator(root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module === "object" && module.exports ? require("./i18n.js") : root.SensemarkI18n
+  );
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     root.SensemarkBuiltin = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (I18n) => {
+  const { t } = I18n;
   const TARGET = "ru";
   // When the language detector is unsure, the script hints at the language.
   const SCRIPT_LANGUAGE = {
@@ -35,15 +38,18 @@
 
   function languageName(code) {
     try {
-      return new Intl.DisplayNames(["ru"], { type: "language" }).of(code) || code;
+      return new Intl.DisplayNames([TARGET], { type: "language" }).of(code) || code;
     } catch {
       return code;
     }
   }
 
-  // "японский" → "японского", for phrases like "перевод с японского".
+  // The language name in the genitive case, for phrases like "translating from X".
   function languageGenitive(code) {
-    return languageName(code).replace(/(?:ий|ый|ой)$/u, "ого");
+    return languageName(code).replace(
+      new RegExp(t("grammarGenitiveEnding"), "u"),
+      t("grammarGenitiveReplacement")
+    );
   }
 
   function normalizeLanguage(code) {
@@ -72,31 +78,21 @@
 
   // Texts that depend on whose translator is running.
   const CHROME_LABELS = {
-    engine: "Встроенный переводчик Chrome",
-    unavailable:
-      "Встроенный переводчик Chrome здесь недоступен: он работает в Chrome 138 и новее на компьютере " +
-      "и только на защищённых страницах (https). Можно переключиться на OpenAI в настройках.",
-    needsDownload: (language) =>
-      `Chrome нужно один раз скачать языковой пакет для перевода с ${languageGenitive(language)}.`,
-    downloadFailed:
-      "Не удалось скачать языковой пакет Chrome — проверьте интернет и попробуйте ещё раз " +
-      "или переключитесь на OpenAI в настройках.",
-    failed: "Встроенный переводчик Chrome не смог перевести текст — попробуйте ещё раз.",
-    downloading: (name) => `Скачиваю ${name}…`,
+    engine: t("engineChrome"),
+    unavailable: t("chromeUnavailable"),
+    needsDownload: (language) => t("chromeNeedsDownload", languageGenitive(language)),
+    downloadFailed: t("chromeDownloadFailed"),
+    failed: t("chromeFailed"),
+    downloading: (name) => t("chromeDownloading", name),
     reportsProgress: true
   };
   const APPLE_LABELS = {
-    engine: "Переводчик Apple",
-    unavailable:
-      "Переводчик Apple недоступен: нужна macOS 26.4 или новее и установленное приложение Sensemark. " +
-      "Можно переключиться на OpenAI в настройках.",
-    needsDownload: (language) =>
-      `macOS нужно один раз скачать язык для перевода с ${languageGenitive(language)}. ` +
-      "Нажмите «Скачать» — откроется приложение Sensemark, скачайте там этот язык.",
-    downloadFailed:
-      "Язык так и не скачался. Откройте приложение Sensemark, скачайте язык и выделите текст ещё раз.",
-    failed: "Переводчик Apple не смог перевести текст — попробуйте ещё раз.",
-    downloading: (name) => `Скачайте ${name} в приложении Sensemark…`,
+    engine: t("engineApple"),
+    unavailable: t("appleUnavailable"),
+    needsDownload: (language) => t("appleNeedsDownload", languageGenitive(language)),
+    downloadFailed: t("appleDownloadFailed"),
+    failed: t("appleFailed"),
+    downloading: (name) => t("appleDownloading", name),
     reportsProgress: false
   };
 
@@ -139,8 +135,9 @@
       // The second argument feeds the progress ring on the page.
       const status = (percent) =>
         onStatus?.(
-          `Скачиваю языковой пакет для перевода с ${languageGenitive(language)} — это нужно один раз` +
-            (percent === null ? "…" : `… ${percent}%`),
+          percent === null
+            ? t("downloadingPack", languageGenitive(language))
+            : t("downloadingPackPercent", languageGenitive(language), percent),
           { kind: "download", language, progress: percent === null ? null : percent / 100 }
         );
       if (downloading) status(null);
@@ -172,8 +169,7 @@
           if (availability === "unavailable") {
             throw new BuiltinError(
               "unsupported",
-              `${labels.engine} не умеет переводить с ${languageGenitive(language)}. ` +
-                "Подключите OpenAI в настройках — он переводит с любого языка.",
+              t("engineUnsupported", labels.engine, languageGenitive(language)),
               language
             );
           }
@@ -260,7 +256,7 @@
         // sentence is translated too and the meaning is clear at once.
         if (context && context.trim() !== text.trim()) {
           const sentence = await translateText(translator, context, signal);
-          if (sentence) result += `\nв предложении: ${sentence.replace(/\s+/g, " ")}`;
+          if (sentence) result += `\n${t("protocolInSentence")}: ${sentence.replace(/\s+/g, " ")}`;
         }
         onChunk?.(result);
         return result;

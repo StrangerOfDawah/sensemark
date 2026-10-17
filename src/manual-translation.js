@@ -4,12 +4,14 @@
       ? {
           language: require("./language-detection.js"),
           textResponse: require("./text-response.js"),
-          wordResponse: require("./word-response.js")
+          wordResponse: require("./word-response.js"),
+          i18n: require("./i18n.js")
         }
       : {
           language: root.SensemarkLanguageDetection,
           textResponse: root.SensemarkTextResponse,
-          wordResponse: root.SensemarkWordResponse
+          wordResponse: root.SensemarkWordResponse,
+          i18n: root.SensemarkI18n
         };
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) {
@@ -18,13 +20,14 @@
     root.SensemarkManualTranslation = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, (dependencies) => {
+  const { t } = dependencies.i18n;
   const MAX_CHARS = 5000;
   const PRIVACY_CONSENT_VERSION = 1;
   const SETTINGS_DEFAULTS = {
     provider: "builtin",
     apiKey: "",
     model: "gpt-6-luna",
-    targetLang: "русский",
+    targetLang: t("targetLanguage"),
     autoTranslate: true,
     privacyConsentVersion: 0
   };
@@ -50,13 +53,13 @@
     if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
       return {
         code: "consent",
-        message: "Подтвердите отправку текста в OpenAI в настройках."
+        message: t("setupConsent")
       };
     }
     if (!String(settings.apiKey || "").trim()) {
       return {
         code: "api-key",
-        message: "Добавьте API-ключ OpenAI в настройках."
+        message: t("setupApiKey")
       };
     }
     return null;
@@ -65,16 +68,16 @@
   function createRequestPlan(rawText, detection = null) {
     const text = String(rawText || "").trim();
     if (!text) {
-      return { kind: "error", message: "Введите текст для перевода." };
+      return { kind: "error", message: t("errorEnterText") };
     }
     if (text.length > MAX_CHARS) {
       return {
         kind: "error",
-        message: `Слишком длинный текст: максимум ${MAX_CHARS} символов.`
+        message: t("errorTextTooLong", MAX_CHARS)
       };
     }
     if (!/\p{L}/u.test(text)) {
-      return { kind: "error", message: "В тексте не найдено слов для перевода." };
+      return { kind: "error", message: t("errorNoWords") };
     }
     if (isRussianOnly(text, detection)) {
       return { kind: "russian", text };
@@ -107,9 +110,9 @@
           visible: true,
           kind: "reference",
           title: source,
-          category: parsed.category || "неизвестный термин",
+          category: parsed.category || t("protocolUnknownTerm"),
           detail: parsed.detail,
-          detailLabel: parsed.detailLabel || "Что это может быть",
+          detailLabel: parsed.detailLabel || t("labelWhatItMayBe"),
           copyText
         };
       }
@@ -120,7 +123,7 @@
         kind: "translation",
         text: parsed.main,
         detail: parsed.detail,
-        detailLabel: parsed.detailLabel || "Другие значения",
+        detailLabel: parsed.detailLabel || t("labelOtherMeanings"),
         copyText: parsed.main
       };
     }

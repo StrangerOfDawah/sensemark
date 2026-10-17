@@ -1,55 +1,53 @@
-# Политика конфиденциальности Sensemark
+# Sensemark Privacy Policy
 
-[English](PRIVACY.en.md)
+**Effective date:** October 16, 2026
 
-**Дата вступления в силу:** 16 октября 2026 г.
+This policy applies to the **Sensemark** Chrome extension (the “Extension”). The Extension is an independent open-source project and is not affiliated with or endorsed by OpenAI.
 
-Настоящая политика применяется к расширению Chrome **Sensemark** («Расширение»). Расширение является независимым проектом с открытым исходным кодом, не связано с OpenAI и не одобрено ею.
+## Translation modes
 
-## Режимы перевода
+The Extension works in one of two modes chosen by the user in settings:
 
-Расширение работает в одном из двух режимов, который пользователь выбирает в настройках:
+- **Chrome's built-in translator** (the default). Translation runs on the user's device using Chrome. Selected or entered text **is not sent anywhere** — not to the developer, not to OpenAI, not to any other party. For a new language Chrome downloads a language pack once from its own servers; the user's text is not transmitted.
+- **OpenAI**. Text is sent to the OpenAI API as described below. This mode is enabled only explicitly and only after the user's consent.
 
-- **Встроенный переводчик Chrome** (режим по умолчанию). Перевод выполняется на устройстве пользователя средствами Chrome. Выделенный или введённый текст **никуда не отправляется**: ни разработчику, ни OpenAI, ни другим сторонам. Для нового языка Chrome один раз скачивает языковой пакет со своих серверов; при этом текст пользователя не передаётся.
-- **OpenAI**. Текст отправляется в OpenAI API, как описано ниже. Этот режим включается только явно и только после согласия пользователя.
+Everything below about sending data to OpenAI applies to OpenAI mode only.
 
-Всё, что описано ниже про передачу данных в OpenAI, относится только к режиму OpenAI.
+## Data the Extension handles
 
-## Какие данные обрабатываются
+The Extension handles only the data needed to translate text:
 
-Расширение обрабатывает только данные, необходимые для перевода:
+- the text the user explicitly selects for translation;
+- text the user manually types or pastes into the popup for translation;
+- for a short selection, the surrounding sentence used to determine the correct meaning;
+- the user's OpenAI API key;
+- local preferences such as the selected model, automatic translation setting, and card size;
+- the user's consent status for sending text to OpenAI.
 
-- текст, который пользователь явно выделил для перевода;
-- текст, который пользователь вручную ввёл или вставил в popup для перевода;
-- для короткого фрагмента — окружающее предложение, необходимое для выбора правильного значения;
-- API-ключ OpenAI пользователя;
-- локальные настройки: выбранная модель, автоматический перевод и размер карточки;
-- факт согласия пользователя на отправку текста в OpenAI.
+Before transmission, the Extension locally removes hidden duplicates and interface elements from the selection. Images, screenshots, and page pixels are not sent to OpenAI.
 
-Перед отправкой Расширение локально очищает выделение от скрытых дубликатов и элементов интерфейса. Изображения, скриншоты и пиксели страницы в OpenAI не отправляются.
+## How the data is used and shared
 
-## Как используются и передаются данные
+Selected or manually entered text and optional selection context are sent directly from the user's browser to the OpenAI API at `https://api.openai.com` solely to generate the requested translation. The API key is sent to OpenAI in the authorization header solely to authenticate that request.
 
-Выделенный или вручную введённый текст и, при необходимости, окружающий контекст выделения отправляются напрямую из браузера пользователя в OpenAI API по адресу `https://api.openai.com` исключительно для создания запрошенного перевода. API-ключ передаётся OpenAI в заголовке авторизации исключительно для аутентификации запроса.
+Before the first request, the Extension asks the user to explicitly consent to this data transfer. Translation network requests are blocked until consent is provided.
 
-До первого запроса Расширение просит пользователя явно подтвердить эту передачу данных. Без подтверждения сетевые запросы на перевод блокируются.
+The developer does not receive this data, operate an intermediary server, sell data, use it for advertising, or share it with any other party. OpenAI processes API requests according to its [API data controls](https://developers.openai.com/api/docs/guides/your-data) and [privacy policy](https://openai.com/policies/privacy-policy/).
 
-Разработчик не получает эти данные, не использует промежуточный сервер, не продаёт данные, не применяет их для рекламы и не передаёт другим сторонам. OpenAI обрабатывает API-запросы в соответствии со своими [правилами обработки данных API](https://developers.openai.com/api/docs/guides/your-data) и [политикой конфиденциальности](https://openai.com/policies/privacy-policy/).
+## Storage and retention
 
-## Хранение и срок хранения
+The API key, preferences, and consent status are stored locally in `chrome.storage.local` on the user's device. Translation results may be kept temporarily in the extension's session storage (`chrome.storage.session`) for faster repeated translations. It lives in memory, is never written to disk, and is cleared when the browser closes.
 
-API-ключ, настройки и факт согласия хранятся локально на устройстве пользователя в `chrome.storage.local`. Результаты перевода могут временно храниться в сессионном хранилище расширения (`chrome.storage.session`) для ускорения повторных переводов. Оно находится в оперативной памяти, не записывается на диск и очищается при закрытии браузера.
+The Extension does not maintain translation history, analytics, tracking identifiers, or developer-operated logs. OpenAI's own retention practices are described in the policies linked above.
 
-Расширение не ведёт историю переводов, не использует аналитику, идентификаторы отслеживания или журналы на сервере разработчика. Правила хранения данных OpenAI приведены по ссылкам выше.
+## User control
 
-## Управление данными
+Users can remove the stored API key by clearing it in the Extension settings. Consent to send text can be withdrawn by clearing the corresponding checkbox in settings; new OpenAI requests are then blocked. Uninstalling the Extension removes its locally stored settings through Chrome. Users should not translate secrets or content they are not authorized to send to OpenAI.
 
-Пользователь может удалить сохранённый API-ключ, очистив поле в настройках Расширения. Согласие на отправку текста можно отозвать, сняв соответствующий флажок в настройках; после этого новые запросы в OpenAI блокируются. При удалении Расширения Chrome удаляет его локальные настройки. Не следует переводить секретные данные или материалы, которые пользователь не имеет права отправлять в OpenAI.
+## Chrome Web Store Limited Use
 
-## Ограниченное использование данных Chrome Web Store
+The Extension's use of information complies with the [Chrome Web Store User Data Policy](https://developer.chrome.com/docs/webstore/program-policies/policies), including the Limited Use requirements. Information is used only to provide translation functionality and is not used for advertising, creditworthiness, or unrelated purposes.
 
-Использование информации Расширением соответствует [политике пользовательских данных Chrome Web Store](https://developer.chrome.com/docs/webstore/program-policies/policies), включая требования Limited Use. Информация используется только для предоставления функции перевода и не применяется для рекламы, оценки кредитоспособности или иных несвязанных целей.
+## Changes and contact
 
-## Изменения и связь
-
-Существенные изменения будут опубликованы в этом файле с новой датой вступления в силу. По вопросам конфиденциальности [создайте issue в публичном репозитории](https://github.com/StrangerOfDawah/sensemark/issues).
+Material changes will be published in this file with an updated effective date. For privacy questions, [open an issue in the public repository](https://github.com/StrangerOfDawah/sensemark/issues).

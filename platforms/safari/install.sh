@@ -7,7 +7,7 @@
 # code; the signing team chosen in Xcode is kept.
 #
 # Important: macOS runs this script with the old bash 3.2, which counts the
-# bytes of Cyrillic letters as part of a variable name, so variables here are
+# bytes of non-ASCII letters as part of a variable name, so variables here are
 # always written in braces: ${NAME}.
 set -euo pipefail
 
@@ -25,7 +25,7 @@ find_one() {
 }
 
 if [ -z "$(find "${PROJECT_DIR}" -maxdepth 3 -name '*.xcodeproj' -print -quit 2>/dev/null)" ]; then
-  echo "Создаю Xcode-проект в ${PROJECT_DIR} ..."
+  echo "Creating the Xcode project in ${PROJECT_DIR} ..."
   mkdir -p "${PROJECT_DIR}"
   xcrun safari-web-extension-converter "${KIT}/extension" \
     --project-location "${PROJECT_DIR}" \
@@ -45,7 +45,7 @@ MANIFEST="$(find_one manifest.json)"
 XCODEPROJ="$(find "${PROJECT_DIR}" -maxdepth 3 -name '*.xcodeproj' -print -quit)"
 
 if [ -z "${HANDLER}" ] || [ -z "${VIEW_CONTROLLER}" ] || [ -z "${MANIFEST}" ] || [ -z "${XCODEPROJ}" ]; then
-  echo "Не нашёл файлы проекта в ${PROJECT_DIR} - пришлите этот вывод разработчику." >&2
+  echo "Could not find the project files in ${PROJECT_DIR}; please send this output to the developer." >&2
   find "${PROJECT_DIR}" -maxdepth 4 -not -path "*/.*" >&2
   exit 1
 fi
@@ -62,5 +62,5 @@ cp "${KIT}/native/SafariWebExtensionHandler.swift" "${HANDLER}"
 cp "${KIT}/native/ViewController.swift" "${VIEW_CONTROLLER}"
 rsync -a --delete "${KIT}/extension/" "$(dirname "${MANIFEST}")/"
 
-echo "Готово: ${XCODEPROJ}"
+echo "Done: ${XCODEPROJ}"
 open "${XCODEPROJ}"

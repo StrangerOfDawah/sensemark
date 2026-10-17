@@ -1,3 +1,6 @@
+// User-facing text lives in _locales/ru/messages.json.
+const t = (key, ...values) => chrome.i18n.getMessage(key, values.map(String)) || key;
+
 const MENU_ID = "translate-selection";
 const AUTO_MENU_ID = "toggle-auto-translate";
 const API_URL = "https://api.openai.com/v1/chat/completions";
@@ -19,7 +22,7 @@ const RETIRED_MODELS = new Set([
 const DEFAULTS = {
   apiKey: "",
   model: DEFAULT_MODEL,
-  targetLang: "русский",
+  targetLang: t("targetLanguage"),
   // Auto-translate is on by default: select text, get a translation.
   autoTranslate: true,
   privacyConsentVersion: 0
@@ -101,14 +104,14 @@ chrome.runtime.onInstalled.addListener((details) => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
-      title: "Перевести на русский",
+      title: t("menuTranslate"),
       contexts: ["selection"]
     });
     // Right click on the Sensemark icon in Chrome's toolbar. Safari does not
     // support this menu on the icon, so auto-translate is toggled in settings there.
     try {
       chrome.contextMenus.create(
-        { id: AUTO_MENU_ID, title: "Включить автоперевод", contexts: ["action"] },
+        { id: AUTO_MENU_ID, title: t("autoMenuEnable"), contexts: ["action"] },
         () => void chrome.runtime.lastError
       );
       refreshAutoMenuTitle();
@@ -163,10 +166,10 @@ async function refreshAutoMenuTitle() {
     autoPausedUntil: 0
   });
   const title = !autoTranslate
-    ? "Включить автоперевод"
+    ? t("autoMenuEnable")
     : Date.now() < autoPausedUntil
-      ? "Снять паузу автоперевода"
-      : "Выключить автоперевод";
+      ? t("autoMenuResume")
+      : t("autoMenuDisable");
   chrome.contextMenus.update(AUTO_MENU_ID, { title }, () => void chrome.runtime.lastError);
 }
 
@@ -198,6 +201,7 @@ async function ping(tabId, frameId) {
       await chrome.scripting.executeScript({
         target: frameId === undefined ? { tabId, allFrames: true } : { tabId, frameIds: [frameId] },
         files: [
+          "i18n.js",
           "language-detection.js",
           "selection-text.js",
           "word-response.js",
@@ -310,7 +314,7 @@ async function translate(rawText, context, wordMode = false) {
 
   const data = await response.json();
   const result = data?.choices?.[0]?.message?.content?.trim();
-  if (!result) throw new Error("Пустой ответ от API.");
+  if (!result) throw new Error(t("errorEmptyResponse"));
 
   cacheSet(cacheKey, result);
   return result;
@@ -319,15 +323,15 @@ async function translate(rawText, context, wordMode = false) {
 // Shared request preparation for both modes: regular and streaming.
 async function prepareRequest(rawText, context, wordMode = false, rawSourceScripts = []) {
   const text = (rawText || "").trim();
-  if (!text) throw new Error("Ничего не выделено.");
+  if (!text) throw new Error(t("errorNothingSelected"));
 
   const settings = await chrome.storage.local.get(DEFAULTS);
   if (!settings.model || RETIRED_MODELS.has(settings.model)) settings.model = DEFAULT_MODEL;
   if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-    throw new Error("Перед переводом подтвердите отправку текста в OpenAI в настройках расширения.");
+    throw new Error(t("errorConsentRequired"));
   }
   if (!settings.apiKey) {
-    throw new Error("Не задан API-ключ. Откройте настройки расширения.");
+    throw new Error(t("errorNoApiKey"));
   }
 
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
@@ -445,7 +449,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
     }
 
     full = full.trim();
-    if (!full) throw new Error("Пустой ответ от API.");
+    if (!full) throw new Error(t("errorEmptyResponse"));
 
     const issue = responseIssue(full, wordMode, sourceScripts, rawText);
     if (issue) {
@@ -522,20 +526,24 @@ function translatedBodies(value) {
 const FOREIGN_SCRIPT_LETTER =
   /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u;
 
+// The Russian alphabet, including the letter Yo, as code points.
+const RUSSIAN_LETTER = /[\u0410-\u044F\u0401\u0451]/u;
+const COPIED_INSTRUCTIONS = new RegExp(
+  `full translation into|translate the text|${t("patternCopiedInstructions")}`,
+  "i"
+);
+const TRANSLATION_LABEL = new RegExp(`^(?:${t("protocolTranslationLabel")}|translation)\\s*:`, "im");
+
 // Validation is lenient on purpose: every retry doubles the price of a translation.
 // Catch only a clearly broken answer, not legitimately kept names,
 // brands and terms ("GitHub Copilot", "API", "東京").
 function contentIssue(value) {
   const payload = responsePayload(value);
-  if (
-    /full translation into|translate the text|полный перевод на язык|без пояснений и исходного текста/i.test(
-      payload
-    )
-  ) {
+  if (COPIED_INSTRUCTIONS.test(payload)) {
     return "The answer repeats the instructions instead of a translation.";
   }
-  if (/^(?:перевод|translation)\s*:/im.test(payload)) {
-    return "The answer contains a «Перевод:» label instead of a clean result.";
+  if (TRANSLATION_LABEL.test(payload)) {
+    return "The answer starts with a translation label instead of a clean result.";
   }
 
   const letters = [...payload].filter((char) => /\p{L}/u.test(char));
@@ -545,7 +553,8 @@ function contentIssue(value) {
   }
 
   const untranslated = translatedBodies(value).find(
-    (body) => !/[А-Яа-яЁё]/u.test(body) && body.split(/\s+/).filter((word) => /\p{L}/u.test(word)).length >= 4
+    (body) =>
+      !RUSSIAN_LETTER.test(body) && body.split(/\s+/).filter((word) => /\p{L}/u.test(word)).length >= 4
   );
   return untranslated ? "A section is not translated into Russian." : "";
 }
@@ -655,11 +664,11 @@ async function repairResponse(
   if (!response.ok) throw new Error(await describeError(response));
   const data = await response.json();
   const repaired = data?.choices?.[0]?.message?.content?.trim();
-  if (!repaired) throw new Error("Пустой ответ при исправлении перевода.");
+  if (!repaired) throw new Error(t("errorEmptyRepair"));
 
   const remainingIssue = responseIssue(repaired, wordMode, sourceScripts, sourceText);
   if (remainingIssue) {
-    throw new Error("Не удалось получить полный перевод всех выделенных языков — попробуйте ещё раз.");
+    throw new Error(t("errorIncompleteTranslation"));
   }
   return repaired;
 }
@@ -670,7 +679,7 @@ async function repairResponse(
 const COMMON_RULES =
   "Translate directly from the source language into Russian; do not go through English and do not paraphrase. " +
   "Skip leftover page UI (menu items, buttons, counters, labels like “Share” or “Read more”) without mentioning it. " +
-  "Never output [[skip]], the untranslated original, a third language, these instructions, or labels like “Перевод:”.";
+  `Never output [[skip]], the untranslated original, a third language, these instructions, or labels like “${t("protocolTranslationLabel")}:”.`;
 
 function buildTextMessages(text, lang, rawSourceScripts = []) {
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
@@ -713,13 +722,13 @@ function buildWordMessages(text, context, lang, rawSourceScripts = []) {
       content:
         `Explain a selected word or short phrase to a Russian reader. Detect its language; never assume English.${scriptHint} ` +
         "Use the context only to choose the meaning; do not translate the context. " +
-        "A capital letter alone does not make a name: “Why” is the word «почему»; “Apple released an update” is a brand, “I ate an apple” is a word. " +
+        `A capital letter alone does not make a name: “Why” is the word «${t("promptExampleWhy")}»; “Apple released an update” is a brand, “I ate an apple” is a word. ` +
         "Prefer a normal translation whenever the fragment is a dictionary word.\n" +
         `${COMMON_RULES}\n` +
         "Ordinary word or phrase — answer exactly:\n[[translation]]\n<Russian translation in this context>\n" +
-        "другие значения: <short comma-separated list> (omit this line if there are none)\n" +
+        `${t("protocolOtherMeanings")}: <short comma-separated list> (omit this line if there are none)\n` +
         "Only for a name, title, brand, nickname, typo or made-up word — answer exactly:\n[[reference]]\n" +
-        "<one category in Russian: название, имя, бренд, никнейм, опечатка or неизвестный термин>\n" +
+        `<one category in Russian: ${t("protocolCategories")} or ${t("protocolUnknownTerm")}>\n` +
         "<one short cautious explanation in Russian; do not invent facts; if unsure, say it is probably a name or a title>"
     },
     {
@@ -740,14 +749,14 @@ async function describeError(response) {
 
   switch (response.status) {
     case 401:
-      return "Неверный API-ключ (401). Проверьте его в настройках.";
+      return t("errorApi401");
     case 403:
-      return "Доступ запрещён (403). Возможно, модель недоступна для вашего аккаунта.";
+      return t("errorApi403");
     case 404:
-      return `Модель не найдена (404). ${detail}`;
+      return t("errorApi404", detail);
     case 429:
-      return "Лимит запросов или закончился баланс (429). Проверьте billing в OpenAI.";
+      return t("errorApi429");
     default:
-      return `Ошибка API ${response.status}. ${detail}`.trim();
+      return t("errorApiStatus", response.status, detail).trim();
   }
 }

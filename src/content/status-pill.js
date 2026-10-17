@@ -1,5 +1,5 @@
 // Status pill: while no translation has arrived yet, a small pill
-// "Перевожу с английского…" appears next to the selection, then shrinks into
+// "Translating from English…" appears next to the selection, then shrinks into
 // a circle with a running arc. It lives apart from the card: the card itself
 // is never shown empty, only with the first visible piece of translation.
 (function exposeStatusPill(root, factory) {

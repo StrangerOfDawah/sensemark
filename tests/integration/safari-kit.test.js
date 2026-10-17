@@ -56,5 +56,5 @@ test("install.sh survives macOS bash 3.2: every variable is written as ${NAME}",
     .filter((line) => !line.trimStart().startsWith("#"))
     .join("\n");
   const unbraced = code.match(/\$[A-Za-z_][A-Za-z0-9_]*/g) || [];
-  assert.deepEqual(unbraced, [], `переменные без фигурных скобок: ${unbraced.join(", ")}`);
+  assert.deepEqual(unbraced, [], `variables without braces: ${unbraced.join(", ")}`);
 });

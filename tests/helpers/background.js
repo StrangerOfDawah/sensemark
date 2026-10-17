@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { getMessage } = require("./i18n.js");
 
 function eventHub() {
   const listeners = [];
@@ -19,7 +20,7 @@ function loadBackground(overrides = {}) {
   const settings = {
     apiKey: "test-key",
     model: "gpt-4o-mini",
-    targetLang: "русский",
+    targetLang: getMessage("targetLanguage"),
     autoTranslate: false,
     privacyConsentVersion: 1,
     ...overrides.settings
@@ -51,6 +52,7 @@ function loadBackground(overrides = {}) {
     setTimeout,
     fetch: overrides.fetch,
     chrome: {
+      i18n: { getMessage },
       runtime: {
         onInstalled: events.installed,
         onMessage: events.message,

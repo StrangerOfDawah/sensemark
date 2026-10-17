@@ -1,38 +1,72 @@
-# Sensemark для Safari
+# Sensemark for Safari
 
-Расширение для Safari на Mac. Работает так же, как в Chrome. Отличие одно: бесплатный режим переводит **переводчиком Apple** прямо на Mac, без ключа и без интернета. Режим OpenAI тоже есть, ключ вводится в настройках.
+The Safari extension for the Mac. It works the same as in Chrome, with one
+difference: free mode translates with **Apple's translator** right on the Mac,
+with no key and no internet. OpenAI mode is there too; the key goes into
+settings.
 
-Нужно: macOS 26.4 или новее и Xcode (бесплатно в App Store). Публиковать ничего не нужно, хватает обычного Apple ID.
+You need macOS 26.4 or later and Xcode (free on the App Store). Nothing is
+published; a regular Apple ID is enough.
 
-## Первая установка
+## First install
 
-1. **Скачайте и распакуйте** архив `sensemark-safari-vX.Y.Z.zip` со страницы [Releases](https://github.com/StrangerOfDawah/sensemark/releases/latest), например в «Загрузки». Из исходников его собирает команда `npm run safari:kit`.
-2. **Откройте Терминал** и выполните (путь к папке поправьте, если распаковали в другое место):
+1. **Download and unzip** `sensemark-safari-vX.Y.Z.zip` from
+   [Releases](https://github.com/StrangerOfDawah/sensemark/releases/latest), for
+   example into Downloads. From the source code it is built with
+   `npm run safari:kit`.
+2. **Open Terminal** and run (adjust the path if you unzipped elsewhere):
    ```
    cd ~/Downloads/sensemark-safari-v*/ && bash install.sh
    ```
-   Именно `bash install.sh`, а не `./install.sh`: macOS не даёт напрямую запускать файлы, полученные по AirDrop или из интернета («operation not permitted»).
-   Скрипт создаст проект в папке `~/Sensemark-Safari` и сам откроет его в Xcode.
-   Если Терминал ответит, что не нашёл `safari-web-extension-converter`, выполните один раз
-   `sudo xcode-select -s /Applications/Xcode.app` и повторите команду.
-3. **Подпись в Xcode.** Слева нажмите на самый верхний пункт — синюю иконку проекта **Sensemark**. В центре, в списке **Targets**, по очереди выберите **Sensemark** и **Sensemark Extension**. Для каждого откройте вкладку **Signing & Capabilities** и в поле **Team** выберите свой Apple ID (Personal Team). Если списка нет: **Xcode → Settings → Accounts → +** и войдите в Apple ID.
-4. **Запуск.** Наверху слева должна быть выбрана схема **Sensemark** и **My Mac**. Нажмите ▶ (или ⌘R). Откроется окно Sensemark со списком языков.
-5. **Включите расширение.** В Safari откройте **Настройки → Расширения**, поставьте галочку у Sensemark и разрешите ему работать на всех сайтах («Всегда разрешать на всех веб-сайтах»).
-   Если Sensemark нет в списке: **Настройки → Дополнения** → «Показывать функции для веб-разработчиков», затем **Настройки → Разработчик** → «Разрешить неподписанные расширения».
-6. **Скачайте языки.** В окне Sensemark нажмите «Скачать» у языков, с которых читаете (английский и другие). macOS спросит подтверждение — это один раз.
-7. **Проверьте подпись — это важно.** Полностью закройте Safari (⌘Q), откройте снова и загляните в **Настройки → Расширения**.
-   - Sensemark включён — подпись бесплатным Apple ID подошла, всё готово.
-   - Sensemark пропал или выключен — Safari не принимает такую подпись. Apple рассчитывает на раздачу Safari-расширений через App Store, поэтому вне магазина остаются три пути: включать «Разрешить неподписанные расширения» после каждого запуска Safari; подписка Apple Developer ($99 в год) и установка через TestFlight; или пользоваться Sensemark в Chrome, Edge или Arc — там подпись не нужна.
-8. **Готово.** Выделите текст мышью на любом сайте — через полсекунды появится перевод. Ещё можно нажать ⌘⇧Y. Выключить автоперевод — кнопкой ⏸ в карточке или в настройках: значок Sensemark на панели Safari → шестерёнка.
+   Use `bash install.sh`, not `./install.sh`: macOS does not run files received
+   via AirDrop or from the internet directly ("operation not permitted").
+   The script creates the project in `~/Sensemark-Safari` and opens it in Xcode.
+   If Terminal says it cannot find `safari-web-extension-converter`, run
+   `sudo xcode-select -s /Applications/Xcode.app` once and repeat the command.
+3. **Signing in Xcode.** In the left sidebar, click the topmost item, the blue
+   **Sensemark** project icon. In the **Targets** list in the middle, select
+   **Sensemark** and then **Sensemark Extension**. For each, open
+   **Signing & Capabilities** and choose your Apple ID (Personal Team) under
+   **Team**. If the list is empty: **Xcode → Settings → Accounts → +** and sign
+   in with your Apple ID.
+4. **Run.** At the top left, the **Sensemark** scheme and **My Mac** must be
+   selected. Press ▶ (or ⌘R). The Sensemark window with the language list opens.
+5. **Turn the extension on.** In Safari open **Settings → Extensions**, tick
+   Sensemark and allow it on all websites ("Always Allow on Every Website").
+   If Sensemark is not listed: **Settings → Advanced** → "Show features for web
+   developers", then **Settings → Developer** → "Allow unsigned extensions".
+6. **Download languages.** In the Sensemark window, click "Download" next to the
+   languages you read (English and others). macOS asks for confirmation once.
+7. **Check the signature: this matters.** Quit Safari completely (⌘Q), open it
+   again and look at **Settings → Extensions**.
+   - Sensemark is on: the free Apple ID signature works, you are done.
+   - Sensemark is gone or off: Safari does not accept this signature. Apple
+     expects Safari extensions to come from the App Store, so outside the store
+     there are three options: turn on "Allow unsigned extensions" after every
+     Safari launch; an Apple Developer membership ($99 a year) and installing
+     through TestFlight; or use Sensemark in Chrome, Edge or Arc, where no
+     signature is needed.
+8. **Done.** Select text with the mouse on any website, and the translation
+   appears half a second later. You can also press ⌘⇧Y. Turn auto-translate off
+   with the pause button on the card or in settings: the Sensemark icon in the
+   Safari toolbar → the gear.
 
-Чтобы приложение не пропало после очистки Xcode, перенесите его в «Программы»: в Xcode **Product → Show Build Folder in Finder**, затем `Products/Debug/Sensemark.app` → в «Программы», и откройте его оттуда один раз.
+So the app does not disappear when Xcode cleans up, move it to Applications: in
+Xcode choose **Product → Show Build Folder in Finder**, move
+`Products/Debug/Sensemark.app` to Applications and open it from there once.
 
-## Обновление
+## Updating
 
-Распакуйте новый архив, снова выполните `bash install.sh` и нажмите ▶ в Xcode. Подпись и настройки сохраняются.
+Unzip the new archive, run `bash install.sh` again and press ▶ in Xcode. Signing
+and settings are kept.
 
-## Если что-то не так
+## Troubleshooting
 
-- **«macOS нужно один раз скачать язык…»** — нажмите «Скачать» в карточке: откроется приложение Sensemark, скачайте там этот язык. Карточка сама продолжит перевод.
-- **«Переводчик Apple недоступен…»** — проверьте версию macOS (нужна 26.4+) и что приложение Sensemark хотя бы раз запускалось. Можно переключиться на OpenAI в настройках.
-- **Ошибка в Xcode при сборке** — сделайте скриншот красной ошибки и пришлите разработчику.
+- **The card says macOS needs to download a language once**: click the download
+  button on the card. The Sensemark app opens; download that language there. The
+  card continues the translation by itself.
+- **The card says Apple's translator is unavailable**: check the macOS version
+  (26.4+ is required) and that the Sensemark app has been launched at least once.
+  You can also switch to OpenAI in settings.
+- **An error in Xcode while building**: take a screenshot of the red error and
+  send it to the developer.

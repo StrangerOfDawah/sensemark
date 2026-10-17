@@ -6,7 +6,11 @@
     root.SensemarkLanguageDetection = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  const RUSSIAN_LETTER = /^[А-Яа-яЁё]$/u;
+  // The Russian alphabet, including the letter Yo, as code points.
+  const RUSSIAN = "\\u0410-\\u044F\\u0401\\u0451";
+  const RUSSIAN_LETTER = new RegExp(`^[${RUSSIAN}]$`, "u");
+  const RUSSIAN_BEFORE_HYPHEN = new RegExp(`[${RUSSIAN}]-$`, "u");
+  const HYPHEN_BEFORE_RUSSIAN = new RegExp(`^-[${RUSSIAN}]`, "u");
   const LATIN_LETTER = /^\p{Script=Latin}$/u;
   const LETTER = /^\p{L}$/u;
   const CYRILLIC_LANGUAGE_CODES = new Set(["be", "bg", "kk", "ky", "mk", "mn", "sr", "tg", "uk"]);
@@ -99,7 +103,7 @@
     }
 
     // Russian interfaces often carry technical inserts inside a phrase:
-    // dev-секрет, APP_ENV, a URL or ChatGPT. They do not make the whole
+    // a Russian word with a Latin suffix, APP_ENV, a URL or ChatGPT. They do not make the whole
     // selection multilingual and must not trigger a translation.
     // A real English phrase or a noticeable share of Latin is still translated.
     const latinWords = [...value.matchAll(/[A-Za-z][A-Za-z0-9_./:@=+#]*/g)].map((match) => {
@@ -107,8 +111,8 @@
       const start = match.index;
       const end = start + token.length;
       const touchesRussianCompound =
-        /[А-Яа-яЁё]-$/u.test(value.slice(Math.max(0, start - 2), start)) ||
-        /^-[А-Яа-яЁё]/u.test(value.slice(end, end + 2));
+        RUSSIAN_BEFORE_HYPHEN.test(value.slice(Math.max(0, start - 2), start)) ||
+        HYPHEN_BEFORE_RUSSIAN.test(value.slice(end, end + 2));
       const technical =
         /[_0-9./:@=+#]/.test(token) ||
         /^[A-Z]{2,}$/.test(token) ||

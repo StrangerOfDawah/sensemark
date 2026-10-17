@@ -2,13 +2,18 @@
 // Pure DOM-free functions covered by unit tests; content.js only measures
 // the page's background colour, text colour and the selection size.
 (function exposeCardTheme(root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module === "object" && module.exports ? require("./i18n.js") : root.SensemarkI18n
+  );
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     root.SensemarkCardTheme = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (I18n) => {
+  const { t } = I18n;
+  const PLURALS = new Intl.PluralRules(I18n.LOCALE);
+  const PARAGRAPH_FORMS = { one: "paragraphsOne", few: "paragraphsFew", many: "paragraphsMany" };
   const WHITE = { r: 255, g: 255, b: 255 };
   const BLACK = { r: 0, g: 0, b: 0 };
 
@@ -209,23 +214,15 @@
   }
 
   function paragraphsLabel(count) {
-    const mod10 = count % 10;
-    const mod100 = count % 100;
-    const word =
-      mod10 === 1 && mod100 !== 11
-        ? "абзац"
-        : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
-          ? "абзаца"
-          : "абзацев";
-    return `${count} ${word}`;
+    return t(PARAGRAPH_FORMS[PLURALS.select(count)] || "paragraphsMany", count);
   }
 
-  // "Перевод · с английского", "Перевод · 3 абзаца с английского".
+  // "Translation · from English", "Translation · 3 paragraphs from English".
   function headerLabel({ language = "", paragraphs = 1, long = false } = {}) {
     const parts = [];
     if (long && paragraphs > 1) parts.push(paragraphsLabel(paragraphs));
-    if (language) parts.push(`с ${language}`);
-    return parts.length ? `Перевод · ${parts.join(" ")}` : "Перевод";
+    if (language) parts.push(t("fromLanguage", language));
+    return parts.length ? `${t("labelTranslation")} · ${parts.join(" ")}` : t("labelTranslation");
   }
 
   return {

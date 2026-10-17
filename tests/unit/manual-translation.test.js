@@ -9,6 +9,8 @@ const {
   parseManualResponse,
   settingsIssue
 } = require("../../src/manual-translation.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 test("manual translation validates setup before a request", () => {
   const openai = { provider: "openai" };
@@ -32,9 +34,9 @@ test("manual request plan rejects empty, oversized, and non-word input", () => {
 });
 
 test("manual request plan skips Russian and technical insertions locally", () => {
-  assert.equal(createRequestPlan("Этот текст уже на русском.").kind, "russian");
+  assert.equal(createRequestPlan(RU.alreadyRussianShort).kind, "russian");
   assert.equal(
-    createRequestPlan("Критичный момент с dev-секретом и APP_ENV.", {
+    createRequestPlan(RU.devSecretShort, {
       isReliable: true,
       languages: [{ language: "en", percentage: 60 }]
     }).kind,
@@ -66,52 +68,59 @@ test("manual response hides protocol scaffolding until translated text exists", 
 });
 
 test("manual response parses text and word translations", () => {
-  assert.deepEqual(parseManualResponse("[[text]]\nГотовый перевод.", false), {
+  assert.deepEqual(parseManualResponse(`[[text]]\n${RU.readyTranslation}`, false), {
     visible: true,
     kind: "translation",
-    text: "Готовый перевод.",
+    text: RU.readyTranslation,
     detail: "",
     detailLabel: "",
-    copyText: "Готовый перевод."
+    copyText: RU.readyTranslation
   });
 
-  assert.deepEqual(parseManualResponse("[[translation]]\nпочему\nдругие значения: зачем", true, "Why"), {
-    visible: true,
-    kind: "translation",
-    text: "почему",
-    detail: "зачем",
-    detailLabel: "Другие значения",
-    copyText: "почему"
-  });
+  assert.deepEqual(
+    parseManualResponse(
+      `[[translation]]\n${RU.why}\n${t("protocolOtherMeanings")}: ${RU.whatFor}`,
+      true,
+      "Why"
+    ),
+    {
+      visible: true,
+      kind: "translation",
+      text: RU.why,
+      detail: RU.whatFor,
+      detailLabel: t("labelOtherMeanings"),
+      copyText: RU.why
+    }
+  );
 });
 
 test("manual response preserves multilingual order and builds copy text", () => {
   const view = parseManualResponse(
     "[[multilingual]]\n" +
-      "[[script:Latin|lang:английский]]\nПривет.\n" +
-      "[[script:Arabic|lang:арабский]]\nДобро пожаловать.",
+      `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.helloDot}\n` +
+      `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.welcome}`,
     false
   );
 
   assert.equal(view.kind, "multilingual");
   assert.deepEqual(
     view.sections.map((section) => section.language),
-    ["английский", "арабский"]
+    [RU.langEnglish, RU.langArabic]
   );
-  assert.equal(view.copyText, "Привет.\n\nДобро пожаловать.");
+  assert.equal(view.copyText, `${RU.helloDot}\n\n${RU.welcome}`);
 });
 
 test("manual response gives unknown terms a separate reference view", () => {
   assert.deepEqual(
-    parseManualResponse("[[reference]]\nназвание\nВероятно, название проекта.", true, "Sensemark"),
+    parseManualResponse(`[[reference]]\n${RU.title}\n${RU.probablyProjectName}`, true, "Sensemark"),
     {
       visible: true,
       kind: "reference",
       title: "Sensemark",
-      category: "название",
-      detail: "Вероятно, название проекта.",
-      detailLabel: "Что это может быть",
-      copyText: "Sensemark\nВероятно, название проекта."
+      category: RU.title,
+      detail: RU.probablyProjectName,
+      detailLabel: t("labelWhatItMayBe"),
+      copyText: `Sensemark\n${RU.probablyProjectName}`
     }
   );
 });

@@ -20,7 +20,8 @@ separate Chrome profile so a development API key does not mix with a store insta
 - Every feature and bug fix includes an automated test (a regression test for bugs).
 - Run `npm run verify`; for UI or flow changes also run `npm run test:e2e`.
 - Update the docs your change makes stale (see the workflow in [AGENTS.md](AGENTS.md)).
-- Write commits and the PR in English. User-facing text in the extension stays in Russian.
+- Write code, comments, commits and the PR in English. User-facing text goes into
+  `src/_locales/ru/messages.json`, never into code.
 
 ## Things that are deliberately out of scope
 

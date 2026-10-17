@@ -11,9 +11,9 @@ test("design has not changed without explicit approval", () => {
   assert.deepEqual(
     changed,
     [],
-    `Изменился дизайн: ${changed.join(", ")}.\n` +
-      "Если это намеренная правка, подтверди её командой: npm run design:approve\n" +
-      "Если нет — откати изменения в этих файлах."
+    `The design changed: ${changed.join(", ")}.\n` +
+      "If this is an intentional, reviewed change, accept it with: npm run design:approve\n" +
+      "Otherwise revert the changes in these files."
   );
 });
 

@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Sensemark",
-  "description": "Переводит выделенный текст на русский: бесплатно встроенным переводчиком Chrome или через OpenAI API.",
+  "description": "__MSG_extDescription__",
+  "default_locale": "ru",
   "version": "1.5.0",
   "icons": {
     "16": "icons/icon-16.png",
@@ -18,6 +19,7 @@
     {
       "matches": ["<all_urls>"],
       "js": [
+        "i18n.js",
         "language-detection.js",
         "selection-text.js",
         "word-response.js",
@@ -40,7 +42,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Sensemark — ручной перевод",
+    "default_title": "__MSG_actionTitle__",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
@@ -53,7 +55,7 @@
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       },
-      "description": "Перевести выделенный текст"
+      "description": "__MSG_commandTranslate__"
     }
   }
 }

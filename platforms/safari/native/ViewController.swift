@@ -23,7 +23,7 @@ class ViewController: NSViewController {
             root = AnyView(LanguagesView())
         } else {
             root = AnyView(
-                Text("Для бесплатного перевода нужна macOS 15 или новее.\nРежим OpenAI работает и так.")
+                Text("Free translation needs macOS 15 or later.\nOpenAI mode works either way.")
                     .multilineTextAlignment(.center)
                     .padding(40)
             )
@@ -65,20 +65,20 @@ struct LanguagesView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Sensemark")
                 .font(.largeTitle.bold())
-            Text("Перевод выделенного текста на русский прямо в Safari.")
+            Text("Translates selected text into Russian right in Safari.")
                 .foregroundStyle(.secondary)
 
             extensionStatus
 
             Divider()
 
-            Text("Языки для бесплатного перевода")
+            Text("Languages for free translation")
                 .font(.headline)
-            Text("Скачайте языки, с которых вы читаете. Это нужно один раз — потом перевод работает без интернета, и текст не покидает Mac.")
+            Text("Download the languages you read. You only need to do this once: after that, translation works offline and the text never leaves your Mac.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Найти язык", text: $filter)
+            TextField("Find a language", text: $filter)
                 .textFieldStyle(.roundedBorder)
 
             if loading {
@@ -91,12 +91,12 @@ struct LanguagesView: View {
                         Text(row.name)
                         Spacer()
                         if row.installed {
-                            Label("Скачан", systemImage: "checkmark.circle.fill")
+                            Label("Downloaded", systemImage: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                         } else if downloading == row.id {
                             ProgressView().controlSize(.small)
                         } else {
-                            Button("Скачать") { download(row) }
+                            Button("Download") { download(row) }
                                 .disabled(downloading != nil)
                         }
                     }
@@ -126,17 +126,17 @@ struct LanguagesView: View {
         HStack(spacing: 10) {
             switch extensionEnabled {
             case .some(true):
-                Label("Расширение включено в Safari", systemImage: "checkmark.seal.fill")
+                Label("The extension is on in Safari", systemImage: "checkmark.seal.fill")
                     .foregroundStyle(.green)
             case .some(false):
-                Label("Расширение выключено в Safari", systemImage: "exclamationmark.triangle.fill")
+                Label("The extension is off in Safari", systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
             case .none:
-                Label("Проверяю, включено ли расширение…", systemImage: "puzzlepiece.extension")
+                Label("Checking whether the extension is on…", systemImage: "puzzlepiece.extension")
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Настройки Safari…") {
+            Button("Safari Settings…") {
                 SFSafariApplication.showPreferencesForExtension(withIdentifier: extensionIdentifier) { _ in }
             }
         }
@@ -165,7 +165,8 @@ struct LanguagesView: View {
     @MainActor
     private func refresh() async {
         let availability = LanguageAvailability()
-        let russian = Locale(identifier: "ru")
+        // Language names in the system language, like the rest of macOS.
+        let display = Locale.current
         var seen = Set<String>()
         var result: [LanguageRow] = []
         for language in await availability.supportedLanguages {
@@ -173,7 +174,7 @@ struct LanguagesView: View {
             guard language.languageCode?.identifier != "ru", seen.insert(id).inserted else { continue }
             let status = await availability.status(from: language, to: Self.target)
             guard status != .unsupported else { continue }
-            let name = russian.localizedString(forIdentifier: id) ?? id
+            let name = display.localizedString(forIdentifier: id) ?? id
             result.append(LanguageRow(id: id, name: name.prefix(1).uppercased() + name.dropFirst(), installed: status == .installed))
         }
         rows = result.sorted { $0.name.localizedCompare($1.name) == .orderedAscending }

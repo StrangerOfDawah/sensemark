@@ -14,7 +14,7 @@ reproduce. Never include a real API key.
 Sensemark runs entirely in the browser. It stores the user's OpenAI key and settings
 in `chrome.storage.local`, talks only to `https://api.openai.com` (OpenAI mode) and
 loads no remote code. What leaves the device and when is described in
-[PRIVACY.en.md](PRIVACY.en.md).
+[PRIVACY.md](PRIVACY.md).
 
 ## Supported versions
 

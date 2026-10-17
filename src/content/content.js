@@ -2,6 +2,8 @@
   // The background may inject this script again; the second run does nothing.
   if (window.__gptTranslateLoaded) return;
 
+  const t = globalThis.SensemarkI18n?.t;
+
   const parseWordResponse = globalThis.SensemarkWordResponse?.parse;
   const parseTextResponse = globalThis.SensemarkTextResponse?.parse;
   const isRussianOnly = globalThis.SensemarkLanguageDetection?.isRussianOnly;
@@ -24,6 +26,7 @@
     samplePage
   } = PageText || {};
   if (
+    !t ||
     !parseWordResponse ||
     !parseTextResponse ||
     !isRussianOnly ||
@@ -217,7 +220,7 @@
   document.addEventListener(
     "keydown",
     (event) => {
-      // event.code, not key: on a Russian layout the C key types "с".
+      // event.code, not key: on a Russian layout the C key types a Cyrillic letter.
       if ((event.metaKey || event.ctrlKey) && event.code === "KeyC") cancelPendingAuto();
     },
     true
@@ -315,10 +318,10 @@
   }
 
   // Is the text Russian, and which language are we translating from, for the
-  // "Перевожу с английского…" label. Chrome decides locally and for free.
+  // "Translating from English…" label. Chrome decides locally and for free.
   // The detector often fails on a single word ("bank" → Cebuano), so the
   // label's language comes from the surrounding sentence, and an unreliable
-  // answer is not shown at all: plain "Перевод" beats a wrong language.
+  // answer is not shown at all: a plain "Translation" beats a wrong language.
   async function detectSource(text, labelText = text) {
     const detection = await detectLanguageSafe(text);
     const labelDetection = labelText === text ? detection : await detectLanguageSafe(labelText);
@@ -353,10 +356,7 @@
       currentPort = null;
       render(info, {
         state: "error",
-        message:
-          "Выделенный фрагмент нарисован как изображение, а не как текст. " +
-          "Sensemark не отправил его в API, чтобы не тратить токены. " +
-          "Выделите доступную текстовую подпись или перевод."
+        message: t("errorImageText")
       });
       return;
     }
@@ -364,7 +364,7 @@
     if (info.text.length > MAX_CHARS) {
       render(info, {
         state: "error",
-        message: `Слишком длинный фрагмент: ${info.text.length} символов (максимум ${MAX_CHARS}).`
+        message: t("errorFragmentTooLong", info.text.length, MAX_CHARS)
       });
       return;
     }
@@ -383,7 +383,7 @@
       return;
     }
     if (id !== requestId) return;
-    // Mixed text gets its own "Несколько языков" label.
+    // Mixed text gets its own "Several languages" label.
     info.language = info.sourceScripts.length > 1 ? "" : source.language;
 
     startTranslation(info, id);
@@ -392,7 +392,7 @@
   function startTranslation(info, id) {
     // Remove the old result at once, but do not create an empty card for the new
     // request. It appears only with the first meaningful fragment; while waiting
-    // there is only the small "Перевожу с английского…" pill.
+    // there is only the small "Translating from English…" pill.
     if (host) close({ cancelRequest: false, animate: false });
     pill.hide({ animate: false });
     prepareCardFor(info);
@@ -402,7 +402,7 @@
     try {
       port = openTranslationPort();
     } catch {
-      render(info, { state: "error", message: "Расширение перезагружено — обновите страницу." });
+      render(info, { state: "error", message: t("errorExtensionReloaded") });
       return;
     }
     currentPort = port;
@@ -416,7 +416,7 @@
     };
     // Free mode answers in ~30 ms; then the pill does not flash for nothing.
     pill.schedule(info, id, {
-      label: info.language ? `Перевожу с ${info.language}…` : "Перевожу…"
+      label: info.language ? t("statusTranslatingFrom", info.language) : t("statusTranslating")
     });
 
     port.onMessage.addListener((message) => {
@@ -427,7 +427,7 @@
           if (message.type === "done") {
             render(info, {
               state: "error",
-              message: "Не удалось получить перевод — попробуйте ещё раз."
+              message: t("errorNoTranslation")
             });
             release();
             port.disconnect();
@@ -457,9 +457,9 @@
           // Chrome downloads a language pack only on a user click.
           render(info, {
             state: "error",
-            message: `${message.error} Это займёт несколько секунд.`,
+            message: t("needsDownloadSuffix", message.error),
             action: {
-              label: "Скачать",
+              label: t("actionDownload"),
               run: async () => {
                 const downloadId = ++requestId;
                 close({ cancelRequest: false, animate: false });
@@ -476,7 +476,7 @@
                   await builtinEngine.prepare(message.language, (progress) => {
                     if (downloadId !== requestId) return;
                     pill.show(info, downloadId, {
-                      label: `Скачиваю ${name} · ${Math.round(progress * 100)}%`,
+                      label: t("downloadingPercent", name, Math.round(progress * 100)),
                       kind: "download",
                       progress
                     });
@@ -485,7 +485,7 @@
                   if (downloadId !== requestId) return;
                   render(info, {
                     state: "error",
-                    message: "Не удалось скачать языковой пакет — проверьте интернет и попробуйте ещё раз."
+                    message: t("errorDownloadFailed")
                   });
                   return;
                 }
@@ -504,7 +504,7 @@
     port.onDisconnect.addListener(() => {
       if (id !== requestId || finished) return;
       release();
-      render(info, { state: "error", message: "Соединение прервано — попробуйте ещё раз." });
+      render(info, { state: "error", message: t("errorConnectionLost") });
     });
 
     port.postMessage({
@@ -535,7 +535,10 @@
     const name = Builtin.languageName(message.language || "");
     const progress = typeof message.progress === "number" ? message.progress : null;
     return {
-      label: progress === null ? `Скачиваю ${name}…` : `Скачиваю ${name} · ${Math.round(progress * 100)}%`,
+      label:
+        progress === null
+          ? t("chromeDownloading", name)
+          : t("downloadingPercent", name, Math.round(progress * 100)),
       kind: "download",
       progress,
       hint: message.text
@@ -563,15 +566,15 @@
     shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `${CARD_STYLE}
       <div class="bracket" hidden></div>
-      <div class="card anchor" role="dialog" aria-label="Перевод">
+      <div class="card anchor" role="dialog" aria-label="${t("labelTranslation")}">
         <div class="hd">
-          <span class="badge">Перевод</span>
+          <span class="badge">${t("labelTranslation")}</span>
           <span class="zoom" hidden></span>
           <span class="sp"></span>
-          <button class="icon-btn xs" data-act="close" title="Закрыть (Esc)">${ICONS.close}</button>
+          <button class="icon-btn xs" data-act="close" title="${t("cardCloseTitle")}">${ICONS.close}</button>
         </div>
         <div class="bd"></div>
-        <div class="grip" title="Потяните — размер, двойной клик — сброс"></div>
+        <div class="grip" title="${t("cardGripTitle")}"></div>
       </div>
     `;
     document.documentElement.appendChild(host);
@@ -723,14 +726,14 @@
     card.classList.toggle("multilingual", multilingual);
     card.setAttribute(
       "aria-label",
-      reference ? "Объяснение фрагмента" : multilingual ? "Перевод с нескольких языков" : "Перевод"
+      reference ? t("cardAriaReference") : multilingual ? t("cardAriaMultilingual") : t("labelTranslation")
     );
     const badge = shadow.querySelector(".badge");
     if (badge) {
       badge.textContent = reference
-        ? "Объяснение"
+        ? t("labelReference")
         : multilingual
-          ? "Несколько языков"
+          ? t("labelMultilingual")
           : CardTheme.headerLabel({
               language: anchorInfo?.language || "",
               paragraphs: anchorInfo?.paragraphs || 1,
@@ -768,7 +771,7 @@
     if (payload.state === "error") {
       bodyEl.innerHTML = `
         <div class="err">${payload.icon === false ? "" : ICONS.warn}<p class="err-t"></p></div>
-        <div class="acts"><span class="sp"></span><button class="chip accent" data-act="options">Открыть настройки</button></div>`;
+        <div class="acts"><span class="sp"></span><button class="chip accent" data-act="options">${t("actionOpenSettings")}</button></div>`;
       bodyEl.querySelector(".err-t").textContent = payload.message;
       const button = bodyEl.querySelector("[data-act=options]");
       if (payload.action === null) {
@@ -804,16 +807,16 @@
       <div class="term-kind" hidden></div>
       <p class="tr"><span class="live"></span><span class="caret"></span></p>
       <div class="segments" hidden></div>
-      <p class="reference-note" hidden>Не переводится как обычное слово</p>
-      <div class="alt" hidden><div class="cap">Другие значения</div><p class="alt-t"></p></div>
+      <p class="reference-note" hidden>${t("referenceNote")}</p>
+      <div class="alt" hidden><div class="cap">${t("labelOtherMeanings")}</div><p class="alt-t"></p></div>
       <div class="acts pending">
         <span class="sp"></span>
-        <button class="icon-btn" data-act="auto" title="Автоперевод" hidden>${ICONS.pause}</button>
-        <button class="icon-btn" data-act="copy" title="Скопировать">${ICONS.copy}</button>
+        <button class="icon-btn" data-act="auto" title="${t("cardAutoTitle")}" hidden>${ICONS.pause}</button>
+        <button class="icon-btn" data-act="copy" title="${t("cardCopyTitle")}">${ICONS.copy}</button>
       </div>
       <div class="auto-menu" hidden>
-        <button class="chip accent" data-act="pause">Пауза на ${PAUSE_MINUTES} минут</button>
-        <button class="chip" data-act="off">Выключить автоперевод</button>
+        <button class="chip accent" data-act="pause">${t("actionPause", PAUSE_MINUTES)}</button>
+        <button class="chip" data-act="off">${t("autoMenuDisable")}</button>
       </div>
       <p class="auto-note" hidden></p>`;
 
@@ -858,7 +861,7 @@
     toggle.hidden = !isAutoEnabled();
 
     const hotkey = /Mac/i.test(navigator.platform) ? "⌘⇧Y" : "Ctrl+Shift+Y";
-    const manualHint = `Переводите вручную: правый клик → «Перевести на русский» или ${hotkey}.`;
+    const manualHint = t("manualHint", hotkey);
     const finish = (message) => {
       menu.hidden = true;
       toggle.hidden = true;
@@ -877,15 +880,12 @@
       autoPausedUntil = until;
       chrome.storage.local.set({ autoPausedUntil: until }).catch(() => {});
       const time = new Date(until).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
-      finish(`Автоперевод на паузе до ${time}. ${manualHint}`);
+      finish(t("autoPausedUntil", time, manualHint));
     });
     menu.querySelector("[data-act=off]").addEventListener("click", () => {
       autoTranslate = false;
       chrome.storage.local.set({ autoTranslate: false, autoPausedUntil: 0 }).catch(() => {});
-      finish(
-        `Автоперевод выключен. ${manualHint} ` +
-          "Включить снова — в настройках или правым кликом по значку Sensemark."
-      );
+      finish(t("autoTurnedOff", manualHint));
     });
   }
 
@@ -950,14 +950,16 @@
     if (parsed.mode === "reference") {
       setCardPresentation("reference");
       streamState.termKind.hidden = false;
-      streamState.termKind.textContent = parsed.category || "Неизвестный термин";
+      streamState.termKind.textContent = parsed.category || t("labelUnknownTerm");
       streamState.live.textContent = streamState.source;
       streamState.referenceNote.hidden = false;
-      streamState.referenceNote.textContent = /опечат|неизвест/i.test(parsed.category)
-        ? "Словарное значение не найдено"
-        : `Использовано как ${parsed.category || "имя или название"} — перевод не требуется`;
+      streamState.referenceNote.textContent = new RegExp(t("patternNoDictionaryMeaning"), "i").test(
+        parsed.category
+      )
+        ? t("referenceNoMeaning")
+        : t("referenceUsedAs", parsed.category || t("referenceNameOrTitle"));
       streamState.alt.hidden = false;
-      streamState.altCap.textContent = parsed.detailLabel || "Что это может быть";
+      streamState.altCap.textContent = parsed.detailLabel || t("labelWhatItMayBe");
       streamState.altT.textContent = parsed.detail;
       streamState.altT.appendChild(streamState.caret);
       streamState.main = streamState.source;
@@ -973,7 +975,7 @@
     streamState.live.textContent = parsed.main;
     streamState.live.after(streamState.caret);
     streamState.alt.hidden = !parsed.detail;
-    streamState.altCap.textContent = parsed.detailLabel || "Другие значения";
+    streamState.altCap.textContent = parsed.detailLabel || t("labelOtherMeanings");
     streamState.altT.textContent = parsed.detail;
   }
 
@@ -986,11 +988,11 @@
       item.className = "segment";
 
       const language = document.createElement("div");
-      const isRussian = /^русск/i.test(section.language);
+      const isRussian = new RegExp(t("patternTargetLanguage"), "i").test(section.language);
       language.className = `segment-lang${isRussian ? " kept" : ""}`;
       language.textContent = isRussian
-        ? `${section.language} · без изменений`
-        : `${section.language} → русский`;
+        ? t("sectionKept", section.language)
+        : t("sectionTranslated", section.language);
 
       const translated = document.createElement("p");
       translated.className = "segment-text";

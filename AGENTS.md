@@ -59,10 +59,16 @@ To try the extension, load `src/` via `chrome://extensions` → "Load unpacked".
 - Prefer small pure modules (see `card-theme.js`, `content/placement.js`) and keep
   DOM work in the thin controller (`content/content.js`).
 - Prettier and ESLint are the source of truth for formatting and lint.
-- Language: code, comments, tests, commits, PRs and developer docs are in
-  English. Everything the user sees (UI strings, store copy, `README.md`,
-  `PRIVACY.md`, `CHANGELOG.md`, the Safari install guide) is in Russian;
-  `README.en.md` and `PRIVACY.en.md` are the English versions.
+- Language: everything in the repository is in English, except four files:
+  `README.md` (the Russian front page; `README.en.md` is its English twin),
+  `src/_locales/ru/messages.json` (every user-facing string, read through
+  `src/i18n.js`), `tests/fixtures/russian.json` (Russian test samples) and
+  `store/listing.ru.txt` (the store listing). Never write Russian in code,
+  comments, tests or other docs; `tests/integration/language-policy.test.js`
+  enforces this. In HTML, put text in `<!--t:key-->` comments and attributes in
+  `data-i18n-*`; in JavaScript, call `t("key", ...values)`.
+- Cyrillic letter ranges in regular expressions are written as code points
+  (`\u0410-\u044F\u0401\u0451`).
 
 ## Product invariants
 

@@ -9,7 +9,7 @@ const { JSDOM } = require("jsdom");
 // root. The packaged archive flattens both: manifest.json at the top level.
 const root = path.resolve(__dirname, "..");
 const srcRoot = path.join(root, "src");
-const ROOT_FILES = new Set(["LICENSE", "PRIVACY.md", "PRIVACY.en.md"]);
+const ROOT_FILES = new Set(["LICENSE", "PRIVACY.md"]);
 const locate = (file) => path.join(ROOT_FILES.has(file) ? root : srcRoot, file);
 const read = (file) => fs.readFileSync(locate(file), "utf8");
 const readRepo = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -20,6 +20,7 @@ const packageJson = JSON.parse(readRepo("package.json"));
 const runtimeFiles = [
   "manifest.json",
   "background.js",
+  "i18n.js",
   "language-detection.js",
   "selection-text.js",
   "word-response.js",
@@ -44,13 +45,13 @@ const runtimeFiles = [
   "popup.js",
   "options.html",
   "options.js",
+  "_locales/ru/messages.json",
   "icons/icon-16.png",
   "icons/icon-32.png",
   "icons/icon-48.png",
   "icons/icon-128.png",
   "LICENSE",
-  "PRIVACY.md",
-  "PRIVACY.en.md"
+  "PRIVACY.md"
 ];
 
 assert.equal(manifest.manifest_version, 3, "Manifest V3 is required");

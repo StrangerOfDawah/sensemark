@@ -11,7 +11,7 @@
     root.SensemarkCardStyles = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  // Status pill: "Перевожу с английского…" that shrinks into a progress ring.
+  // Status pill: "Translating from English…" that shrinks into a progress ring.
   const STATUS_STYLE = `
       <style>
         :host { all: initial; }
@@ -50,7 +50,7 @@
           overflow: hidden;
           transition: max-width 0.38s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease;
         }
-        /* Кружок: подпись уезжает, остаётся кольцо прогресса. */
+        /* Circle: the label slides away, the progress ring stays. */
         .status.mini { gap: 0; padding: 0 6px; }
         .status.mini .lbl { max-width: 0; opacity: 0; }
         .ring { width: 14px; height: 14px; flex: none; animation: spin 0.9s linear infinite; }
@@ -79,9 +79,9 @@
   // Translation card. Colours arrive as CSS variables from card-theme.js.
   const CARD_STYLE = `
       <style>
-        /* Цвета приходят переменными из card-theme.js (на самом хосте):
-           под страницу, светлая или тёмная. Здесь — только запасные значения;
-           они стоят на :host, чтобы не перекрывать цвета страницы. */
+        /* Colours arrive as variables from card-theme.js (on the host itself):
+           page-matched, light or dark. Only fallbacks live here, on :host,
+           so they never override the page colours. */
         :host {
           all: initial;
           --surface: #ffffff;
@@ -108,7 +108,7 @@
           background: var(--surface);
           box-shadow: var(--shadow, 0 14px 36px rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.05));
           color: var(--text);
-          /* Всё внутри задано в em — карточка целиком тянется от этого размера. */
+          /* Everything inside is in em, so the whole card scales from this size. */
           font: calc(14px * var(--ui-scale, 1)) / 1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
           -webkit-font-smoothing: antialiased;
           opacity: 0;
@@ -124,7 +124,7 @@
             left 0.28s cubic-bezier(0.32, 0.72, 0, 1),
             font-size 0.09s ease-out;
         }
-        /* При прокрутке карточка следует за текстом без задержки. */
+        /* On scroll the card follows the text without delay. */
         .card.in.tracking { transition: none; }
         .card.out {
           opacity: 0;
@@ -136,7 +136,7 @@
           to { opacity: 1; transform: none; }
         }
 
-        /* Носик к выделению. */
+        /* The notch pointing at the selection. */
         .card.anchor::before {
           content: "";
           position: absolute;
@@ -161,7 +161,7 @@
         }
         .card.anchor.free::before { display: none; }
 
-        /* Заметка на полях справа от длинного выделения. */
+        /* Margin note to the right of a long selection. */
         .card.margin { max-width: none; }
         .bracket {
           position: absolute;
@@ -174,7 +174,7 @@
         }
         .bracket[hidden] { display: none; }
 
-        /* Панель у правого края окна, когда справа от текста нет места. */
+        /* Panel at the right window edge when there is no room beside the text. */
         .card.drawer {
           position: fixed;
           top: 0;
@@ -200,7 +200,7 @@
           background: var(--surface);
           border-top: 1px solid var(--hair);
         }
-        /* В панели кнопки прижаты к низу окна. */
+        /* In the panel the buttons stick to the bottom of the window. */
         .card.drawer .acts { margin-top: auto; }
         .card.margin .grip, .card.drawer .grip { display: none; }
 
@@ -280,8 +280,8 @@
           letter-spacing: 0.07em;
           text-transform: uppercase;
         }
-        /* display: inline-flex выше перебивает атрибут hidden — без этой строки
-           пустой бейджик категории виден в каждой обычной карточке. */
+        /* display: inline-flex above overrides the hidden attribute; without this
+           line an empty category badge shows in every ordinary card. */
         .term-kind[hidden] { display: none; }
         .reference-note {
           margin-top: 0.3em;
@@ -427,7 +427,7 @@
         .err svg { width: 1.14em; height: 1.14em; flex: none; margin-top: 0.14em; color: var(--warn); }
         .err-t { font-size: 0.96em; color: var(--text); overflow-wrap: break-word; }
 
-        /* Уголок для изменения размера — свой, чтобы не тащить системный resize. */
+        /* Our own resize corner instead of the system resize handle. */
         .grip {
           position: absolute;
           right: 0;
@@ -453,7 +453,7 @@
           border-bottom-right-radius: 3px;
         }
 
-        /* Процент масштаба показываем вместо заголовка, пока крутят колесо. */
+        /* The scale percentage replaces the header while the wheel turns. */
         .zoom {
           font-size: 0.79em;
           font-weight: 600;

@@ -1,9 +1,10 @@
+const { t, localize } = globalThis.SensemarkI18n;
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULTS = {
   provider: "builtin",
   apiKey: "",
   model: DEFAULT_MODEL,
-  targetLang: "русский",
+  targetLang: t("targetLanguage"),
   autoTranslate: true,
   privacyConsentVersion: 0,
   cardTheme: "auto",
@@ -45,9 +46,15 @@ document.getElementById("kbd").innerHTML = isMac
 const inExtension = typeof chrome !== "undefined" && chrome.storage?.local;
 
 if (!inExtension) {
-  document.getElementById("banner").classList.add("show");
+  // Without chrome.i18n there are no messages either, so this one is in English.
+  const banner = document.getElementById("banner");
+  banner.textContent =
+    "This page was opened as a plain file, so settings are unavailable. " +
+    "Open the extension popup and click the settings icon in the top right corner.";
+  banner.classList.add("show");
   document.querySelectorAll("input, select, button").forEach((el) => (el.disabled = true));
 } else {
+  localize(document);
   init();
 }
 
@@ -70,12 +77,11 @@ function adaptForSafari() {
   if (!safari) return;
   const builtin = document.querySelector('input[name="provider"][value="builtin"]')?.closest(".mode");
   const title = builtin?.querySelector(".mode-title");
-  if (title?.firstChild?.nodeType === Node.TEXT_NODE) title.firstChild.textContent = "Переводчик Apple ";
+  if (title?.firstChild?.nodeType === Node.TEXT_NODE)
+    title.firstChild.textContent = `${t("engineAppleTitle")} `;
   const caption = builtin?.querySelector(".row-cap");
   if (caption) {
-    caption.textContent =
-      "Работает прямо на Mac: без ключа и без оплаты, текст никуда не отправляется. " +
-      "Языки скачиваются один раз в приложении Sensemark. Слово переводится без учёта контекста.";
+    caption.textContent = t("appleModeCaption");
   }
 }
 
@@ -126,7 +132,7 @@ function init() {
   fields.dataConsent.addEventListener("change", () => {
     save();
     if (!fields.dataConsent.checked) {
-      setTestStatus("Согласие отозвано — запросы в OpenAI заблокированы", "err");
+      setTestStatus(t("consentRevoked"), "err");
     } else {
       setTestStatus("");
     }
@@ -138,7 +144,7 @@ function init() {
   toggleKey.addEventListener("click", () => {
     const hidden = fields.apiKey.type === "password";
     fields.apiKey.type = hidden ? "text" : "password";
-    toggleKey.title = hidden ? "Скрыть ключ" : "Показать ключ";
+    toggleKey.title = hidden ? t("hideKey") : t("showKey");
   });
 }
 
@@ -187,9 +193,9 @@ function collect() {
 async function save() {
   try {
     await chrome.storage.local.set(collect());
-    toast("Сохранено");
+    toast(t("toastSaved"));
   } catch (error) {
-    toast(`Не удалось сохранить: ${error.message}`);
+    toast(t("toastSaveFailed", error.message));
   }
 }
 
@@ -209,16 +215,16 @@ function setTestStatus(message, kind = "") {
 async function runTest() {
   const settings = collect();
   if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-    setTestStatus("Сначала подтвердите согласие на отправку текста", "err");
+    setTestStatus(t("testNeedsConsent"), "err");
     return;
   }
   if (!settings.apiKey) {
-    setTestStatus("Сначала введите ключ", "err");
+    setTestStatus(t("testNeedsKey"), "err");
     return;
   }
 
   testBtn.disabled = true;
-  setTestStatus("Проверяю…", "busy");
+  setTestStatus(t("testChecking"), "busy");
   // Save before checking so the background sees the same settings.
   await chrome.storage.local.set(settings);
 
@@ -226,7 +232,7 @@ async function runTest() {
   try {
     response = await chrome.runtime.sendMessage({ type: "translate", text: "Hello, world!" });
   } catch {
-    response = { ok: false, error: "Не удалось связаться с расширением" };
+    response = { ok: false, error: t("testNoConnection") };
   }
   testBtn.disabled = false;
 
@@ -236,8 +242,8 @@ async function runTest() {
       .replace(/^\s*\[\[[^\]]+\]\]\s*/, "")
       .replace(/\s+/g, " ")
       .trim();
-    setTestStatus(`Работает — «${shown}»`, "ok");
+    setTestStatus(t("testWorks", shown), "ok");
   } else {
-    setTestStatus(response?.error || "Не удалось выполнить запрос", "err");
+    setTestStatus(response?.error || t("testFailed"), "err");
   }
 }

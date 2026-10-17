@@ -1,11 +1,22 @@
 (function exposeWordResponseParser(root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module === "object" && module.exports ? require("./i18n.js") : root.SensemarkI18n
+  );
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   } else {
     root.SensemarkWordResponse = api;
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (I18n) => {
+  const { t } = I18n;
+  // Prefixes the model writes in Russian; the patterns live in messages.json.
+  const prefix = (key, rest = "") => new RegExp(`^(?:${t(key)})${rest}`, "i");
+  const TRANSLATION_LABEL = prefix("patternTranslationLabel", "\\s*:\\s*");
+  const OTHER_MEANINGS = prefix("patternOtherMeanings", "\\s*:\\s*(.+)$");
+  const IN_SENTENCE = prefix("patternInSentence", "\\s*:\\s*(.+)$");
+  const CATEGORY_PREFIX = prefix("patternCategoryPrefix", "\\s*:\\s*");
+  const DESCRIPTION_PREFIX = prefix("patternDescriptionPrefix", "\\s*:\\s*");
+  const NO_SUCH_WORD = new RegExp(t("patternNoSuchWord"), "i");
   const TRANSLATION_MARKER = "[[translation]]";
   const REFERENCE_MARKER = "[[reference]]";
   const SKIP_MARKER = "[[skip]]";
@@ -18,35 +29,31 @@
   }
 
   function parseTranslation(lines) {
-    const main = (lines[0] || "").replace(/^перевод\s*:\s*/i, "");
+    const main = (lines[0] || "").replace(TRANSLATION_LABEL, "");
     const secondary = lines.slice(1).join(" ");
-    const meanings = secondary.match(/^друг\S*\s+значения\s*:\s*(.+)$/i);
+    const meanings = secondary.match(OTHER_MEANINGS);
     // Free mode: the whole sentence's translation instead of a list of meanings.
-    const sentence = secondary.match(/^в\s+предложении\s*:\s*(.+)$/i);
+    const sentence = secondary.match(IN_SENTENCE);
 
     return {
       mode: "translation",
       main,
       category: "",
       detail: meanings?.[1] || sentence?.[1] || "",
-      detailLabel: meanings ? "Другие значения" : sentence ? "В предложении" : ""
+      detailLabel: meanings ? t("labelOtherMeanings") : sentence ? t("labelInSentence") : ""
     };
   }
 
   function parseReference(lines) {
-    const category = (lines[0] || "неизвестный термин").replace(/^категория\s*:\s*/i, "").trim();
-    const detail = lines
-      .slice(1)
-      .join(" ")
-      .replace(/^(?:описание|возможно,?\s+это)\s*:\s*/i, "")
-      .trim();
+    const category = (lines[0] || t("protocolUnknownTerm")).replace(CATEGORY_PREFIX, "").trim();
+    const detail = lines.slice(1).join(" ").replace(DESCRIPTION_PREFIX, "").trim();
 
     return {
       mode: "reference",
       main: "",
       category,
       detail,
-      detailLabel: "Что это может быть"
+      detailLabel: t("labelWhatItMayBe")
     };
   }
 
@@ -73,8 +80,8 @@
     if (first === REFERENCE_MARKER) return parseReference(lines.slice(1));
 
     // Support the old answer format while the extension updates.
-    if (/такого\s+(?:общеупотребительного\s+)?слова\s+не\s+существует/i.test(lines[0])) {
-      return parseReference(["неизвестный термин", ...lines.slice(1)]);
+    if (NO_SUCH_WORD.test(lines[0])) {
+      return parseReference([t("protocolUnknownTerm"), ...lines.slice(1)]);
     }
     return parseTranslation(lines);
   }

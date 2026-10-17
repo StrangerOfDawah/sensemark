@@ -9,6 +9,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test, before, after, beforeEach } = require("node:test");
 const { chromium } = require("playwright");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
+
+// Headless Chromium on Linux is not a Mac, so the card names this shortcut.
+const HOTKEY = "Ctrl+Shift+Y";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 // SENSEMARK_EXTENSION_DIR: test an unpacked release zip instead of src/.
@@ -168,7 +173,7 @@ async function cardText(page, selector) {
 
 async function expectNoCard(page) {
   await page.waitForTimeout(800);
-  assert.equal(await page.locator(CARD).count(), 0, "карточка не должна появляться");
+  assert.equal(await page.locator(CARD).count(), 0, "no card may appear");
 }
 
 async function shot(page, name) {
@@ -179,7 +184,7 @@ async function shot(page, name) {
 // ---------- scenarios ----------
 
 test("a real mouse selection: the link stays in the text and the translation appears in the card", async () => {
-  replyWith("[[text]]\nПариж — столица Франции и её крупнейший город.");
+  replyWith(`[[text]]\n${RU.parisCapital}`);
   const page = await openPage(
     "drag",
     '<p id="p">Paris is the capital and largest city of <a href="#">France</a>.</p>'
@@ -193,21 +198,21 @@ test("a real mouse selection: the link stays in the text and the translation app
 
   await page.locator(CARD).waitFor();
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "Париж — столица Франции и её крупнейший город.");
+  assert.equal(await cardText(page, ".live"), RU.parisCapital);
   assert.equal(api.calls.length, 1);
   assert.equal(api.calls[0].messages.at(-1).content, "Paris is the capital and largest city of France.");
   assert.equal(
     await page.locator("#__gpt_translate_popup_host__ .term-kind").isVisible(),
     false,
-    "пустой бейджик категории не должен быть виден в обычной карточке"
+    "an empty category badge must not show in an ordinary card"
   );
   await shot(page, "01-translation-light");
   await page.close();
 });
 
 test("Russian text: no card and no request", async () => {
-  replyWith("[[text]]\nне должно быть");
-  const page = await openPage("russian", '<p id="p">Этот текст уже на русском языке.</p>');
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
+  const page = await openPage("russian", `<p id="p">${RU.alreadyRussian}</p>`);
   await selectAndRelease(page, "#p");
   await expectNoCard(page);
   assert.equal(api.calls.length, 0);
@@ -215,7 +220,7 @@ test("Russian text: no card and no request", async () => {
 });
 
 test("selecting a whole noisy page: only the article reaches the model", async () => {
-  replyWith("[[text]]\nГорсовет одобрил новый парк.");
+  replyWith(`[[text]]\n${RU.cityCouncil}`);
   const page = await openPage(
     "noisy",
     `<div id="all">
@@ -243,7 +248,7 @@ test("selecting a whole noisy page: only the article reaches the model", async (
 });
 
 test("a single word is translated in context and shows other meanings", async () => {
-  replyWith("[[translation]]\nбанк\nдругие значения: берег, вал");
+  replyWith(`[[translation]]\n${RU.bank}\n${t("protocolOtherMeanings")}: ${RU.bankMeanings}`);
   const page = await openPage(
     "word",
     '<p>I went to the <span id="w">bank</span> yesterday to deposit a check.</p>'
@@ -253,14 +258,14 @@ test("a single word is translated in context and shows other meanings", async ()
 
   const userMessage = api.calls[0].messages.at(-1).content;
   assert.equal(userMessage, "Context: I went to the bank yesterday to deposit a check.\nFragment: bank");
-  assert.equal(await cardText(page, ".live"), "банк");
-  assert.match(await cardText(page, ".alt"), /берег, вал/);
+  assert.equal(await cardText(page, ".live"), RU.bank);
+  assert.ok((await cardText(page, ".alt")).includes(RU.bankMeanings));
   await shot(page, "02-word-light");
   await page.close();
 });
 
 test("a name or title is shown as an amber explanation card", async () => {
-  replyWith("[[reference]]\nбренд\nНазвание расширения для перевода.");
+  replyWith(`[[reference]]\n${RU.brand}\n${RU.extensionName}`);
   const page = await openPage(
     "reference",
     '<p>Use <span id="w">Sensemark</span> to translate the selection.</p>'
@@ -268,8 +273,8 @@ test("a name or title is shown as an amber explanation card", async () => {
   await selectAndRelease(page, "#w");
   await page.locator(`${CARD}.reference`).waitFor();
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".badge"), "Объяснение");
-  assert.match(await cardText(page, ".alt"), /Название расширения/);
+  assert.equal(await cardText(page, ".badge"), t("labelReference"));
+  assert.ok((await cardText(page, ".alt")).includes(RU.extensionName));
   await shot(page, "03-reference-light");
   await page.close();
 });
@@ -277,24 +282,32 @@ test("a name or title is shown as an amber explanation card", async () => {
 test("mixed text is split into sections by language; the Russian part is not translated", async () => {
   replyWith(
     "[[multilingual]]\n" +
-      "[[script:Cyrillic|lang:русский]]\nПривет!\n" +
-      "[[script:Latin|lang:английский]]\nКак дела?\n" +
-      "[[script:Arabic|lang:арабский]]\nДобро пожаловать."
+      `[[script:Cyrillic|lang:${RU.langRussian}]]\n${RU.helloExclaim}\n` +
+      `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.howAreYou}\n` +
+      `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.welcome}`
   );
-  const page = await openPage("mixed", '<p id="p">Привет! How are you? مرحبا بك.</p>');
+  const page = await openPage("mixed", `<p id="p">${RU.helloExclaim} How are you? مرحبا بك.</p>`);
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD}.multilingual`).waitFor();
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   const labels = await page.locator("#__gpt_translate_popup_host__ .segment-lang").allInnerTexts();
-  assert.ok(labels.some((label) => /английский/i.test(label)));
-  assert.ok(labels.some((label) => /арабский/i.test(label)));
-  assert.equal(api.calls.length, 1, "правильный ответ не должен вызывать повторный запрос");
+  // The labels are upper-cased by CSS, and innerText returns them as shown.
+  const shown = labels.map((label) => label.toLowerCase());
+  assert.ok(
+    shown.some((label) => label.includes(RU.langEnglish)),
+    labels.join(" | ")
+  );
+  assert.ok(
+    shown.some((label) => label.includes(RU.langArabic)),
+    labels.join(" | ")
+  );
+  assert.equal(api.calls.length, 1, "a correct answer must not trigger a retry");
   await shot(page, "04-multilingual-light");
   await page.close();
 });
 
 test("selecting the same text again is served from the cache without a new request", async () => {
-  replyWith("[[text]]\nХорошая погода сегодня.");
+  replyWith(`[[text]]\n${RU.goodWeather}`);
   const page = await openPage("cache", '<p id="p">The weather is nice today.</p>');
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
@@ -303,13 +316,13 @@ test("selecting the same text again is served from the cache without a new reque
 
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "Хорошая погода сегодня.");
+  assert.equal(await cardText(page, ".live"), RU.goodWeather);
   assert.equal(api.calls.length, 1);
   await page.close();
 });
 
 test("Esc and an outside click close the card", async () => {
-  replyWith("[[text]]\nПривет, мир.");
+  replyWith(`[[text]]\n${RU.helloWorldDot}`);
   const page = await openPage("close", '<p id="p">Hello, world.</p><p id="other">x</p>');
   await selectAndRelease(page, "#p");
   await page.locator(CARD).waitFor();
@@ -330,7 +343,7 @@ test("Esc and an outside click close the card", async () => {
 
 test("shortcut / context menu path: translation on command with auto-translate off", async () => {
   await setSettings({ autoTranslate: false });
-  replyWith("[[text]]\nДоброе утро, коллеги. Начинаем встречу.");
+  replyWith(`[[text]]\n${RU.goodMorning}`);
   const page = await openPage("command", '<p id="p">Good morning, everyone. Let us start the meeting.</p>');
   await selectAndRelease(page, "#p");
   await expectNoCard(page); // auto-translate is off, so a selection alone does nothing
@@ -341,11 +354,11 @@ test("shortcut / context menu path: translation on command with auto-translate o
     await ping(tab.id);
   });
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "Доброе утро, коллеги. Начинаем встречу.");
+  assert.equal(await cardText(page, ".live"), RU.goodMorning);
   assert.equal(
     await page.locator("#__gpt_translate_popup_host__ [data-act=auto]").isVisible(),
     false,
-    "при выключенном автопереводе кнопки паузы нет"
+    "no pause button while auto-translate is off"
   );
   await page.close();
 });
@@ -355,8 +368,8 @@ test("an invalid model answer: one retry, then a clear error", async () => {
   const page = await openPage("bad-model", '<p id="p">The report is ready for review today.</p>');
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .err-t`).waitFor();
-  assert.match(await cardText(page, ".err-t"), /попробуйте ещё раз/);
-  assert.equal(api.calls.length, 2, "ровно один повторный запрос");
+  assert.equal(await cardText(page, ".err-t"), t("errorIncompleteTranslation"));
+  assert.equal(api.calls.length, 2, "exactly one retry");
   await page.close();
 });
 
@@ -365,24 +378,24 @@ test("a wrong key: a clear error instead of a translation", async () => {
   const page = await openPage("error", '<p id="p">Something went wrong here.</p>');
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .err-t`).waitFor();
-  assert.match(await cardText(page, ".err-t"), /Неверный API-ключ/);
+  assert.equal(await cardText(page, ".err-t"), t("errorApi401"));
   await shot(page, "05-error-light");
   await page.close();
 });
 
 test("without consent to send text, no request goes to OpenAI", async () => {
   await setSettings({ privacyConsentVersion: 0 });
-  replyWith("[[text]]\nне должно быть");
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
   const page = await openPage("consent", '<p id="p">Please translate this text.</p>');
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .err-t`).waitFor();
-  assert.match(await cardText(page, ".err-t"), /подтвердите отправку текста/);
+  assert.equal(await cardText(page, ".err-t"), t("errorConsentRequired"));
   assert.equal(api.calls.length, 0);
   await page.close();
 });
 
 test("dark page theme: the card uses the dark look", async () => {
-  replyWith("[[text]]\nПариж — столица Франции.");
+  replyWith(`[[text]]\n${RU.parisShort}`);
   const page = await openPage("dark", '<p id="p">Paris is the capital of France.</p>', {
     colorScheme: "dark"
   });
@@ -394,19 +407,19 @@ test("dark page theme: the card uses the dark look", async () => {
 });
 
 test("manual translation popup: pasting text starts translating automatically", async () => {
-  replyWith("[[text]]\nНовая версия уже доступна.");
+  replyWith(`[[text]]\n${RU.newVersion}`);
   const page = await context.newPage();
   await page.setViewportSize({ width: 420, height: 520 });
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
   await page.locator("#sourceText").fill("The new version is available now.");
   await page.locator("#result:not([hidden])").waitFor();
   await page.locator("#copyButton:not([disabled])").waitFor();
-  assert.match(await page.locator("#resultBody").innerText(), /Новая версия уже доступна\./);
+  assert.ok((await page.locator("#resultBody").innerText()).includes(RU.newVersion));
   assert.equal(api.calls.length, 1);
   await shot(page, "07-popup-light");
 
   // Russian text in the manual popup does not reach the API either.
-  await page.locator("#sourceText").fill("Это уже русский текст.");
+  await page.locator("#sourceText").fill(RU.alreadyRussianPopup);
   await page.waitForTimeout(1200);
   assert.equal(api.calls.length, 1);
   await page.close();
@@ -421,7 +434,7 @@ async function settings() {
 }
 
 test("select and immediately press Ctrl/⌘+C: no translation starts", async () => {
-  replyWith("[[text]]\nне должно быть");
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
   const page = await openPage("copy", '<p id="p">Copy this sentence to the clipboard please.</p>');
   await selectAndRelease(page, "#p");
   await page.keyboard.press("Control+KeyC");
@@ -437,7 +450,7 @@ test("select and immediately press Ctrl/⌘+C: no translation starts", async () 
 });
 
 test("select and right-click: no translation starts, Chrome's menu is free", async () => {
-  replyWith("[[text]]\nне должно быть");
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
   const page = await openPage("rightclick", '<p id="p">Right click on this sentence to open the menu.</p>');
   await selectAndRelease(page, "#p");
   await page.locator("#p").dispatchEvent("contextmenu");
@@ -447,7 +460,7 @@ test("select and right-click: no translation starts, Chrome's menu is free", asy
 });
 
 test("a selection inside an input is not translated automatically", async () => {
-  replyWith("[[text]]\nне должно быть");
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
   const page = await openPage(
     "editable",
     '<textarea id="t">Some text I am editing right now.</textarea><div id="d" contenteditable="true">Draft message text here.</div>'
@@ -462,7 +475,7 @@ test("a selection inside an input is not translated automatically", async () => 
   await page.close();
 });
 
-test("the «Перевести на русский» context menu item exists and starts a translation", async () => {
+test("the translate context menu item exists and starts a translation", async () => {
   const exists = await worker.evaluate(
     () =>
       new Promise((resolve) =>
@@ -474,7 +487,7 @@ test("the «Перевести на русский» context menu item exists an
   assert.equal(exists, "ok");
 
   await setSettings({ autoTranslate: false });
-  replyWith("[[text]]\nЭто перевод через контекстное меню.");
+  replyWith(`[[text]]\n${RU.contextMenuTranslation}`);
   const page = await openPage("ctxmenu", '<p id="p">This is a translation through the context menu.</p>');
   await selectAndRelease(page, "#p");
   await expectNoCard(page);
@@ -484,12 +497,12 @@ test("the «Перевести на русский» context menu item exists an
     await onMenuClicked({ menuItemId: "translate-selection", frameId: 0 }, tab);
   });
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "Это перевод через контекстное меню.");
+  assert.equal(await cardText(page, ".live"), RU.contextMenuTranslation);
   await page.close();
 });
 
 test("5-minute pause from the card: auto-translate is silent, manual translation works", async () => {
-  replyWith("[[text]]\nПервый перевод.");
+  replyWith(`[[text]]\n${RU.firstTranslation}`);
   const page = await openPage(
     "pause",
     '<p id="p">This is the first translation of the day.</p><p id="q">Another sentence that we will need later.</p>'
@@ -503,43 +516,45 @@ test("5-minute pause from the card: auto-translate is silent, manual translation
   const before = Date.now();
   await page.locator("#__gpt_translate_popup_host__ [data-act=pause]").click();
   const note = await cardText(page, ".auto-note");
-  assert.match(note, /на паузе до \d\d:\d\d/);
-  assert.match(note, /Перевести на русский/);
+  const [pausedPrefix] = t("autoPausedUntil", "\u0000", "").split("\u0000");
+  assert.ok(note.startsWith(pausedPrefix));
+  assert.match(note.slice(pausedPrefix.length), /^\d\d:\d\d/);
+  assert.ok(note.endsWith(t("manualHint", HOTKEY)));
   await shot(page, "09-auto-paused-light");
   const paused = (await settings()).autoPausedUntil;
   assert.ok(paused >= before + 5 * 60 * 1000 - 1000 && paused <= Date.now() + 5 * 60 * 1000);
 
   await page.keyboard.press("Escape");
   await page.locator(CARD).waitFor({ state: "detached" });
-  replyWith("[[text]]\nЕщё одно предложение.");
+  replyWith(`[[text]]\n${RU.anotherSentence}`);
   await selectAndRelease(page, "#q");
   await expectNoCard(page);
-  assert.equal(api.calls.length, 1, "во время паузы автозапросов нет");
+  assert.equal(api.calls.length, 1, "no auto requests during the pause");
 
   await worker.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     await onMenuClicked({ menuItemId: "translate-selection", frameId: 0 }, tab);
   });
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "Ещё одно предложение.");
+  assert.equal(await cardText(page, ".live"), RU.anotherSentence);
   await page.close();
 });
 
 test("the pause ends by itself", async () => {
   await setSettings({ autoPausedUntil: Date.now() + 1500 });
-  replyWith("[[text]]\nПосле паузы.");
+  replyWith(`[[text]]\n${RU.afterPause}`);
   const page = await openPage("pause-end", '<p id="p">This sentence comes after the pause ends.</p>');
   await selectAndRelease(page, "#p");
   await expectNoCard(page);
   await page.waitForTimeout(1200);
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  assert.equal(await cardText(page, ".live"), "После паузы.");
+  assert.equal(await cardText(page, ".live"), RU.afterPause);
   await page.close();
 });
 
 test("turn auto-translate off from the card and back on from the extension icon", async () => {
-  replyWith("[[text]]\nПеревод.");
+  replyWith(`[[text]]\n${RU.translationWord}`);
   const page = await openPage(
     "off",
     '<p id="p">Here is some text that needs a translation.</p><p id="q">This text should be translated a bit later.</p>'
@@ -548,7 +563,7 @@ test("turn auto-translate off from the card and back on from the extension icon"
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   await page.locator(AUTO_BUTTON).click();
   await page.locator("#__gpt_translate_popup_host__ [data-act=off]").click();
-  assert.match(await cardText(page, ".auto-note"), /Автоперевод выключен/);
+  assert.equal(await cardText(page, ".auto-note"), t("autoTurnedOff", t("manualHint", HOTKEY)));
   await shot(page, "10-auto-off-light");
   assert.equal((await settings()).autoTranslate, false);
 
@@ -556,18 +571,18 @@ test("turn auto-translate off from the card and back on from the extension icon"
   await selectAndRelease(page, "#q");
   await expectNoCard(page);
 
-  // Right click on the Sensemark icon → "Включить автоперевод".
+  // Right click on the Sensemark icon → "turn auto-translate on".
   await worker.evaluate(() => onMenuClicked({ menuItemId: "toggle-auto-translate" }, null));
   assert.equal((await settings()).autoTranslate, true);
   await page.waitForTimeout(100);
-  replyWith("[[text]]\nПозже.");
+  replyWith(`[[text]]\n${RU.later}`);
   await selectAndRelease(page, "#q");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   await page.close();
 });
 
 test("dark theme: the auto-translate menu", async () => {
-  replyWith("[[text]]\nПариж — столица Франции.");
+  replyWith(`[[text]]\n${RU.parisShort}`);
   const page = await openPage("dark-menu", '<p id="p">Paris is the capital of France.</p>', {
     colorScheme: "dark"
   });
@@ -588,18 +603,18 @@ test("dark theme: the auto-translate menu", async () => {
 
 test("free mode: nothing goes to OpenAI, the card shows the language pack download", async () => {
   await setSettings({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 });
-  replyWith("[[text]]\nне должно быть");
+  replyWith(`[[text]]\n${RU.mustNotAppear}`);
   const page = await openPage("free", '<p id="p">The weather is nice today, let us go for a walk.</p>');
   await selectAndRelease(page, "#p");
   // While Chrome downloads the pack, the pill with the language is visible, not an empty card.
   await page.locator(STATUS).waitFor();
-  assert.match(await page.locator(`${STATUS} .lbl`).innerText(), /^Скачиваю английский/);
-  assert.match(
-    await page.locator(STATUS).getAttribute("title"),
-    /Скачиваю языковой пакет для перевода с английского/
-  );
+  const withoutEllipsis = (text) => text.replace(/…$/, "");
+  const label = await page.locator(`${STATUS} .lbl`).innerText();
+  assert.ok(label.startsWith(withoutEllipsis(t("chromeDownloading", RU.langEnglish))), label);
+  const title = await page.locator(STATUS).getAttribute("title");
+  assert.ok(title.startsWith(withoutEllipsis(t("downloadingPack", RU.langEnglishGenitive))), title);
   assert.equal(await page.locator(CARD).count(), 0);
-  assert.equal(api.calls.length, 0, "в бесплатном режиме нет запросов к OpenAI");
+  assert.equal(api.calls.length, 0, "free mode makes no OpenAI requests");
   await shot(page, "12-free-downloading-light");
   await page.close();
 });
@@ -652,33 +667,37 @@ function article({
 const PARIS =
   "Paris is the capital and largest city of France, and on Sunday mornings its streets feel surprisingly quiet.";
 
-test("status: the «Перевожу с английского…» pill shrinks into a circle, then the card opens", async () => {
-  replyWith(
-    "[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие."
-  );
+test("status: the translating pill shrinks into a circle, then the card opens", async () => {
+  replyWith(`[[text]]\n${RU.parisLong}`);
   api.delayMs = 2600;
   const page = await openPage("status", article({ body: `<p id="p">${PARIS}</p>` }));
   await selectAndRelease(page, "#p");
 
   await page.locator(STATUS).waitFor();
-  assert.equal(await page.locator(`${STATUS} .lbl`).innerText(), "Перевожу с английского…");
-  assert.equal(await page.locator(CARD).count(), 0, "пустой карточки нет");
+  assert.equal(
+    await page.locator(`${STATUS} .lbl`).innerText(),
+    t("statusTranslatingFrom", RU.langEnglishGenitive)
+  );
+  assert.equal(await page.locator(CARD).count(), 0, "no empty card");
   const fontSize = await page.locator(STATUS).evaluate((element) => getComputedStyle(element).fontSize);
-  assert.equal(fontSize, "12px", "подпись мелкая и спокойная");
+  assert.equal(fontSize, "12px", "the label is small and calm");
   await shot(page, "14-status-pill");
 
   await page.locator(`${STATUS}.mini`).waitFor({ timeout: 3000 });
   await shot(page, "15-status-circle");
 
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor({ timeout: 6000 });
-  assert.equal(await page.locator(STATUS).count(), 0, "кружок уступил место карточке");
-  assert.equal(await cardText(page, ".badge"), "Перевод · с английского");
+  assert.equal(await page.locator(STATUS).count(), 0, "the circle gave way to the card");
+  assert.equal(
+    await cardText(page, ".badge"),
+    `${t("labelTranslation")} · ${t("fromLanguage", RU.langEnglishGenitive)}`
+  );
   await shot(page, "16-status-card");
   await page.close();
 });
 
 test("dark page: the pill and the card are dark, matching the site", async () => {
-  replyWith("[[text]]\nОбновление ускоряет запуск и исправляет сбой при импорте больших файлов.");
+  replyWith(`[[text]]\n${RU.updateNotes}`);
   api.delayMs = 1800;
   const page = await openPage(
     "dark-status",
@@ -694,7 +713,7 @@ test("dark page: the pill and the card are dark, matching the site", async () =>
   const pillBackground = await page
     .locator(STATUS)
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  assert.notEqual(pillBackground, "rgb(255, 255, 255)", "пилюля не белая на тёмном сайте");
+  assert.notEqual(pillBackground, "rgb(255, 255, 255)", "the pill is not white on a dark site");
   await shot(page, "17-status-dark");
 
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor({ timeout: 6000 });
@@ -702,14 +721,14 @@ test("dark page: the pill and the card are dark, matching the site", async () =>
   const cardBackground = await page
     .locator(CARD)
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  assert.notEqual(cardBackground, "rgb(255, 255, 255)", "карточка тёмная");
-  assert.equal(cardBackground, pillBackground, "кружок и карточка одного цвета");
+  assert.notEqual(cardBackground, "rgb(255, 255, 255)", "the card is dark");
+  assert.equal(cardBackground, pillBackground, "the circle and the card share a colour");
   await shot(page, "17b-card-dark");
   await page.close();
 });
 
 test("sepia: a warm card and translation text sized as on the page", async () => {
-  replyWith("[[text]]\nБыл уже поздний вечер, когда письмо наконец пришло.");
+  replyWith(`[[text]]\n${RU.lateEvening}`);
   const page = await openPage(
     "sepia",
     article({
@@ -726,7 +745,7 @@ test("sepia: a warm card and translation text sized as on the page", async () =>
   const background = await page
     .locator(CARD)
     .evaluate((element) => getComputedStyle(element).backgroundColor);
-  assert.notEqual(background, "rgb(255, 255, 255)", "карточка тёплая, а не белая");
+  assert.notEqual(background, "rgb(255, 255, 255)", "the card is warm, not white");
   await shot(page, "18-sepia");
   await page.close();
 });
@@ -742,12 +761,7 @@ const LONG_BODY = `
   <p>On the way home I bought flowers at the market near the bridge.</p>
   <div style="height: 1400px"></div>`;
 
-const LONG_REPLY =
-  "[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие. " +
-  "Пекарня на углу открывается в семь, и круассаны заканчиваются ещё до девяти.\n" +
-  "Большинство туристов приезжают позже, поэтому ранние прогулки — лучший способ увидеть старый город. " +
-  "Вечером река наполняется лодками, музыкой и людьми, сидящими вдоль берегов.\n" +
-  "К полудню кафе заполнены, и тихий город, который я видел на рассвете, исчезает до следующего воскресенья.";
+const LONG_REPLY = `[[text]]\n${RU.parisLong} ${RU.bakery}\n${RU.tourists} ${RU.evening}\n${RU.noon}`;
 
 test("long text: a margin note on the right that keeps the text visible and moves on scroll", async () => {
   replyWith(LONG_REPLY, 40);
@@ -757,18 +771,21 @@ test("long text: a margin note on the right that keeps the text visible and move
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
 
   assert.equal(await page.locator(CARD).evaluate((element) => element.classList.contains("margin")), true);
-  assert.equal(await cardText(page, ".badge"), "Перевод · 3 абзаца с английского");
+  assert.equal(
+    await cardText(page, ".badge"),
+    `${t("labelTranslation")} · ${t("paragraphsFew", 3)} ${t("fromLanguage", RU.langEnglishGenitive)}`
+  );
   const text = await page.locator("#sel").boundingBox();
   const before = await page.locator(CARD).boundingBox();
-  assert.ok(before.x >= text.x + text.width, "заметка справа от текста, текст открыт");
+  assert.ok(before.x >= text.x + text.width, "the note is right of the text, the text stays visible");
   await shot(page, "19-long-margin");
 
   await page.mouse.move(300, 300);
   await page.mouse.wheel(0, 150);
   await page.waitForTimeout(400);
-  assert.equal(await page.locator(CARD).count(), 1, "прокрутка не закрывает перевод");
+  assert.equal(await page.locator(CARD).count(), 1, "scrolling does not close the translation");
   const after = await page.locator(CARD).boundingBox();
-  assert.ok(Math.abs(before.y - 150 - after.y) <= 2, "заметка уехала вместе с текстом");
+  assert.ok(Math.abs(before.y - 150 - after.y) <= 2, "the note moved with the text");
   await shot(page, "20-long-margin-scrolled");
   await page.close();
 });
@@ -790,19 +807,19 @@ test("full-width long text: a panel at the right window edge", async () => {
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   assert.equal(await page.locator(CARD).evaluate((element) => element.classList.contains("drawer")), true);
   const box = await page.locator(CARD).boundingBox();
-  assert.equal(Math.round(box.x + box.width), 1200, "панель прижата к правому краю");
-  assert.equal(Math.round(box.height), 720, "во всю высоту окна");
+  assert.equal(Math.round(box.x + box.width), 1200, "the panel sticks to the right edge");
+  assert.equal(Math.round(box.height), 720, "full window height");
   await shot(page, "21-long-drawer");
   await page.close();
 });
 
 test("the Golos Text font from settings is loaded from the extension, offline", async () => {
   await setSettings({ cardFont: "golos" });
-  replyWith("[[text]]\nПариж — столица и крупнейший город Франции.");
+  replyWith(`[[text]]\n${RU.parisLargest}`);
   const page = await openPage("font", article({ body: `<p id="p">${PARIS}</p>` }));
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
-  await page.waitForFunction(() => document.fonts.check('16px "Sensemark Golos"', "Париж"));
+  await page.waitForFunction((sample) => document.fonts.check('16px "Sensemark Golos"', sample), RU.paris);
   const family = await page
     .locator(`${CARD} .tr`)
     .evaluate((element) => getComputedStyle(element).fontFamily);
@@ -811,7 +828,7 @@ test("the Golos Text font from settings is loaded from the extension, offline", 
   await page.close();
 });
 
-test("«Оформление» settings: theme, font and size are saved", async () => {
+test("appearance settings: theme, font and size are saved", async () => {
   const page = await context.newPage();
   await page.setViewportSize({ width: 760, height: 1000 });
   await page.goto(`chrome-extension://${extensionId}/options.html`);

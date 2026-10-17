@@ -12,12 +12,14 @@ const readRepo = (file) => fs.readFileSync(path.join(repo, file), "utf8");
 test("toolbar action opens the manual popup with only packaged scripts", () => {
   const manifest = JSON.parse(read("manifest.json"));
   assert.equal(manifest.action.default_popup, "popup.html");
-  assert.equal(manifest.action.default_title, "Sensemark — ручной перевод");
+  assert.equal(manifest.action.default_title, "__MSG_actionTitle__");
+  assert.equal(manifest.default_locale, "ru");
 
   const document = new JSDOM(read("popup.html")).window.document;
   assert.deepEqual(
     [...document.querySelectorAll("script")].map((script) => script.getAttribute("src")),
     [
+      "i18n.js",
       "language-detection.js",
       "word-response.js",
       "text-response.js",
@@ -32,8 +34,8 @@ test("toolbar action opens the manual popup with only packaged scripts", () => {
   );
   assert.equal(document.getElementById("translateButton"), null);
   assert.ok(document.getElementById("activity"));
-  assert.equal(document.getElementById("clearButton").getAttribute("aria-label"), "Очистить текст");
-  assert.match(document.querySelector(".route").getAttribute("aria-label"), /автоматически/);
+  assert.equal(document.getElementById("clearButton").getAttribute("data-i18n-aria-label"), "clearAria");
+  assert.equal(document.querySelector(".route").getAttribute("data-i18n-aria-label"), "routeAria");
 
   const popupRuntime = read("popup.js");
   assert.match(popupRuntime, /insertFromPaste/);
@@ -63,6 +65,7 @@ test("content runtime declares every helper in manifest and fallback injection",
   const manifest = JSON.parse(read("manifest.json"));
   const files = manifest.content_scripts[0].js;
   assert.deepEqual(files, [
+    "i18n.js",
     "language-detection.js",
     "selection-text.js",
     "word-response.js",
@@ -83,9 +86,10 @@ test("content runtime declares every helper in manifest and fallback injection",
 });
 
 test("privacy disclosures include selected and manually entered text", () => {
-  assert.match(readRepo("PRIVACY.md"), /вручную ввёл или вставил/);
-  assert.match(readRepo("PRIVACY.en.md"), /manually types or pastes/);
-  assert.match(read("options.html"), /выделенный или вручную введённый текст/);
+  assert.match(readRepo("PRIVACY.md"), /manually types or pastes/);
+  const options = read("options.html");
+  assert.match(options, /<!--t:privacyText-->/);
+  assert.match(options, /<!--t:consentText-->/);
 });
 
 test("CI runs locked tests, coverage gates, and archive validation", () => {

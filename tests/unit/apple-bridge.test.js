@@ -2,6 +2,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const Builtin = require("../../src/builtin-translator.js");
 const language = require("../../src/language-detection.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 // A fake of Safari's native part (SafariWebExtensionHandler.swift):
 // it answers the same operations as the real Swift code.
@@ -98,7 +100,7 @@ test("Safari free mode translates through the Apple translator", async () => {
   assert.ok(native.state.calls.some((call) => call.op === "translate" && call.target === "ru"));
 });
 
-test("Safari: a language that is not downloaded yet asks for the «Скачать» button right away", async () => {
+test("Safari: a language that is not downloaded yet asks for the download button right away", async () => {
   const native = fakeNative({ detected: "ja" });
   const engine = engineFor(native);
   await assert.rejects(
@@ -106,18 +108,18 @@ test("Safari: a language that is not downloaded yet asks for the «Скачат�
     (error) => {
       assert.equal(error.code, "needs-download");
       assert.equal(error.language, "ja");
-      assert.match(error.message, /приложение Sensemark/);
+      assert.equal(error.message, t("appleNeedsDownload", RU.langJapaneseGenitive));
       return true;
     }
   );
   assert.equal(
     native.state.calls.some((call) => call.op === "translate"),
     false,
-    "без языка не переводим"
+    "no translation without the language"
   );
 });
 
-test("Safari: «Скачать» opens the Sensemark app and waits until the language is installed", async () => {
+test("Safari: the download button opens the Sensemark app and waits until the language is installed", async () => {
   const native = fakeNative({ detected: "ja" });
   let polls = 0;
   const engine = engineFor(native, {
@@ -138,7 +140,7 @@ test("Safari: if the language never arrives, the wait ends with a clear message"
   const engine = engineFor(native, { installTimeoutMs: 0 });
   await assert.rejects(engine.prepare("ja"), (error) => {
     assert.equal(error.code, "download-failed");
-    assert.match(error.message, /приложение Sensemark/);
+    assert.equal(error.message, t("appleDownloadFailed"));
     return true;
   });
 });
@@ -148,7 +150,7 @@ test("Safari: a language Apple cannot translate suggests OpenAI", async () => {
   const engine = engineFor(native);
   await assert.rejects(engine.run({ text: "Some text here.", sourceScripts: ["Latin"] }), (error) => {
     assert.equal(error.code, "unsupported");
-    assert.match(error.message, /Переводчик Apple/);
+    assert.ok(error.message.startsWith(t("engineApple")));
     return true;
   });
 });
@@ -157,7 +159,7 @@ test("Safari: without the native app the card explains what is missing", async (
   const engine = engineFor({ send: async () => undefined });
   await assert.rejects(engine.run({ text: "Hello there, friend.", sourceScripts: ["Latin"] }), (error) => {
     assert.equal(error.code, "unavailable");
-    assert.match(error.message, /macOS 26\.4/);
+    assert.equal(error.message, t("appleUnavailable"));
     return true;
   });
 });
@@ -165,7 +167,7 @@ test("Safari: without the native app the card explains what is missing", async (
 test("Safari labels: download status has no fake percentage", () => {
   assert.equal(Builtin.APPLE_LABELS.reportsProgress, false);
   assert.equal(Builtin.CHROME_LABELS.reportsProgress, true);
-  assert.match(Builtin.APPLE_LABELS.downloading("японский"), /приложении Sensemark/);
+  assert.equal(Builtin.APPLE_LABELS.downloading(RU.langJapanese), t("appleDownloading", RU.langJapanese));
 });
 
 test("local port reports the Apple wording when the native call fails unexpectedly", async () => {
@@ -200,12 +202,12 @@ test("Safari: macOS older than 26.4 is explained instead of a generic error", as
   const engine = engineFor({ send: async () => ({ ok: false, code: "unavailable" }) });
   await assert.rejects(engine.run({ text: "Hello there, friend.", sourceScripts: ["Latin"] }), (error) => {
     assert.equal(error.code, "unavailable");
-    assert.match(error.message, /macOS 26\.4/);
+    assert.equal(error.message, t("appleUnavailable"));
     return true;
   });
 });
 
-test("Safari: a language removed between checks still leads to the «Скачать» button", async () => {
+test("Safari: a language removed between checks still leads to the download button", async () => {
   const native = fakeNative();
   const engine = engineFor(native);
   native.state.installed.add("en");

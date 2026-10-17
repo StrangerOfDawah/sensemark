@@ -17,7 +17,6 @@ const requiredDocs = [
   "CONTRIBUTING.md",
   "SECURITY.md",
   "PRIVACY.md",
-  "PRIVACY.en.md",
   "docs/architecture.md",
   "docs/adr/README.md",
   "docs/product-direction.md",

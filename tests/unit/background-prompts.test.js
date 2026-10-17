@@ -1,10 +1,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { loadBackground } = require("../helpers/background.js");
+const RU = require("../fixtures/russian.json");
 
 test("text prompt auto-detects the source language", () => {
   const { buildTextMessages } = loadBackground();
-  const prompt = buildTextMessages("مرحبا", "русский", ["Arabic"])[0].content;
+  const prompt = buildTextMessages("مرحبا", RU.langRussian, ["Arabic"])[0].content;
 
   assert.match(prompt, /Detect the language of each sentence yourself; never assume English/);
   assert.match(prompt, /Never output \[\[skip\]\]/);
@@ -12,12 +13,12 @@ test("text prompt auto-detects the source language", () => {
   assert.match(prompt, /Keep parts already in Russian verbatim/);
   assert.match(prompt, /Translate directly from the source language into Russian/);
   assert.match(prompt, /Skip leftover page UI/);
-  assert.doesNotMatch(prompt, /коранич|Quran/i);
+  assert.doesNotMatch(prompt, new RegExp(`${RU.removedTopicStem}|Quran`, "i"));
 });
 
 test("multiscript prompt requires a section for every detected script", () => {
   const { buildTextMessages } = loadBackground();
-  const prompt = buildTextMessages("Hello مرحبا", "русский", ["Latin", "Arabic"])[0].content;
+  const prompt = buildTextMessages("Hello مرحبا", RU.langRussian, ["Latin", "Arabic"])[0].content;
 
   assert.match(prompt, /Latin, Arabic/);
   assert.match(prompt, /\[\[multilingual\]\]/);
@@ -29,25 +30,27 @@ test("multiscript prompt requires a section for every detected script", () => {
 test("instructions are short: English costs about half the tokens of the old Russian prompt", () => {
   const { buildTextMessages, buildWordMessages } = loadBackground();
   // The old Russian instructions took ~2300–2700 characters (430–550 tokens).
-  assert.ok(buildTextMessages("Hello there my friend", "русский", ["Latin"])[0].content.length < 1300);
-  assert.ok(buildWordMessages("bank", "I went to the bank.", "русский", ["Latin"])[0].content.length < 1500);
+  assert.ok(buildTextMessages("Hello there my friend", RU.langRussian, ["Latin"])[0].content.length < 1300);
+  assert.ok(
+    buildWordMessages("bank", "I went to the bank.", RU.langRussian, ["Latin"])[0].content.length < 1500
+  );
 });
 
 test("parallel bilingual titles may produce one natural translation", () => {
   const { buildTextMessages, isParallelTitleCandidate, responseIssue } = loadBackground();
   const source = "Japanese Daycares – 日本の保育園";
   const scripts = ["Latin", "Japanese"];
-  const prompt = buildTextMessages(source, "русский", scripts)[0].content;
+  const prompt = buildTextMessages(source, RU.langRussian, scripts)[0].content;
 
   assert.equal(isParallelTitleCandidate(source, scripts), true);
   assert.match(prompt, /one short title written in two scripts/);
   assert.match(prompt, /one Russian translation below/);
-  assert.equal(responseIssue("[[text]]\nЯпонские детские сады", false, scripts, source), "");
+  assert.equal(responseIssue(`[[text]]\n${RU.japaneseDaycares}`, false, scripts, source), "");
   assert.equal(
     responseIssue(
       "[[multilingual]]\n" +
-        "[[script:Latin|lang:английский]]\nЯпонские детские сады\n" +
-        "[[script:Japanese|lang:японский]]\nЯпонские детские сады",
+        `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.japaneseDaycares}\n` +
+        `[[script:Japanese|lang:${RU.langJapanese}]]\n${RU.japaneseDaycares}`,
       false,
       scripts,
       source
@@ -63,7 +66,7 @@ test("ordinary multiscript prose still requires every source section", () => {
 
   assert.equal(isParallelTitleCandidate(source, scripts), false);
   assert.match(
-    responseIssue("[[text]]\nПрочитайте эти предложения.", false, scripts, source),
+    responseIssue(`[[text]]\n${RU.readSentences}`, false, scripts, source),
     /\[\[multilingual\]\]/
   );
 });
@@ -73,14 +76,17 @@ test("response validation rejects skip and missing script sections", () => {
 
   assert.match(responseIssue("[[skip]]", true, ["Arabic"]), /forbidden \[\[skip\]\]/);
   assert.match(
-    responseIssue("[[multilingual]]\n[[script:Latin|lang:английский]]\nПеревод.", false, ["Latin", "Arabic"]),
+    responseIssue(`[[multilingual]]\n[[script:Latin|lang:${RU.langEnglish}]]\n${RU.translationWord}`, false, [
+      "Latin",
+      "Arabic"
+    ]),
     /Arabic/
   );
   assert.match(
     responseIssue(
       "[[multilingual]]\n" +
-        "[[script:Latin|lang:английский]]\nПеревод.\n" +
-        "[[script:Arabic|lang:арабский]]\n",
+        `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.translationWord}\n` +
+        `[[script:Arabic|lang:${RU.langArabic}]]\n`,
       false,
       ["Latin", "Arabic"]
     ),
@@ -89,8 +95,8 @@ test("response validation rejects skip and missing script sections", () => {
   assert.equal(
     responseIssue(
       "[[multilingual]]\n" +
-        "[[script:Latin|lang:английский]]\nПеревод.\n" +
-        "[[script:Arabic|lang:арабский]]\nДругой перевод.",
+        `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.translationWord}\n` +
+        `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.anotherTranslation}`,
       false,
       ["Latin", "Arabic"]
     ),
@@ -103,12 +109,7 @@ test("response validation rejects copied instructions, labels and untranslated o
   const arabic = "هذا كتاب جيد جدا";
 
   assert.match(
-    responseIssue(
-      "[[text]]\nполный перевод на язык «русский» без пояснений и исходного текста",
-      false,
-      ["Arabic"],
-      arabic
-    ),
+    responseIssue(`[[text]]\n${RU.copiedInstruction}`, false, ["Arabic"], arabic),
     /repeats the instructions/
   );
   assert.match(
@@ -118,8 +119,8 @@ test("response validation rejects copied instructions, labels and untranslated o
   assert.match(
     responseIssue(
       "[[multilingual]]\n" +
-        "[[script:Latin|lang:английский]]\nДобро пожаловать.\n" +
-        "[[script:Arabic|lang:арабский]]\nمرحبا بكم في المدينة.",
+        `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.welcome}\n` +
+        `[[script:Arabic|lang:${RU.langArabic}]]\nمرحبا بكم في المدينة.`,
       false,
       ["Latin"],
       "Welcome to the city."
@@ -127,8 +128,8 @@ test("response validation rejects copied instructions, labels and untranslated o
     /scripts that are not in the selection: Arabic/
   );
   assert.match(
-    responseIssue("[[text]]\nПеревод:\nБольшое спасибо.", false, ["Arabic"], "شكرا جزيلا"),
-    /«Перевод:»/
+    responseIssue(`[[text]]\n${RU.translationLabelLine}\n${RU.thanks}`, false, ["Arabic"], "شكرا جزيلا"),
+    /translation label/
   );
   assert.match(
     responseIssue(
@@ -140,10 +141,15 @@ test("response validation rejects copied instructions, labels and untranslated o
     /not translated into Russian/
   );
   assert.match(
-    responseIssue("[[multilingual]]\n[[script:Arabic|lang:арабский]]\nЭто книга.", false, ["Arabic"], arabic),
+    responseIssue(
+      `[[multilingual]]\n[[script:Arabic|lang:${RU.langArabic}]]\n${RU.isBook}`,
+      false,
+      ["Arabic"],
+      arabic
+    ),
     /one language/
   );
-  assert.equal(responseIssue("[[text]]\nЭто очень хорошая книга.", false, ["Arabic"], arabic), "");
+  assert.equal(responseIssue(`[[text]]\n${RU.goodBook}`, false, ["Arabic"], arabic), "");
 });
 
 test("validation accepts kept names, brands and short terms (no wasted repair request)", () => {
@@ -151,7 +157,7 @@ test("validation accepts kept names, brands and short terms (no wasted repair re
   // Each of these correct answers used to trigger a paid retry.
   assert.equal(
     responseIssue(
-      "[[text]]\nGitHub Copilot. ИИ-напарник, который помогает писать код.",
+      `[[text]]\n${RU.copilot}`,
       false,
       ["Latin"],
       "GitHub Copilot. The AI pair programmer that helps you write code."
@@ -161,12 +167,7 @@ test("validation accepts kept names, brands and short terms (no wasted repair re
   assert.equal(responseIssue("[[translation]]\nOK", true, ["Latin"], "OK"), "");
   assert.equal(responseIssue("[[text]]\nGitHub Copilot", false, ["Latin"], "GitHub Copilot"), "");
   assert.equal(
-    responseIssue(
-      "[[text]]\nОфис в 東京 открылся сегодня, и сотрудники довольны.",
-      false,
-      ["Latin"],
-      "The 東京 office opened today."
-    ),
+    responseIssue(`[[text]]\n${RU.tokyoOffice}`, false, ["Latin"], "The 東京 office opened today."),
     ""
   );
 });
@@ -176,30 +177,30 @@ test("repair request replaces an invalid skip response", async () => {
   background.fetch = async () => ({
     ok: true,
     json: async () => ({
-      choices: [{ message: { content: "[[translation]]\nкнига" } }]
+      choices: [{ message: { content: `[[translation]]\n${RU.book}` } }]
     })
   });
 
   const repaired = await background.repairResponse(
     { apiKey: "test-key", model: "gpt-6-luna" },
-    [{ role: "system", content: "Переведи." }],
+    [{ role: "system", content: RU.translateIt }],
     "[[skip]]",
-    "Запрещённая метка.",
+    RU.forbiddenLabel,
     true,
     ["Arabic"],
     "كتاب",
     new AbortController().signal
   );
 
-  assert.equal(repaired, "[[translation]]\nкнига");
+  assert.equal(repaired, `[[translation]]\n${RU.book}`);
 });
 
 test("word prompt defines a safe unknown-term response", () => {
   const { buildWordMessages } = loadBackground();
-  const messages = buildWordMessages("Sensemark", null, "русский", ["Latin"]);
+  const messages = buildWordMessages("Sensemark", null, RU.langRussian, ["Latin"]);
   const prompt = messages[0].content;
 
-  assert.match(prompt, /“Why” is the word «почему»/);
+  assert.match(prompt, new RegExp(`“Why” is the word «${RU.why}»`));
   assert.match(prompt, /\[\[translation\]\]/);
   assert.match(prompt, /\[\[reference\]\]/);
   assert.match(prompt, /A capital letter alone does not make a name/);
@@ -207,7 +208,7 @@ test("word prompt defines a safe unknown-term response", () => {
   assert.match(prompt, /Script: Latin/);
   assert.equal(messages[1].content, "Fragment: Sensemark");
   assert.equal(
-    buildWordMessages("bank", "I went to the bank.", "русский", ["Latin"])[1].content,
+    buildWordMessages("bank", "I went to the bank.", RU.langRussian, ["Latin"])[1].content,
     "Context: I went to the bank.\nFragment: bank"
   );
 });

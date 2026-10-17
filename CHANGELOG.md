@@ -1,175 +1,177 @@
-# История изменений
+# Changelog
 
-Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
-версии следуют [Semantic Versioning](https://semver.org/lang/ru/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Добавлено
+### Added
 
-- Sensemark для Safari на Mac (для себя, без публикации): бесплатный режим
-  переводит системным переводчиком Apple прямо на Mac, режим OpenAI работает
-  как в Chrome. Языки скачиваются один раз в приложении Sensemark. Набор
-  собирается командой `npm run safari:kit`, установка — `platforms/safari/README.md`.
+- Sensemark for Safari on the Mac (personal use, not published): free mode
+  translates with Apple's system translator right on the Mac, OpenAI mode works
+  as in Chrome. Languages are downloaded once in the Sensemark app. The kit is
+  built with `npm run safari:kit`; installation is described in
+  `platforms/safari/README.md`.
 
-### Изменено
+### Changed
 
-- Автоперевод при выделении включён по умолчанию: выделил текст мышью — через
-  полсекунды появился перевод. Кто уже выключал автоперевод, остаётся
-  с выключенным; поставить на паузу или выключить можно кнопкой в карточке
-  или в настройках.
+- Auto-translate on selection is on by default: select text with the mouse and
+  the translation appears half a second later. Anyone who had turned
+  auto-translate off keeps it off; it can be paused or turned off from the card
+  or in settings.
 
-### Для разработчиков
+### For developers
 
-- Код расширения перенесён в `src/`, Safari-часть — в `platforms/safari/`,
-  тесты разделены на `unit`, `integration` и `e2e`. `content.js` разбит на
-  модули в `src/content/`: стили карточки, текст страницы, расчёт положения и
-  пилюля статуса. Архив для Chrome Web Store собирается из `src/`,
-  `manifest.json` по-прежнему лежит в его корне.
-- ESLint, Prettier, `.editorconfig`, `.nvmrc` и команда `npm run verify`;
-  CI проверяет линтер и форматирование.
-- К каждому релизу автоматически прикладываются оба архива — для Chrome и для
-  Safari — и `SHA256SUMS.txt`.
-- Документация для разработчиков переведена на английский: `AGENTS.md`
-  (и `CLAUDE.md`, `.github/copilot-instructions.md`), `CONTRIBUTING.md`,
-  `SECURITY.md`, `docs/architecture.md`; решения D-001…D-018 стали записями
-  в `docs/adr/`.
+- The extension moved to `src/`, the Safari part to `platforms/safari/`, and
+  tests are split into `unit`, `integration` and `e2e`. `content.js` is split
+  into modules in `src/content/`: card styles, page text, placement and the
+  status pill. The Chrome Web Store archive is built from `src/`, with
+  `manifest.json` still at its root.
+- All user-facing text moved to `src/_locales/ru/messages.json` and is read
+  through `chrome.i18n`; code, comments, tests and docs are in English, and a
+  test keeps Russian out of everything except `README.md`, the locale file, the
+  Russian test samples and the store listing.
+- ESLint, Prettier, `.editorconfig`, `.nvmrc` and `npm run verify`; CI checks
+  lint and formatting.
+- Every release automatically gets both archives (Chrome and Safari) and
+  `SHA256SUMS.txt`.
+- Developer docs are in English: `AGENTS.md` (with `CLAUDE.md` and
+  `.github/copilot-instructions.md`), `CONTRIBUTING.md`, `SECURITY.md`,
+  `docs/architecture.md`; decisions D-001…D-018 became records in `docs/adr/`.
+  `PRIVACY.md` is now the English policy.
 
 ## [1.5.0] — 2026-10-17
 
-### Главное
+### Highlights
 
-- Бесплатный режим по умолчанию: встроенный переводчик Chrome переводит прямо
-  на компьютере, без ключа и без оплаты, текст никуда не отправляется. OpenAI —
-  опция «умнее» со своим ключом. Выбор режима — в настройках, с подсказкой о
-  примерной стоимости OpenAI. У кого уже есть ключ, после обновления остаётся
-  OpenAI.
-- Модель OpenAI по умолчанию — `gpt-6-luna`: `gpt-4o-mini` и другие старые
-  модели OpenAI отключаются до января 2027. Сохранённые старые модели
-  переключаются автоматически.
-- Перевод через OpenAI стал примерно вдвое дешевле: короткие английские
-  инструкции, меньше лишних повторных запросов, кэш живёт до закрытия
-  браузера, ограничена длина ответа.
+- Free mode by default: Chrome's built-in translator works right on the
+  computer, with no key and no cost, and the text goes nowhere. OpenAI is the
+  "smarter" option with your own key. The mode is chosen in settings, with a
+  hint about the approximate OpenAI cost. Users who already have a key stay on
+  OpenAI after the update.
+- The default OpenAI model is `gpt-6-luna`: `gpt-4o-mini` and other older
+  OpenAI models are retired before January 2027. Saved older models are switched
+  automatically.
+- Translation through OpenAI is roughly half the price: short English
+  instructions, fewer needless retries, a cache that lives until the browser
+  closes, and a capped answer length.
 
-### Новое оформление карточки «Хамелеон»
+### New "chameleon" card
 
-- Карточка подстраивается под страницу: на белом сайте белая, на тёмном —
-  тёмная, на «сепии» — тёплая, и перевод того же размера, что и текст, который
-  вы читаете. В настройках «Оформление» можно выбрать тему (под страницу /
-  светлая / тёмная), шрифт перевода (системный, Golos Text или Literata —
-  шрифты вшиты в расширение) и размер «как на странице».
-- Пока перевод не начался, у выделения видна маленькая пилюля «Перевожу
-  с английского…», которая через секунду сжимается в кружок с бегущей дугой.
-  При скачивании языкового пакета кольцо показывает настоящий процент.
-  Пилюля всегда в цвет карточки.
-- Длинное выделение (от ~300 символов или несколько абзацев) переводится
-  заметкой на полях справа от текста, со скобкой вдоль выделения. Если справа
-  места нет — панелью у правого края окна. Текст при этом не закрывается.
-- Карточка больше не закрывается при прокрутке: она едет вместе с текстом.
+- The card adapts to the page: white on a white site, dark on a dark one, warm on
+  a sepia one, and the translation matches the size of the text you are reading.
+  The Appearance settings offer a theme (match the page / light / dark), a
+  translation font (system, Golos Text or Literata, bundled with the extension)
+  and "same size as the page".
+- Until the translation starts, a small "Translating from English…" pill sits
+  at the selection and shrinks into a circle with a running arc after a second.
+  While a language pack downloads, the ring shows the real percentage. The pill
+  always matches the card's colour.
+- A long selection (about 300+ characters or several paragraphs) is translated
+  as a margin note to the right of the text, with a bracket along the selection.
+  When there is no room on the right, it becomes a panel at the right window
+  edge. The text is never covered.
+- The card no longer closes on scroll: it moves with the text.
 
-### Изменено
+### Changed
 
-- Картинки в README и для Chrome Web Store пересняты с новой карточки
-  и настроек; описание магазина рассказывает про бесплатный режим.
-- Убрана кнопка «Оригинал»: исходный текст и так виден на странице рядом
-  с карточкой.
-- Sensemark снова универсален: удалена обработка под отдельный сайт
-  (Quran.com) и тематические инструкции в промпте. Очистка выделения и перевод
-  работают одинаково для любого текста на любом сайте.
+- README and Chrome Web Store images were retaken with the new card and
+  settings; the store description covers free mode.
+- The "Original" button is gone: the source text is already visible next to the
+  card.
+- Sensemark is universal again: handling for a single site (Quran.com) and
+  topic-specific prompt instructions were removed. Selection cleanup and
+  translation work the same for any text on any site.
 
-### Исправлено
+### Fixed
 
-- «Проверить ключ» больше не показывает служебную метку `[[text]]`.
-- Правильные переводы с оставленными именами и терминами («GitHub Copilot»,
-  «API») больше не бракуются и не вызывают платный повторный запрос.
-- В обычной карточке больше не виден пустой бейджик категории.
-- Слова-ссылки больше не выпадают из переводимого текста.
-- Абзацы и переносы строк выделения сохраняются, а слова с инлайн-оформлением
-  (`un<em>believ</em>able`) больше не разрываются пробелами.
+- "Test key" no longer shows the internal `[[text]]` marker.
+- Correct translations that keep names and terms ("GitHub Copilot", "API") are
+  no longer rejected and no longer trigger a paid retry.
+- An ordinary card no longer shows an empty category badge.
+- Linked words no longer drop out of the translated text.
+- Paragraphs and line breaks of a selection are kept, and words with inline
+  styling (`un<em>believ</em>able`) are no longer split by spaces.
 
-### Добавлено
+### Added
 
-- Автоперевод не срабатывает на случайные выделения: если сразу после
-  выделения нажать ⌘/Ctrl+C или правую кнопку мыши, перевод отменяется; в полях
-  ввода автоперевод не запускается.
-- Кнопка паузы в карточке: пауза автоперевода на 5 минут или полное
-  выключение; включение обратно — в настройках или правым кликом по значку
-  расширения.
-- Перевод «шумных» выделений, вплоть до всей страницы: локально убираются меню,
-  шапка и подвал сайта, кнопки, сноски и символы иконок, а оставшиеся подписи
-  интерфейса модель пропускает сама.
-- E2E-тесты в настоящем Chromium: расширение загружается целиком, выделение,
-  карточка, кэш, ошибки и ручной popup проверяются без реального OpenAI; в CI
-  прикладываются скриншоты для визуальной проверки.
-- Тест-замок дизайна: случайное изменение внешнего вида останавливает CI,
-  намеренная правка принимается командой `npm run design:approve`.
+- Auto-translate ignores accidental selections: pressing ⌘/Ctrl+C or the right
+  mouse button right after selecting cancels the translation, and selections in
+  input fields are never auto-translated.
+- A pause button on the card: pause auto-translate for 5 minutes or turn it off;
+  turn it back on in settings or by right-clicking the extension icon.
+- Translation of noisy selections, up to the whole page: menus, the site header
+  and footer, buttons, footnotes and icon glyphs are removed locally, and the
+  model skips leftover interface labels itself.
+- E2E tests in real Chromium: the whole extension is loaded, and selection, the
+  card, the cache, errors and the manual popup are checked without real OpenAI;
+  CI attaches screenshots for a visual check.
+- A design lock test: an accidental visual change stops CI, and an intentional
+  one is accepted with `npm run design:approve`.
 
 ## [1.3.0] — 2026-07-23
 
-### Добавлено
+### Added
 
-- Перевод на русский с автоматически определяемого языка вместо режима только
-  с английского.
-- Многоязычные секции для смешанного русского, английского, арабского и других
-  текстов.
-- Отдельное янтарное объяснение имён, названий, брендов, никнеймов, опечаток и
-  неизвестных терминов.
-- Ручной toolbar popup с автоматическим переводом после вставки или паузы при
-  вводе, отменой устаревшего запроса и копированием результата.
-- CI для pull request: unit- и DOM-тесты, coverage-пороги, проверка Manifest V3,
-  ZIP и распакованная тестовая сборка.
-- Канонические инструкции для AI-агентов, архитектура, решения, направление
-  продукта и воспроизводимый релизный процесс.
+- Translation into Russian from an automatically detected language instead of
+  English only.
+- Multilingual sections for mixed Russian, English, Arabic and other text.
+- A separate amber explanation for names, titles, brands, nicknames, typos and
+  unknown terms.
+- A manual toolbar popup that translates after a paste or a typing pause,
+  cancels stale requests and copies the result.
+- Pull request CI: unit and DOM tests, coverage thresholds, Manifest V3 checks,
+  the ZIP and an unpacked test build.
+- Canonical AI agent instructions, architecture, decisions, product direction
+  and a reproducible release process.
 
-### Изменено
+### Changed
 
-- Русский-only текст теперь игнорируется локально без карточки и без
-  API-запроса; технические латинские вставки в русском не запускают перевод.
-- Карточка на странице открывается только после первого видимого текста из
-  стрима.
-- Очистка выделения удаляет скрытые дубликаты, UI-подписи, управляющие символы
-  и шрифтовые глифы Quran.com до отправки модели.
-- Масштабирование карточки использует небольшие rate-limited шаги.
-- Короткие параллельные заголовки на двух языках переводятся один раз.
-- Popup получил более читаемую компактную визуальную иерархию, сохранив
-  корректное автоматическое измерение размера Chrome.
+- Russian-only text is ignored locally with no card and no API request;
+  technical Latin inserts inside Russian do not trigger a translation.
+- The on-page card opens only after the first visible text of the stream.
+- Selection cleanup removes hidden duplicates, UI captions, control characters
+  and Quran.com font glyphs before anything reaches the model.
+- Card scaling uses small rate-limited steps.
+- Short parallel titles in two languages are translated once.
+- The popup got a more readable, compact visual hierarchy while keeping Chrome's
+  automatic size measurement.
 
-### Исправлено
+### Fixed
 
-- `Why` больше не классифицируется как несуществующее слово из-за заглавной
-  буквы.
-- Арабский текст и смешанное арабско-английское выделение больше не
-  пропускаются из-за DOM-шума и специальных шрифтов.
-- Модель не должна повторять исходный текст, prompt или переводить на
-  незапрошенный третий язык.
-- Неполные многоязычные ответы проверяются до показа.
-- `Japanese Daycares – 日本の保育園` больше не вызывает ошибку полного перевода и
-  лишний repair-запрос.
-- Резкие wheel-события трекпада больше не заставляют масштаб «улетать».
-- Отменён корневой `height: 100%`, растягивавший Chrome popup в большое пустое
-  окно.
+- `Why` is no longer classified as a non-existent word because of its capital
+  letter.
+- Arabic text and mixed Arabic-English selections are no longer skipped because
+  of DOM noise and special fonts.
+- The model must not repeat the source text or the prompt, or translate into an
+  unrequested third language.
+- Incomplete multilingual answers are checked before they are shown.
+- `Japanese Daycares – 日本の保育園` no longer causes a completeness error and an
+  extra repair request.
+- Sharp trackpad wheel events no longer make the scale fly away.
+- The root `height: 100%` that stretched the Chrome popup into a large empty
+  window was reverted.
 
 ## [1.2.0] — 2026-07-22
 
-### Добавлено
+### Added
 
-- Новое название Sensemark, материалы Chrome Web Store и политика
-  конфиденциальности.
-- Явное согласие перед отправкой выделенного текста в OpenAI.
-- Воспроизводимая ZIP-упаковка.
+- The Sensemark name, Chrome Web Store materials and a privacy policy.
+- Explicit consent before selected text is sent to OpenAI.
+- Reproducible ZIP packaging.
 
-### Изменено
+### Changed
 
-- Обновлены ссылки на репозиторий и поддержку.
+- Updated repository and support links.
 
 ## [1.1.0] — 2026-07-21
 
-### Добавлено
+### Added
 
-- Первый публичный релиз перевода выделенного английского текста на русский.
-- Потоковый вывод, контекст для отдельных слов, кэш и отмена запроса.
-- Тёмная тема, масштабирование и изменение размера карточки.
-- Русская и английская версии README.
+- First public release: translating selected English text into Russian.
+- Streaming output, context for single words, a cache and request cancellation.
+- Dark theme, scaling and card resizing.
+- Russian and English README versions.
 
 [Unreleased]: https://github.com/StrangerOfDawah/sensemark/compare/v1.5.0...HEAD
 [1.5.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.3.0...v1.5.0

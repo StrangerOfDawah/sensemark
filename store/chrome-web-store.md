@@ -10,7 +10,7 @@ Sensemark
 
 **Summary**
 
-Переводит выделенный текст на русский с учётом контекста и показывает результат сразу по мере генерации.
+The SUMMARY block of [listing.ru.txt](listing.ru.txt).
 
 **Category**
 
@@ -18,7 +18,7 @@ Productivity
 
 **Language**
 
-Русский
+Russian
 
 **Assets**
 
@@ -29,43 +29,7 @@ Productivity
 
 **Detailed description**
 
-Sensemark помогает читать статьи, документацию и рабочие материалы на разных языках, не покидая текущую страницу. Исходный язык определяется автоматически, а результат всегда выводится на русском.
-
-Выделите текст и нажмите ⌘⇧Y на Mac или Ctrl+Shift+Y на Windows. Перевод появится рядом с выделением и будет выводиться сразу по мере генерации. Автоперевод включён сразу: достаточно просто выделить текст мышью. Его можно поставить на паузу или выключить кнопкой в карточке. Также есть пункт в контекстном меню.
-
-Если сайт не позволяет корректно выделить текст, нажмите на иконку Sensemark и вставьте его в компактное окно ручного перевода. Перевод начнётся автоматически, без дополнительной кнопки. Окно использует тот же потоковый режим, многоязычные секции, объяснение неизвестных терминов и отмену незавершённого запроса.
-
-Если выделено одно слово или короткий фрагмент, расширение учитывает окружающее предложение, чтобы выбрать подходящее значение, и показывает другие распространённые варианты.
-
-Если фрагмент не является обычным словом — например, это название, имя, никнейм, бренд или опечатка — расширение не придумывает перевод, а переключает карточку в отдельный режим «Объяснение» с категорией и кратким описанием по написанию и контексту.
-
-Выделение только на русском игнорируется без запроса к API. Смешанный текст разбивается на понятные секции: русские предложения сохраняются, а английские, арабские и другие переводятся с подписью исходного языка.
-
-Перед запросом расширение локально удаляет скрытые дубликаты, кнопки и служебные подписи страницы. Изображения без текстового слоя не отправляются в API, поэтому они не расходуют токены и не превращаются в неточный OCR.
-
-Возможности:
-
-- потоковый вывод без ожидания полного ответа;
-- компактный ручной перевод по клику на иконку расширения;
-- перевод коротких фрагментов с учётом контекста;
-- автоматическое определение исходного языка;
-- отсутствие лишних запросов для русского текста;
-- локальная очистка DOM-шума до обращения к API;
-- блокировка затратных запросов для текста, существующего только как изображение;
-- секции с подписями языков для смешанных выделений;
-- объяснение неизвестных слов, имён и названий без выдуманного перевода;
-- карточка в цвет страницы (или светлая / тёмная тема на выбор) и три шрифта перевода;
-- длинный текст переводится заметкой на полях справа, не закрывая страницу;
-- изменение масштаба и размера карточки;
-- копирование перевода;
-- локальный кэш повторных переводов;
-- отсутствие рекламы и аналитики.
-
-Два режима на выбор. По умолчанию — бесплатный: встроенный переводчик Chrome переводит прямо на компьютере, без ключа и без оплаты, текст никуда не отправляется (Chrome 138 и новее). Режим OpenAI умнее — выбирает значение слова по контексту и объясняет имена и названия; для него нужен собственный API-ключ OpenAI (подписка ChatGPT Plus не включает API), при ежедневном чтении это около $1 в год.
-
-В режиме OpenAI выделенный или вручную введённый текст и, для короткого выделения, окружающее предложение отправляются напрямую из браузера в OpenAI API. API-ключ и настройки хранятся локально в Chrome. У расширения нет сервера разработчика; разработчик не получает и не хранит тексты или ключи пользователей.
-
-Независимый open-source проект. Не связан с OpenAI и не одобрен ею.
+The DETAILED DESCRIPTION block of [listing.ru.txt](listing.ru.txt). The listing is in Russian because the extension's interface is.
 
 ## Links
 
@@ -77,11 +41,11 @@ Sensemark помогает читать статьи, документацию �
 
 **Single purpose**
 
-Перевод явно выделенного или вручную введённого пользователем текста на русский язык.
+The SINGLE PURPOSE block of [listing.ru.txt](listing.ru.txt).
 
 **Permission justifications**
 
-- `contextMenus`: adds the “Перевести на русский” command to the context menu for selected text.
+- `contextMenus`: adds the “Translate into Russian” command to the context menu for selected text.
 - `storage`: stores the translation mode, the user's optional OpenAI API key and extension preferences locally in Chrome.
 - `scripting`: injects the packaged content script into an already-open tab when the user explicitly invokes translation after installing or reloading the extension.
 - `activeTab`: grants temporary access to the active tab after an explicit user action so the extension can read the current selection and show the translation card.
@@ -120,17 +84,17 @@ The default free mode needs no key: it uses Chrome's built-in Translator API (Ch
 
 Free mode:
 
-1. Install the extension; the settings page opens automatically with “Встроенный переводчик Chrome — Бесплатно” selected.
+1. Install the extension; the settings page opens automatically with the free built-in Chrome translator selected (the first option).
 2. Open any regular HTTPS page, select an English sentence and press Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (macOS).
-3. The first time, Chrome downloads a language pack: the card offers “Скачать”, then shows the download progress. Afterwards the Russian translation appears in a card next to the selection, in the page's colours.
+3. The first time, Chrome downloads a language pack: the card offers a download button, then shows the download progress. Afterwards the Russian translation appears in a card next to the selection, in the page's colours.
 4. Select several paragraphs; confirm that the translation appears as a note in the right margin (or as a panel at the window edge) and that the selected text stays visible.
 
 OpenAI mode:
 
 1. Open the settings page and choose “OpenAI”.
 2. Review the data disclosure and select the consent checkbox.
-3. Paste the reviewer API key into “API-ключ OpenAI”.
-4. Click “Проверить ключ” and confirm that “Работает” appears.
+3. Paste the reviewer API key into the OpenAI API key field.
+4. Click the key check button under the field and confirm that a green success message appears.
 5. Open any regular HTTPS page, select a sentence in English, Spanish, Arabic, or another language, and press Ctrl+Shift+Y (Windows/Linux) or Command+Shift+Y (macOS).
 6. Confirm that the Russian translation streams into a card next to the selection.
 7. Select a single ambiguous word inside a sentence and repeat; confirm that the context-specific translation and alternative meanings are displayed.

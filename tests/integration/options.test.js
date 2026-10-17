@@ -3,10 +3,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { JSDOM } = require("jsdom");
+const { getMessage, t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 async function setupOptions(overrides = {}) {
   const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.html"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.js"), "utf8");
+  const i18nSource = fs.readFileSync(path.join(__dirname, "..", "..", "src", "i18n.js"), "utf8");
   const dom = new JSDOM(html, {
     runScripts: "outside-only",
     url: "https://extension.test/options.html"
@@ -20,7 +23,7 @@ async function setupOptions(overrides = {}) {
     provider: "openai",
     apiKey: "saved-key",
     model: "gpt-6-luna",
-    targetLang: "русский",
+    targetLang: t("targetLanguage"),
     autoTranslate: true,
     privacyConsentVersion: 1,
     ...overrides.settings
@@ -29,6 +32,7 @@ async function setupOptions(overrides = {}) {
   const writes = [];
   const messages = [];
   dom.window.chrome = {
+    i18n: { getMessage },
     storage: {
       local: {
         async get(defaults) {
@@ -43,11 +47,12 @@ async function setupOptions(overrides = {}) {
     runtime: {
       async sendMessage(message) {
         messages.push(message);
-        return overrides.response || { ok: true, text: "[[text]]\nПривет, мир!" };
+        return overrides.response || { ok: true, text: `[[text]]\n${RU.helloWorld}` };
       }
     }
   };
 
+  dom.window.eval(`${i18nSource}\n//# sourceURL=i18n.js`);
   dom.window.eval(`${source}\n//# sourceURL=options.js`);
   await new Promise((resolve) => setTimeout(resolve, 0));
   return { document: dom.window.document, dom, messages, settings, writes };
@@ -72,11 +77,11 @@ test("options collection fixes the target language and persists consent", async 
 
   const collected = context.dom.window.collect();
   assert.equal(collected.apiKey, "new-key");
-  assert.equal(collected.targetLang, "русский");
+  assert.equal(collected.targetLang, t("targetLanguage"));
   assert.equal(collected.autoTranslate, false);
   assert.equal(collected.privacyConsentVersion, 0);
   await context.dom.window.save();
-  assert.equal(context.writes.at(-1).targetLang, "русский");
+  assert.equal(context.writes.at(-1).targetLang, t("targetLanguage"));
 });
 
 test("key verification validates setup and reports API success", async () => {
@@ -88,18 +93,18 @@ test("key verification validates setup and reports API success", async () => {
 
   consent.checked = false;
   button.click();
-  assert.match(status.textContent, /подтвердите согласие/i);
+  assert.equal(status.textContent, t("testNeedsConsent"));
 
   consent.checked = true;
   key.value = "";
   button.click();
-  assert.match(status.textContent, /введите ключ/i);
+  assert.equal(status.textContent, t("testNeedsKey"));
 
   key.value = "valid-key";
   button.click();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(context.messages[0].type, "translate");
-  assert.match(status.textContent, /Работает — «Привет, мир!»/);
+  assert.equal(status.textContent, t("testWorks", RU.helloWorld));
   assert.doesNotMatch(status.textContent, /\[\[/);
   assert.equal(button.disabled, false);
 });
@@ -125,12 +130,26 @@ test("a retired model is replaced by the current cheapest one", async () => {
   assert.equal(context.settings.model, "gpt-6-luna");
 });
 
-test("the OpenAI option explains the benefit and the approximate cost", () => {
-  const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.html"), "utf8");
-  assert.match(html, /Бесплатно/);
-  assert.match(html, /\$1 в год/);
-  assert.match(html, /\$5 хватает на несколько лет/);
-  assert.match(html, /выбирает нужное значение слова/);
+test("the OpenAI option explains the benefit and the approximate cost", async () => {
+  const { document } = await setupOptions();
+  const modes = document.getElementById("modeGroup").textContent;
+  for (const key of ["tagFree", "tagSmart", "tagPrice", "modeOpenaiCaption"]) {
+    assert.ok(modes.includes(t(key)), `settings show ${key}`);
+  }
+  // Prices are written with $$ in messages.json; users see a single $.
+  assert.match(t("tagPrice"), /^[^$]*\$1\b/);
+  assert.match(t("modeOpenaiCaption"), /\$5\b/);
+});
+
+test("every text on the settings page comes from messages.json", async () => {
+  const { document } = await setupOptions();
+  const walker = document.createTreeWalker(document.body, 128);
+  const leftovers = [];
+  while (walker.nextNode())
+    if (walker.currentNode.data.startsWith("t:")) leftovers.push(walker.currentNode.data);
+  assert.deepEqual(leftovers, [], "every placeholder is replaced");
+  assert.equal(document.title, t("optionsTitle"));
+  assert.equal(document.getElementById("toggleKey").getAttribute("title"), t("showKey"));
 });
 
 test("auto-translate switch is on by default for a fresh install", async () => {

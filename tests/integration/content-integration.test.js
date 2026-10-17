@@ -4,6 +4,8 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const { JSDOM } = require("jsdom");
+const { getMessage, t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 function eventHub() {
   const listeners = [];
@@ -73,6 +75,7 @@ async function setupContent(markup, options = {}) {
 
   window.chrome = {
     i18n: {
+      getMessage,
       async detectLanguage(text) {
         // Like the real CLD: it mistakes the single word "bank" for Cebuano.
         if (text.trim() === "bank") {
@@ -83,7 +86,7 @@ async function setupContent(markup, options = {}) {
           isReliable: text.length > 60,
           languages: [
             {
-              language: /^[А-Яа-яЁё\s.,!?—-]+$/u.test(text) ? "ru" : "en",
+              language: /^[\u0410-\u044F\u0401\u0451\s.,!?—-]+$/u.test(text) ? "ru" : "en",
               percentage: 100
             }
           ]
@@ -122,6 +125,7 @@ async function setupContent(markup, options = {}) {
   if (options.Translator) window.Translator = options.Translator;
   const context = dom.getInternalVMContext();
   for (const file of [
+    "i18n.js",
     "language-detection.js",
     "selection-text.js",
     "word-response.js",
@@ -161,7 +165,7 @@ const STATUS_HOST = "__sensemark_status_host__";
 const CARD_HOST = "__gpt_translate_popup_host__";
 
 test("content script makes no API request and leaves no card for Russian text", async () => {
-  const context = await setupContent('<p id="russian">Этот текст уже на русском языке.</p>');
+  const context = await setupContent(`<p id="russian">${RU.alreadyRussian}</p>`);
   context.select(context.document.getElementById("russian"));
   await context.translateSelection();
 
@@ -182,10 +186,10 @@ test("content card appears only after visible streamed translation", async () =>
   port.serverMessage({ type: "chunk", text: "[[translation]]\n" });
   assert.equal(context.document.getElementById("__gpt_translate_popup_host__"), null);
 
-  port.serverMessage({ type: "chunk", text: "[[translation]]\nпо" });
+  port.serverMessage({ type: "chunk", text: `[[translation]]\n${RU.by}` });
   const host = context.document.getElementById("__gpt_translate_popup_host__");
   assert.ok(host);
-  assert.equal(host.shadowRoot.querySelector(".live").textContent, "по");
+  assert.equal(host.shadowRoot.querySelector(".live").textContent, RU.by);
 });
 
 test("content card renders multilingual sections and copy-ready completion", async () => {
@@ -196,15 +200,15 @@ test("content card renders multilingual sections and copy-ready completion", asy
     type: "done",
     text:
       "[[multilingual]]\n" +
-      "[[script:Latin|lang:английский]]\nПривет.\n" +
-      "[[script:Arabic|lang:арабский]]\nДобро пожаловать."
+      `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.helloDot}\n` +
+      `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.welcome}`
   });
 
   const host = context.document.getElementById("__gpt_translate_popup_host__");
-  assert.equal(host.shadowRoot.querySelector(".badge").textContent, "Несколько языков");
+  assert.equal(host.shadowRoot.querySelector(".badge").textContent, t("labelMultilingual"));
   assert.deepEqual(
     [...host.shadowRoot.querySelectorAll(".segment-lang")].map((item) => item.textContent),
-    ["английский → русский", "арабский → русский"]
+    [t("sectionTranslated", RU.langEnglish), t("sectionTranslated", RU.langArabic)]
   );
   assert.equal(host.shadowRoot.querySelector(".acts").classList.contains("pending"), false);
 });
@@ -213,7 +217,7 @@ test("content scale rate limit is wired to the visible card", async () => {
   const context = await setupContent('<p id="english">Why</p>');
   context.select(context.document.getElementById("english"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[translation]]\nпочему" });
+  context.ports[0].serverMessage({ type: "done", text: `[[translation]]\n${RU.why}` });
 
   const host = context.document.getElementById("__gpt_translate_popup_host__");
   const card = host.shadowRoot.querySelector(".card");
@@ -232,14 +236,14 @@ test("content scale rate limit is wired to the visible card", async () => {
 
 test("image-only selections are stopped locally without spending tokens", async () => {
   const context = await setupContent(
-    '<div id="image"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="Подпись"><span>Подпись</span></div>'
+    `<div id="image"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" alt="${RU.caption}"><span>${RU.caption}</span></div>`
   );
   context.select(context.document.getElementById("image"));
   await context.translateSelection();
 
   assert.equal(context.ports.length, 0);
   const host = context.document.getElementById("__gpt_translate_popup_host__");
-  assert.match(host.shadowRoot.querySelector(".err-t").textContent, /изображение/);
+  assert.equal(host.shadowRoot.querySelector(".err-t").textContent, t("errorImageText"));
 });
 
 test("links inside a paragraph stay in the translated text", async () => {
@@ -327,7 +331,7 @@ test("free mode translates on the device: card appears, nothing goes to OpenAI",
   await context.translateSelection();
   await new Promise((resolve) => setTimeout(resolve, 20));
 
-  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  assert.equal(context.ports.length, 0, "nothing is sent to OpenAI");
   const host = context.document.getElementById("__gpt_translate_popup_host__");
   assert.equal(
     host.shadowRoot.querySelector(".live").textContent,
@@ -346,12 +350,12 @@ test("free mode: a missing language pack is downloaded by one click on the card"
   await new Promise((resolve) => setTimeout(resolve, 20));
 
   const host = context.document.getElementById("__gpt_translate_popup_host__");
-  assert.match(
+  assert.equal(
     host.shadowRoot.querySelector(".err-t").textContent,
-    /скачать языковой пакет для перевода с английского/
+    t("needsDownloadSuffix", t("chromeNeedsDownload", RU.langEnglishGenitive))
   );
   const button = host.shadowRoot.querySelector("[data-act=options]");
-  assert.equal(button.textContent, "Скачать");
+  assert.equal(button.textContent, t("actionDownload"));
 
   Translator.state.gesture = true; // a click is a user gesture
   button.click();
@@ -370,24 +374,27 @@ test("while waiting: a small pill, then a circle, and no empty card", async () =
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
 
-  assert.equal(context.document.getElementById(STATUS_HOST), null, "быстрый ответ — без пилюли");
+  assert.equal(context.document.getElementById(STATUS_HOST), null, "a fast answer shows no pill");
   await wait(260);
   const pillHost = context.document.getElementById(STATUS_HOST);
-  assert.ok(pillHost, "ответа нет дольше 200 мс — пилюля появилась");
+  assert.ok(pillHost, "no answer after 200 ms: the pill appears");
   const pill = pillHost.shadowRoot.querySelector(".status");
-  assert.equal(pill.querySelector(".lbl").textContent, "Перевожу с английского…");
+  assert.equal(pill.querySelector(".lbl").textContent, t("statusTranslatingFrom", RU.langEnglishGenitive));
   assert.equal(pill.classList.contains("mini"), false);
-  assert.equal(context.document.getElementById(CARD_HOST), null, "пустой карточки нет");
+  assert.equal(context.document.getElementById(CARD_HOST), null, "no empty card");
 
   await wait(1250);
-  assert.equal(pill.classList.contains("mini"), true, "через секунду — кружок");
+  assert.equal(pill.classList.contains("mini"), true, "a second later it is a circle");
 
-  context.ports[0].serverMessage({ type: "chunk", text: "[[text]]\nПариж — столица" });
+  context.ports[0].serverMessage({ type: "chunk", text: `[[text]]\n${RU.parisStart}` });
   const card = context.document.getElementById(CARD_HOST);
   assert.ok(card);
-  assert.equal(card.shadowRoot.querySelector(".badge").textContent, "Перевод · с английского");
+  assert.equal(
+    card.shadowRoot.querySelector(".badge").textContent,
+    `${t("labelTranslation")} · ${t("fromLanguage", RU.langEnglishGenitive)}`
+  );
   await wait(200);
-  assert.equal(context.document.getElementById(STATUS_HOST), null, "кружок уступил место карточке");
+  assert.equal(context.document.getElementById(STATUS_HOST), null, "the circle gave way to the card");
 });
 
 test("a single word gets its source language from the sentence, not a wrong guess", async () => {
@@ -398,21 +405,21 @@ test("a single word gets its source language from the sentence, not a wrong gues
   await context.translateSelection();
   context.ports[0].serverMessage({
     type: "done",
-    text: "[[translation]]\nбанк\nдругие значения: берег, вал"
+    text: `[[translation]]\n${RU.bank}\n${t("protocolOtherMeanings")}: ${RU.bankMeanings}`
   });
 
   const badge = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".badge");
-  assert.equal(badge.textContent, "Перевод · с английского");
+  assert.equal(badge.textContent, `${t("labelTranslation")} · ${t("fromLanguage", RU.langEnglishGenitive)}`);
 });
 
 test("an unreliable language guess is not shown at all", async () => {
   const context = await setupContent('<p id="w">bank</p>');
   context.select(context.document.getElementById("w"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[translation]]\nбанк" });
+  context.ports[0].serverMessage({ type: "done", text: `[[translation]]\n${RU.bank}` });
 
   const badge = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".badge");
-  assert.equal(badge.textContent, "Перевод");
+  assert.equal(badge.textContent, t("labelTranslation"));
 });
 
 test("Esc while the pill is waiting cancels the request and removes the pill", async () => {
@@ -425,7 +432,7 @@ test("Esc while the pill is waiting cancels the request and removes the pill", a
   context.document.dispatchEvent(new context.window.KeyboardEvent("keydown", { key: "Escape" }));
   await wait(200);
   assert.equal(context.document.getElementById(STATUS_HOST), null);
-  assert.equal(context.ports[0].disconnected, true, "запрос оборван — токены не тратятся");
+  assert.equal(context.ports[0].disconnected, true, "the request is cut off, no tokens spent");
 });
 
 test("free mode: language pack download shows the language and real progress", async () => {
@@ -450,10 +457,14 @@ test("free mode: language pack download shows the language and real progress", a
   await wait(20);
 
   const pill = context.document.getElementById(STATUS_HOST).shadowRoot.querySelector(".status");
-  assert.equal(pill.querySelector(".lbl").textContent, "Скачиваю английский · 42%");
+  assert.equal(pill.querySelector(".lbl").textContent, t("downloadingPercent", RU.langEnglish, 42));
   assert.equal(pill.classList.contains("determinate"), true);
   assert.equal(pill.style.getPropertyValue("--progress"), "42");
-  assert.match(pill.title, /один раз/, "полное объяснение — во всплывающей подсказке");
+  assert.equal(
+    pill.title,
+    t("downloadingPackPercent", RU.langEnglishGenitive, 42),
+    "the full explanation is in the tooltip"
+  );
 
   finish();
   await wait(30);
@@ -464,7 +475,7 @@ test("a short paragraph stays a card under the selection", async () => {
   const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+  context.ports[0].serverMessage({ type: "done", text: `[[text]]\n${RU.parisShort}` });
 
   const card = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".card");
   assert.equal(card.classList.contains("anchor"), true);
@@ -477,16 +488,25 @@ test("several paragraphs go to the margin on the right, with a bracket along the
   );
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж.\nПекарня.\nТуристы." });
+  context.ports[0].serverMessage({
+    type: "done",
+    text: `[[text]]\n${RU.parisWord}\n${RU.bakeryWord}\n${RU.touristsWord}`
+  });
 
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
   const card = root.querySelector(".card");
   assert.equal(card.classList.contains("margin"), true);
   assert.equal(card.style.width, "400px");
   assert.equal(root.querySelector(".bracket").hidden, false);
-  assert.equal(root.querySelector(".badge").textContent, "Перевод · 3 абзаца с английского");
+  assert.equal(
+    root.querySelector(".badge").textContent,
+    `${t("labelTranslation")} · ${t("paragraphsFew", 3)} ${t("fromLanguage", RU.langEnglishGenitive)}`
+  );
   // Translated paragraphs are separated by a blank line so they do not merge.
-  assert.equal(root.querySelector(".tr .live").textContent, "Париж.\n\nПекарня.\n\nТуристы.");
+  assert.equal(
+    root.querySelector(".tr .live").textContent,
+    `${RU.parisWord}\n\n${RU.bakeryWord}\n\n${RU.touristsWord}`
+  );
   await wait(40);
   // The note sits right of the selection (right edge 260 px + room for the bracket).
   assert.equal(card.style.left, "288px");
@@ -499,7 +519,7 @@ test("a long selection with no room on the right opens a drawer at the window ed
   );
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж.\nПекарня." });
+  context.ports[0].serverMessage({ type: "done", text: `[[text]]\n${RU.parisWord}\n${RU.bakeryWord}` });
 
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
   assert.equal(root.querySelector(".card").classList.contains("drawer"), true);
@@ -510,13 +530,13 @@ test("scrolling the page no longer closes the card", async () => {
   const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+  context.ports[0].serverMessage({ type: "done", text: `[[text]]\n${RU.parisShort}` });
 
   context.window.dispatchEvent(new context.window.Event("scroll"));
   context.document.dispatchEvent(new context.window.Event("scroll", { bubbles: true }));
   await wait(20);
-  assert.ok(context.document.getElementById(CARD_HOST), "карточка осталась у текста");
-  assert.equal(context.ports[0].disconnected, true, "ответ уже получен целиком");
+  assert.ok(context.document.getElementById(CARD_HOST), "the card stays at the text");
+  assert.equal(context.ports[0].disconnected, true, "the full answer has arrived");
 });
 
 test("the card takes the colors of a dark page", async () => {
@@ -525,7 +545,7 @@ test("the card takes the colors of a dark page", async () => {
   );
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+  context.ports[0].serverMessage({ type: "done", text: `[[text]]\n${RU.parisShort}` });
 
   const host = context.document.getElementById(CARD_HOST);
   assert.equal(host.shadowRoot.querySelector(".card").dataset.scheme, "dark");
@@ -539,13 +559,13 @@ test("manual light theme ignores a dark page; chosen font is loaded from the ext
   );
   context.select(context.document.getElementById("x"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[text]]\nПариж — столица Франции." });
+  context.ports[0].serverMessage({ type: "done", text: `[[text]]\n${RU.parisShort}` });
 
   const host = context.document.getElementById(CARD_HOST);
   assert.equal(host.shadowRoot.querySelector(".card").dataset.scheme, "light");
   assert.equal(host.style.getPropertyValue("--surface"), "#ffffff");
   assert.match(host.style.getPropertyValue("--tr-font"), /Sensemark Literata/);
-  assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "размер как на странице");
+  assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "the size matches the page");
   assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [
     { type: "get-font", font: "literata" }
   ]);
@@ -559,7 +579,7 @@ test("auto-translate is on by default: a fresh install translates a mouse select
   context.select(context.document.getElementById("x"));
   context.document.dispatchEvent(new context.window.MouseEvent("mouseup", { bubbles: true, button: 0 }));
   await wait(700);
-  assert.equal(context.ports.length, 1, "перевод запущен без горячей клавиши");
+  assert.equal(context.ports.length, 1, "translation starts without the shortcut");
 });
 
 test("auto-translate stays off for someone who turned it off", async () => {
@@ -612,7 +632,7 @@ test("Safari free mode: the card shows the Apple translation and nothing goes to
   await context.translateSelection();
   await wait(30);
 
-  assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
+  assert.equal(context.ports.length, 0, "nothing is sent to OpenAI");
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
   assert.equal(root.querySelector(".live").textContent, "APPLE The weather is nice today, let us go out.");
   assert.ok(
@@ -620,7 +640,7 @@ test("Safari free mode: the card shows the Apple translation and nothing goes to
   );
 });
 
-test("Safari free mode: a missing language offers «Скачать», which opens the Sensemark app", async () => {
+test("Safari free mode: a missing language offers a download button that opens the Sensemark app", async () => {
   const apple = fakeAppleNative({ installed: [] });
   const context = await setupContent('<p id="x">今日はとてもいい天気ですね、散歩に行きましょう。</p>', {
     settings: { provider: "builtin" },
@@ -632,18 +652,21 @@ test("Safari free mode: a missing language offers «Скачать», which open
   await wait(30);
 
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
-  assert.match(root.querySelector(".err-t").textContent, /приложение Sensemark/);
-  const download = [...root.querySelectorAll("button")].find((button) =>
-    button.textContent.includes("Скачать")
+  assert.equal(
+    root.querySelector(".err-t").textContent,
+    t("needsDownloadSuffix", t("appleNeedsDownload", RU.langJapaneseGenitive))
   );
-  assert.ok(download, "есть кнопка «Скачать»");
+  const download = [...root.querySelectorAll("button")].find(
+    (button) => button.textContent === t("actionDownload")
+  );
+  assert.ok(download, "there is a download button");
   download.click();
   await wait(30);
   assert.ok(apple.calls.some((call) => call.op === "openApp" && call.source === "ja"));
   const pill = context.document.getElementById(STATUS_HOST)?.shadowRoot.querySelector(".status");
-  assert.ok(pill, "пока язык скачивается — пилюля статуса");
-  assert.match(pill.querySelector(".lbl").textContent, /приложении Sensemark/);
-  assert.equal(pill.classList.contains("determinate"), false, "без выдуманного процента");
+  assert.ok(pill, "while the language downloads, the status pill shows");
+  assert.equal(pill.querySelector(".lbl").textContent, t("appleDownloading", RU.langJapanese));
+  assert.equal(pill.classList.contains("determinate"), false, "no made-up percentage");
 
   // The language is downloaded; the card resumes by itself (polling every 2 seconds).
   await wait(2300);

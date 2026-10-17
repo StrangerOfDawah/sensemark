@@ -2,11 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { parse } = require("../../src/text-response.js");
+const RU = require("../fixtures/russian.json");
 
 test("parses a regular translated text", () => {
-  assert.deepEqual(parse("[[text]]\nПереведённый абзац."), {
+  assert.deepEqual(parse(`[[text]]\n${RU.translatedParagraph}`), {
     mode: "text",
-    text: "Переведённый абзац.",
+    text: RU.translatedParagraph,
     sections: []
   });
 });
@@ -15,25 +16,25 @@ test("parses multilingual sections in their original order", () => {
   assert.deepEqual(
     parse(
       "[[multilingual]]\n" +
-        "[[script:Cyrillic|lang:русский]]\nПривет!\n" +
-        "[[script:Latin|lang:английский]]\nКак дела?\n" +
-        "[[script:Arabic|lang:арабский]]\nДобро пожаловать."
+        `[[script:Cyrillic|lang:${RU.langRussian}]]\n${RU.helloExclaim}\n` +
+        `[[script:Latin|lang:${RU.langEnglish}]]\n${RU.howAreYou}\n` +
+        `[[script:Arabic|lang:${RU.langArabic}]]\n${RU.welcome}`
     ),
     {
       mode: "multilingual",
       text: "",
       sections: [
-        { script: "Cyrillic", language: "русский", text: "Привет!" },
-        { script: "Latin", language: "английский", text: "Как дела?" },
-        { script: "Arabic", language: "арабский", text: "Добро пожаловать." }
+        { script: "Cyrillic", language: RU.langRussian, text: RU.helloExclaim },
+        { script: "Latin", language: RU.langEnglish, text: RU.howAreYou },
+        { script: "Arabic", language: RU.langArabic, text: RU.welcome }
       ]
     }
   );
 });
 
 test("keeps compatibility with language-only section markers", () => {
-  assert.deepEqual(parse("[[multilingual]]\n[[lang:арабский]]\nПеревод.").sections, [
-    { script: "", language: "арабский", text: "Перевод." }
+  assert.deepEqual(parse(`[[multilingual]]\n[[lang:${RU.langArabic}]]\n${RU.translationWord}`).sections, [
+    { script: "", language: RU.langArabic, text: RU.translationWord }
   ]);
 });
 

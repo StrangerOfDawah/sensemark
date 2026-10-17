@@ -2,24 +2,26 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { parse } = require("../../src/word-response.js");
+const { t } = require("../helpers/i18n.js");
+const RU = require("../fixtures/russian.json");
 
 test("parses a marked translation without showing the marker", () => {
-  assert.deepEqual(parse("[[translation]]\nпочему\nдругие значения: зачем"), {
+  assert.deepEqual(parse(`[[translation]]\n${RU.why}\n${t("protocolOtherMeanings")}: ${RU.whatFor}`), {
     mode: "translation",
-    main: "почему",
+    main: RU.why,
     category: "",
-    detail: "зачем",
-    detailLabel: "Другие значения"
+    detail: RU.whatFor,
+    detailLabel: t("labelOtherMeanings")
   });
 });
 
 test("parses a reference explanation as a separate response type", () => {
-  assert.deepEqual(parse("[[reference]]\nназвание\nВероятно, название проекта."), {
+  assert.deepEqual(parse(`[[reference]]\n${RU.title}\n${RU.probablyProjectName}`), {
     mode: "reference",
     main: "",
-    category: "название",
-    detail: "Вероятно, название проекта.",
-    detailLabel: "Что это может быть"
+    category: RU.title,
+    detail: RU.probablyProjectName,
+    detailLabel: t("labelWhatItMayBe")
   });
 });
 
@@ -33,9 +35,9 @@ test("never exposes an unexpected skip marker as a translation", () => {
 });
 
 test("keeps compatibility with the previous unknown-word format", () => {
-  const result = parse("Такого общеупотребительного слова не существует.\nВозможно, это: название проекта.");
+  const result = parse(`${RU.noSuchWordOld}\n${RU.maybeProjectName}`);
 
   assert.equal(result.mode, "reference");
-  assert.equal(result.category, "неизвестный термин");
-  assert.equal(result.detail, "название проекта.");
+  assert.equal(result.category, t("protocolUnknownTerm"));
+  assert.equal(result.detail, RU.projectName);
 });
