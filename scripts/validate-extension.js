@@ -5,15 +5,22 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { JSDOM } = require("jsdom");
 
+// The extension lives in src/; legal documents and tooling live at the repo
+// root. The packaged archive flattens both: manifest.json at the top level.
 const root = path.resolve(__dirname, "..");
-const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
-const exists = (file) => fs.existsSync(path.join(root, file));
+const srcRoot = path.join(root, "src");
+const ROOT_FILES = new Set(["LICENSE", "PRIVACY.md"]);
+const locate = (file) => path.join(ROOT_FILES.has(file) ? root : srcRoot, file);
+const read = (file) => fs.readFileSync(locate(file), "utf8");
+const readRepo = (file) => fs.readFileSync(path.join(root, file), "utf8");
+const exists = (file) => fs.existsSync(locate(file));
 const manifest = JSON.parse(read("manifest.json"));
-const packageJson = JSON.parse(read("package.json"));
+const packageJson = JSON.parse(readRepo("package.json"));
 
 const runtimeFiles = [
   "manifest.json",
   "background.js",
+  "i18n.js",
   "language-detection.js",
   "selection-text.js",
   "word-response.js",
@@ -28,19 +35,23 @@ const runtimeFiles = [
   "fonts/literata-cyrillic-400.woff2",
   "fonts/OFL-GolosText.txt",
   "fonts/OFL-Literata.txt",
-  "content.js",
+  "content/card-styles.js",
+  "content/page-text.js",
+  "content/placement.js",
+  "content/status-pill.js",
+  "content/content.js",
   "popup.html",
   "popup.css",
   "popup.js",
   "options.html",
   "options.js",
+  "_locales/ru/messages.json",
   "icons/icon-16.png",
   "icons/icon-32.png",
   "icons/icon-48.png",
   "icons/icon-128.png",
   "LICENSE",
-  "PRIVACY.md",
-  "PRIVACY.en.md"
+  "PRIVACY.md"
 ];
 
 assert.equal(manifest.manifest_version, 3, "Manifest V3 is required");
@@ -108,7 +119,7 @@ for (const file of ["popup.css", "options.html"]) {
   assert.doesNotMatch(read(file), /url\(\s*['"]?https?:/i, `${file} loads a remote asset`);
 }
 
-const packageScript = read("scripts/package-extension.sh");
+const packageScript = readRepo("scripts/package-extension.sh");
 for (const file of runtimeFiles.filter((item) => !item.startsWith("icons/"))) {
   assert.match(
     packageScript,

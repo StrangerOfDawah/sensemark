@@ -1,0 +1,916 @@
+{
+  "extDescription": {
+    "message": "Переводит выделенный текст на русский: бесплатно встроенным переводчиком Chrome или через OpenAI API.",
+    "description": "Extension description in the store and on chrome://extensions."
+  },
+  "actionTitle": {
+    "message": "Sensemark — ручной перевод",
+    "description": "Tooltip of the toolbar icon."
+  },
+  "commandTranslate": {
+    "message": "Перевести выделенный текст",
+    "description": "Keyboard shortcut description on chrome://extensions/shortcuts."
+  },
+  "targetLanguage": {
+    "message": "русский",
+    "description": "Target language name as written in the model prompt and stored settings. Must stay in sync with saved settings."
+  },
+  "menuTranslate": {
+    "message": "Перевести на русский",
+    "description": "Context menu item on a text selection."
+  },
+  "autoMenuEnable": {
+    "message": "Включить автоперевод",
+    "description": "Toolbar icon menu: turn auto-translate on."
+  },
+  "autoMenuResume": {
+    "message": "Снять паузу автоперевода",
+    "description": "Toolbar icon menu: lift the auto-translate pause."
+  },
+  "autoMenuDisable": {
+    "message": "Выключить автоперевод",
+    "description": "Toolbar icon menu: turn auto-translate off."
+  },
+  "errorEmptyResponse": {
+    "message": "Пустой ответ от API.",
+    "description": "The model returned nothing."
+  },
+  "errorNothingSelected": {
+    "message": "Ничего не выделено.",
+    "description": "Translate was requested without any text."
+  },
+  "errorConsentRequired": {
+    "message": "Перед переводом подтвердите отправку текста в OpenAI в настройках расширения.",
+    "description": "OpenAI mode without consent to send text."
+  },
+  "errorNoApiKey": {
+    "message": "Не задан API-ключ. Откройте настройки расширения.",
+    "description": "OpenAI mode without an API key."
+  },
+  "errorEmptyRepair": {
+    "message": "Пустой ответ при исправлении перевода.",
+    "description": "The repair request returned nothing."
+  },
+  "errorIncompleteTranslation": {
+    "message": "Не удалось получить полный перевод всех выделенных языков — попробуйте ещё раз.",
+    "description": "The answer stayed incomplete after the repair request."
+  },
+  "errorApi401": {
+    "message": "Неверный API-ключ (401). Проверьте его в настройках.",
+    "description": "OpenAI HTTP 401."
+  },
+  "errorApi403": {
+    "message": "Доступ запрещён (403). Возможно, модель недоступна для вашего аккаунта.",
+    "description": "OpenAI HTTP 403."
+  },
+  "errorApi404": {
+    "message": "Модель не найдена (404). $DETAIL$",
+    "description": "OpenAI HTTP 404 with the API's own message.",
+    "placeholders": {
+      "detail": {
+        "content": "$1",
+        "example": "The model does not exist"
+      }
+    }
+  },
+  "errorApi429": {
+    "message": "Лимит запросов или закончился баланс (429). Проверьте billing в OpenAI.",
+    "description": "OpenAI HTTP 429."
+  },
+  "errorApiStatus": {
+    "message": "Ошибка API $STATUS$. $DETAIL$",
+    "description": "Any other OpenAI HTTP error.",
+    "placeholders": {
+      "status": {
+        "content": "$1",
+        "example": "500"
+      },
+      "detail": {
+        "content": "$2",
+        "example": "Internal error"
+      }
+    }
+  },
+  "protocolTranslationLabel": {
+    "message": "Перевод",
+    "description": "Model protocol: the label the model must not prefix its answer with (\"Перевод:\")."
+  },
+  "protocolOtherMeanings": {
+    "message": "другие значения",
+    "description": "Model protocol: line prefix for other meanings of a word."
+  },
+  "protocolCategories": {
+    "message": "название, имя, бренд, никнейм, опечатка",
+    "description": "Model protocol: categories of a non-dictionary fragment, comma-separated."
+  },
+  "protocolUnknownTerm": {
+    "message": "неизвестный термин",
+    "description": "Model protocol: category for an unknown term."
+  },
+  "promptExampleWhy": {
+    "message": "почему",
+    "description": "Prompt example: the Russian word for \"why\"."
+  },
+  "patternCopiedInstructions": {
+    "message": "полный перевод на язык|без пояснений и исходного текста",
+    "description": "Regular expression: phrases of the old Russian prompt that a broken answer may echo."
+  },
+  "labelTranslation": {
+    "message": "Перевод",
+    "description": "Card and popup header for an ordinary translation."
+  },
+  "labelReference": {
+    "message": "Объяснение",
+    "description": "Header for an explanation of a name, brand or unknown term."
+  },
+  "labelMultilingual": {
+    "message": "Несколько языков",
+    "description": "Header for a translation from several languages."
+  },
+  "labelOtherMeanings": {
+    "message": "Другие значения",
+    "description": "Caption above other meanings of a word."
+  },
+  "labelInSentence": {
+    "message": "В предложении",
+    "description": "Caption above the translated sentence in free mode."
+  },
+  "labelWhatItMayBe": {
+    "message": "Что это может быть",
+    "description": "Caption above the explanation of a non-dictionary fragment."
+  },
+  "fromLanguage": {
+    "message": "с $LANGUAGE$",
+    "description": "Header detail: source language in the genitive case.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "английского"
+      }
+    }
+  },
+  "paragraphsOne": {
+    "message": "$COUNT$ абзац",
+    "description": "Paragraph count, plural form \"one\".",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "21"
+      }
+    }
+  },
+  "paragraphsFew": {
+    "message": "$COUNT$ абзаца",
+    "description": "Paragraph count, plural form \"few\".",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  },
+  "paragraphsMany": {
+    "message": "$COUNT$ абзацев",
+    "description": "Paragraph count, plural form \"many\".",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "protocolInSentence": {
+    "message": "в предложении",
+    "description": "Model protocol (free mode): line prefix before the translated sentence."
+  },
+  "patternTranslationLabel": {
+    "message": "перевод",
+    "description": "Regular expression: a translation label the parser strips from the first line."
+  },
+  "patternOtherMeanings": {
+    "message": "друг\\S*\\s+значения",
+    "description": "Regular expression: the \"other meanings\" line prefix."
+  },
+  "patternInSentence": {
+    "message": "в\\s+предложении",
+    "description": "Regular expression: the \"in a sentence\" line prefix."
+  },
+  "patternCategoryPrefix": {
+    "message": "категория",
+    "description": "Regular expression: an optional \"category:\" prefix in a reference answer."
+  },
+  "patternDescriptionPrefix": {
+    "message": "описание|возможно,?\\s+это",
+    "description": "Regular expression: optional description prefixes in a reference answer."
+  },
+  "patternNoSuchWord": {
+    "message": "такого\\s+(?:общеупотребительного\\s+)?слова\\s+не\\s+существует",
+    "description": "Regular expression: the old \"no such word\" answer format."
+  },
+  "grammarGenitiveEnding": {
+    "message": "(?:ий|ый|ой)$$",
+    "description": "Regular expression: adjective ending of a language name to replace for the genitive case."
+  },
+  "grammarGenitiveReplacement": {
+    "message": "ого",
+    "description": "Genitive adjective ending: японский → японского."
+  },
+  "engineChrome": {
+    "message": "Встроенный переводчик Chrome",
+    "description": "Name of Chrome's built-in translator."
+  },
+  "engineApple": {
+    "message": "Переводчик Apple",
+    "description": "Name of Apple's translator (Safari)."
+  },
+  "chromeUnavailable": {
+    "message": "Встроенный переводчик Chrome здесь недоступен: он работает в Chrome 138 и новее на компьютере и только на защищённых страницах (https). Можно переключиться на OpenAI в настройках.",
+    "description": "Free mode is unavailable in Chrome."
+  },
+  "chromeNeedsDownload": {
+    "message": "Chrome нужно один раз скачать языковой пакет для перевода с $LANGUAGE$.",
+    "description": "Chrome must download a language pack.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японского"
+      }
+    }
+  },
+  "chromeDownloadFailed": {
+    "message": "Не удалось скачать языковой пакет Chrome — проверьте интернет и попробуйте ещё раз или переключитесь на OpenAI в настройках.",
+    "description": "Chrome language pack download failed."
+  },
+  "chromeFailed": {
+    "message": "Встроенный переводчик Chrome не смог перевести текст — попробуйте ещё раз.",
+    "description": "Chrome's translator failed."
+  },
+  "chromeDownloading": {
+    "message": "Скачиваю $LANGUAGE$…",
+    "description": "Status pill while Chrome downloads a language.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японский"
+      }
+    }
+  },
+  "appleUnavailable": {
+    "message": "Переводчик Apple недоступен: нужна macOS 26.4 или новее и установленное приложение Sensemark. Можно переключиться на OpenAI в настройках.",
+    "description": "Free mode is unavailable in Safari."
+  },
+  "appleNeedsDownload": {
+    "message": "macOS нужно один раз скачать язык для перевода с $LANGUAGE$. Нажмите «Скачать» — откроется приложение Sensemark, скачайте там этот язык.",
+    "description": "macOS must download a language.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японского"
+      }
+    }
+  },
+  "appleDownloadFailed": {
+    "message": "Язык так и не скачался. Откройте приложение Sensemark, скачайте язык и выделите текст ещё раз.",
+    "description": "The language never appeared on the Mac."
+  },
+  "appleFailed": {
+    "message": "Переводчик Apple не смог перевести текст — попробуйте ещё раз.",
+    "description": "Apple's translator failed."
+  },
+  "appleDownloading": {
+    "message": "Скачайте $LANGUAGE$ в приложении Sensemark…",
+    "description": "Status pill while the user downloads a language in the Sensemark app.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японский"
+      }
+    }
+  },
+  "downloadingPack": {
+    "message": "Скачиваю языковой пакет для перевода с $LANGUAGE$ — это нужно один раз…",
+    "description": "Status while Chrome downloads a language pack.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японского"
+      }
+    }
+  },
+  "downloadingPackPercent": {
+    "message": "Скачиваю языковой пакет для перевода с $LANGUAGE$ — это нужно один раз… $PERCENT$%",
+    "description": "The same with a percentage.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японского"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "40"
+      }
+    }
+  },
+  "engineUnsupported": {
+    "message": "$ENGINE$ не умеет переводить с $LANGUAGE$. Подключите OpenAI в настройках — он переводит с любого языка.",
+    "description": "The built-in translator does not support this language.",
+    "placeholders": {
+      "engine": {
+        "content": "$1",
+        "example": "Переводчик Apple"
+      },
+      "language": {
+        "content": "$2",
+        "example": "японского"
+      }
+    }
+  },
+  "setupConsent": {
+    "message": "Подтвердите отправку текста в OpenAI в настройках.",
+    "description": "Popup: OpenAI mode needs consent."
+  },
+  "setupApiKey": {
+    "message": "Добавьте API-ключ OpenAI в настройках.",
+    "description": "Popup: OpenAI mode needs a key."
+  },
+  "errorEnterText": {
+    "message": "Введите текст для перевода.",
+    "description": "Popup: empty input."
+  },
+  "errorTextTooLong": {
+    "message": "Слишком длинный текст: максимум $MAX$ символов.",
+    "description": "Popup: input over the limit.",
+    "placeholders": {
+      "max": {
+        "content": "$1",
+        "example": "5000"
+      }
+    }
+  },
+  "errorNoWords": {
+    "message": "В тексте не найдено слов для перевода.",
+    "description": "Popup: input has no letters."
+  },
+  "errorImageText": {
+    "message": "Выделенный фрагмент нарисован как изображение, а не как текст. Sensemark не отправил его в API, чтобы не тратить токены. Выделите доступную текстовую подпись или перевод.",
+    "description": "The selection is only an image without a text layer."
+  },
+  "errorFragmentTooLong": {
+    "message": "Слишком длинный фрагмент: $LENGTH$ символов (максимум $MAX$).",
+    "description": "Selection over the limit.",
+    "placeholders": {
+      "length": {
+        "content": "$1",
+        "example": "7000"
+      },
+      "max": {
+        "content": "$2",
+        "example": "5000"
+      }
+    }
+  },
+  "errorExtensionReloaded": {
+    "message": "Расширение перезагружено — обновите страницу.",
+    "description": "The extension was reloaded while the page stayed open."
+  },
+  "statusTranslatingFrom": {
+    "message": "Перевожу с $LANGUAGE$…",
+    "description": "Status pill while waiting for a translation.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "английского"
+      }
+    }
+  },
+  "statusTranslating": {
+    "message": "Перевожу…",
+    "description": "Status pill when the source language is unknown."
+  },
+  "errorNoTranslation": {
+    "message": "Не удалось получить перевод — попробуйте ещё раз.",
+    "description": "The answer had no visible translation."
+  },
+  "needsDownloadSuffix": {
+    "message": "$MESSAGE$ Это займёт несколько секунд.",
+    "description": "Appended to a language download request.",
+    "placeholders": {
+      "message": {
+        "content": "$1",
+        "example": "Chrome нужно один раз скачать языковой пакет."
+      }
+    }
+  },
+  "actionDownload": {
+    "message": "Скачать",
+    "description": "Button: download a language."
+  },
+  "downloadingPercent": {
+    "message": "Скачиваю $LANGUAGE$ · $PERCENT$%",
+    "description": "Status pill with download progress.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "японский"
+      },
+      "percent": {
+        "content": "$2",
+        "example": "40"
+      }
+    }
+  },
+  "errorDownloadFailed": {
+    "message": "Не удалось скачать языковой пакет — проверьте интернет и попробуйте ещё раз.",
+    "description": "Language pack download failed."
+  },
+  "errorConnectionLost": {
+    "message": "Соединение прервано — попробуйте ещё раз.",
+    "description": "The background disconnected mid-answer."
+  },
+  "cardCloseTitle": {
+    "message": "Закрыть (Esc)",
+    "description": "Tooltip of the card's close button."
+  },
+  "cardGripTitle": {
+    "message": "Потяните — размер, двойной клик — сброс",
+    "description": "Tooltip of the card's resize corner."
+  },
+  "cardAriaReference": {
+    "message": "Объяснение фрагмента",
+    "description": "Accessible name of an explanation card."
+  },
+  "cardAriaMultilingual": {
+    "message": "Перевод с нескольких языков",
+    "description": "Accessible name of a multilingual card."
+  },
+  "actionOpenSettings": {
+    "message": "Открыть настройки",
+    "description": "Button: open the settings page."
+  },
+  "referenceNote": {
+    "message": "Не переводится как обычное слово",
+    "description": "Note under a name or brand."
+  },
+  "cardAutoTitle": {
+    "message": "Автоперевод",
+    "description": "Tooltip of the card's auto-translate button."
+  },
+  "cardCopyTitle": {
+    "message": "Скопировать",
+    "description": "Tooltip of the card's copy button."
+  },
+  "actionPause": {
+    "message": "Пауза на $MINUTES$ минут",
+    "description": "Card menu: pause auto-translate.",
+    "placeholders": {
+      "minutes": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "manualHint": {
+    "message": "Переводите вручную: правый клик → «Перевести на русский» или $HOTKEY$.",
+    "description": "How to translate manually.",
+    "placeholders": {
+      "hotkey": {
+        "content": "$1",
+        "example": "⌘⇧Y"
+      }
+    }
+  },
+  "autoPausedUntil": {
+    "message": "Автоперевод на паузе до $TIME$. $HINT$",
+    "description": "Auto-translate is paused.",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "14:05"
+      },
+      "hint": {
+        "content": "$2",
+        "example": "…"
+      }
+    }
+  },
+  "autoTurnedOff": {
+    "message": "Автоперевод выключен. $HINT$ Включить снова — в настройках или правым кликом по значку Sensemark.",
+    "description": "Auto-translate was turned off.",
+    "placeholders": {
+      "hint": {
+        "content": "$1",
+        "example": "…"
+      }
+    }
+  },
+  "labelUnknownTerm": {
+    "message": "Неизвестный термин",
+    "description": "Category shown when the model gave none."
+  },
+  "patternNoDictionaryMeaning": {
+    "message": "опечат|неизвест",
+    "description": "Regular expression: categories (typo, unknown) that have no dictionary meaning."
+  },
+  "referenceNoMeaning": {
+    "message": "Словарное значение не найдено",
+    "description": "Note for a typo or an unknown term."
+  },
+  "referenceUsedAs": {
+    "message": "Использовано как $CATEGORY$ — перевод не требуется",
+    "description": "Note for a name, brand or title.",
+    "placeholders": {
+      "category": {
+        "content": "$1",
+        "example": "бренд"
+      }
+    }
+  },
+  "referenceNameOrTitle": {
+    "message": "имя или название",
+    "description": "Fallback category in the note above."
+  },
+  "patternTargetLanguage": {
+    "message": "^русск",
+    "description": "Regular expression: a section language name meaning Russian."
+  },
+  "sectionKept": {
+    "message": "$LANGUAGE$ · без изменений",
+    "description": "Multilingual section that stays in Russian.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "русский"
+      }
+    }
+  },
+  "sectionTranslated": {
+    "message": "$LANGUAGE$ → русский",
+    "description": "Multilingual section translated into Russian.",
+    "placeholders": {
+      "language": {
+        "content": "$1",
+        "example": "английский"
+      }
+    }
+  },
+  "actionCopy": {
+    "message": "Копировать",
+    "description": "Popup copy button."
+  },
+  "actionCopied": {
+    "message": "Скопировано",
+    "description": "Popup copy button after copying."
+  },
+  "statusStopped": {
+    "message": "Перевод остановлен",
+    "description": "Popup status after cancelling."
+  },
+  "messageStopped": {
+    "message": "Запрос остановлен — незавершённая генерация отменена.",
+    "description": "Popup message after cancelling."
+  },
+  "statusNeedsCheck": {
+    "message": "Нужна проверка",
+    "description": "Popup status after an error."
+  },
+  "errorTranslationFailed": {
+    "message": "Не удалось выполнить перевод.",
+    "description": "Popup generic error."
+  },
+  "errorPopupReload": {
+    "message": "Расширение было обновлено. Закройте popup и откройте его снова.",
+    "description": "The extension was updated while the popup was open."
+  },
+  "statusDone": {
+    "message": "Готово",
+    "description": "Popup status when the translation is complete."
+  },
+  "statusStreaming": {
+    "message": "Перевод поступает…",
+    "description": "Popup status while the translation streams."
+  },
+  "statusSetupRequired": {
+    "message": "Требуется настройка",
+    "description": "Popup status when settings are incomplete."
+  },
+  "statusDetecting": {
+    "message": "Определяю язык…",
+    "description": "Popup status while detecting the language."
+  },
+  "statusAlreadyRussian": {
+    "message": "Уже на русском",
+    "description": "Popup status for Russian input."
+  },
+  "messageAlreadyRussian": {
+    "message": "Текст уже на русском — перевод не требуется.",
+    "description": "Popup message for Russian input."
+  },
+  "statusConnecting": {
+    "message": "Подключаю перевод…",
+    "description": "Popup status while opening the request."
+  },
+  "statusAutoStart": {
+    "message": "Перевод начнётся автоматически",
+    "description": "Popup idle status."
+  },
+  "statusStarting": {
+    "message": "Начинаю перевод…",
+    "description": "Popup status right after a paste."
+  },
+  "statusAfterPause": {
+    "message": "Переведу после паузы…",
+    "description": "Popup status while the user is typing."
+  },
+  "statusLoadingSettings": {
+    "message": "Загружаю настройки…",
+    "description": "Popup status on open."
+  },
+  "errorReadSettings": {
+    "message": "Не удалось прочитать настройки расширения.",
+    "description": "Popup: storage read failed."
+  },
+  "statusSettingsUnavailable": {
+    "message": "Настройки недоступны",
+    "description": "Popup status when storage fails."
+  },
+  "engineAppleTitle": {
+    "message": "Переводчик Apple",
+    "description": "Settings: free mode title in Safari."
+  },
+  "appleModeCaption": {
+    "message": "Работает прямо на Mac: без ключа и без оплаты, текст никуда не отправляется. Языки скачиваются один раз в приложении Sensemark. Слово переводится без учёта контекста.",
+    "description": "Settings: free mode description in Safari."
+  },
+  "consentRevoked": {
+    "message": "Согласие отозвано — запросы в OpenAI заблокированы",
+    "description": "Settings: consent was unchecked."
+  },
+  "hideKey": {
+    "message": "Скрыть ключ",
+    "description": "Settings: hide the API key."
+  },
+  "showKey": {
+    "message": "Показать ключ",
+    "description": "Settings: show the API key."
+  },
+  "toastSaved": {
+    "message": "Сохранено",
+    "description": "Settings: autosave toast."
+  },
+  "toastSaveFailed": {
+    "message": "Не удалось сохранить: $ERROR$",
+    "description": "Settings: autosave failed.",
+    "placeholders": {
+      "error": {
+        "content": "$1",
+        "example": "QuotaExceededError"
+      }
+    }
+  },
+  "testNeedsConsent": {
+    "message": "Сначала подтвердите согласие на отправку текста",
+    "description": "Settings: key check without consent."
+  },
+  "testNeedsKey": {
+    "message": "Сначала введите ключ",
+    "description": "Settings: key check without a key."
+  },
+  "testChecking": {
+    "message": "Проверяю…",
+    "description": "Settings: key check in progress."
+  },
+  "testNoConnection": {
+    "message": "Не удалось связаться с расширением",
+    "description": "Settings: the background did not answer."
+  },
+  "testWorks": {
+    "message": "Работает — «$RESULT$»",
+    "description": "Settings: the key works; shows the test translation.",
+    "placeholders": {
+      "result": {
+        "content": "$1",
+        "example": "Привет, мир!"
+      }
+    }
+  },
+  "testFailed": {
+    "message": "Не удалось выполнить запрос",
+    "description": "Settings: the key check failed."
+  },
+  "popupSubtitle": {
+    "message": "Перевод на русский",
+    "description": "Popup header subtitle."
+  },
+  "settingsTitle": {
+    "message": "Настройки",
+    "description": "Tooltip of the settings button."
+  },
+  "settingsAria": {
+    "message": "Открыть настройки",
+    "description": "Accessible name of the settings button."
+  },
+  "setupAction": {
+    "message": "Настроить",
+    "description": "Popup setup banner button."
+  },
+  "sourceLabel": {
+    "message": "Текст для перевода",
+    "description": "Popup input label."
+  },
+  "routeAria": {
+    "message": "Язык определяется автоматически, перевод на русский",
+    "description": "Accessible description of the language route."
+  },
+  "routeAuto": {
+    "message": "Авто",
+    "description": "Source language: detected automatically."
+  },
+  "routeTarget": {
+    "message": "Русский",
+    "description": "Target language."
+  },
+  "sourcePlaceholder": {
+    "message": "Введите или вставьте текст…",
+    "description": "Popup input placeholder."
+  },
+  "clearTitle": {
+    "message": "Очистить",
+    "description": "Tooltip of the clear button."
+  },
+  "clearAria": {
+    "message": "Очистить текст",
+    "description": "Accessible name of the clear button."
+  },
+  "resultAria": {
+    "message": "Результат перевода",
+    "description": "Accessible name of the result block."
+  },
+  "optionsTitle": {
+    "message": "Sensemark — настройки",
+    "description": "Settings page title."
+  },
+  "optionsLead": {
+    "message": "Выделите текст на любом языке — и нажмите",
+    "description": "Settings header; the keyboard shortcut follows."
+  },
+  "groupMode": {
+    "message": "Режим перевода",
+    "description": "Settings group: translation mode."
+  },
+  "modeChromeTitle": {
+    "message": "Встроенный переводчик Chrome",
+    "description": "Free mode title in Chrome."
+  },
+  "tagFree": {
+    "message": "Бесплатно",
+    "description": "Badge: free."
+  },
+  "modeChromeCaption": {
+    "message": "Работает прямо на компьютере: без ключа и без оплаты, текст никуда не отправляется. Обычный машинный перевод — слово переводится без учёта контекста.",
+    "description": "Free mode description in Chrome."
+  },
+  "tagSmart": {
+    "message": "Умнее",
+    "description": "Badge: smarter."
+  },
+  "tagPrice": {
+    "message": "≈ $$1 в год",
+    "description": "Badge: approximate yearly price."
+  },
+  "modeOpenaiCaption": {
+    "message": "Понимает контекст: выбирает нужное значение слова, объясняет имена и названия, сам отбрасывает мусор со страницы и аккуратно разбирает смешанные языки. Нужен свой ключ OpenAI с оплатой по факту — при ежедневном чтении это около $$1 в год, пополнения на $$5 хватает на несколько лет.",
+    "description": "OpenAI mode description."
+  },
+  "groupPrivacy": {
+    "message": "Конфиденциальность",
+    "description": "Settings group: privacy."
+  },
+  "privacyTitle": {
+    "message": "Что отправляется в OpenAI",
+    "description": "Privacy row title."
+  },
+  "privacyText": {
+    "message": "Для перевода расширение отправляет выделенный или вручную введённый текст и, для короткого выделения, предложение вокруг него напрямую в OpenAI. Разработчик не получает и не хранит эти данные.",
+    "description": "What is sent to OpenAI."
+  },
+  "privacyLink": {
+    "message": "Политика конфиденциальности",
+    "description": "Link to the privacy policy."
+  },
+  "consentText": {
+    "message": "Я понимаю и согласен, что для перевода выделенный или вручную введённый текст и, для короткого выделения, окружающее предложение будут отправляться напрямую в OpenAI.",
+    "description": "Consent checkbox text."
+  },
+  "groupConnection": {
+    "message": "Подключение OpenAI",
+    "description": "Settings group: OpenAI connection."
+  },
+  "apiKeyTitle": {
+    "message": "API-ключ OpenAI",
+    "description": "API key row title."
+  },
+  "apiKeyCaption": {
+    "message": "Хранится только в этом браузере и отправляется только на api.openai.com.",
+    "description": "API key row caption."
+  },
+  "testKey": {
+    "message": "Проверить ключ",
+    "description": "Button: check the key."
+  },
+  "modelTitle": {
+    "message": "Модель",
+    "description": "Model row title."
+  },
+  "modelCaption": {
+    "message": "gpt-6-luna — самая экономичная актуальная модель OpenAI.",
+    "description": "Model row caption."
+  },
+  "groupTranslation": {
+    "message": "Перевод",
+    "description": "Settings group: translation."
+  },
+  "targetTitle": {
+    "message": "Язык перевода",
+    "description": "Target language row title."
+  },
+  "targetCaption": {
+    "message": "Пока только русский — исходный язык определяется сам.",
+    "description": "Target language row caption."
+  },
+  "autoTitle": {
+    "message": "Автоперевод при выделении",
+    "description": "Auto-translate row title."
+  },
+  "autoCaption": {
+    "message": "Переводит выделение мышью без горячей клавиши. Если сразу нажать ⌘C / Ctrl+C или правую кнопку — не переводит.",
+    "description": "Auto-translate row caption."
+  },
+  "groupAppearance": {
+    "message": "Оформление",
+    "description": "Settings group: appearance."
+  },
+  "themeTitle": {
+    "message": "Тема карточки",
+    "description": "Card theme row title."
+  },
+  "themeCaption": {
+    "message": "«Под страницу» берёт цвет фона и размер текста у сайта, который вы читаете.",
+    "description": "Card theme row caption."
+  },
+  "themeAuto": {
+    "message": "Под страницу",
+    "description": "Theme: match the page."
+  },
+  "themeLight": {
+    "message": "Светлая",
+    "description": "Theme: light."
+  },
+  "themeDark": {
+    "message": "Тёмная",
+    "description": "Theme: dark."
+  },
+  "fontTitle": {
+    "message": "Шрифт перевода",
+    "description": "Font row title."
+  },
+  "fontCaption": {
+    "message": "Лучший шрифт у каждого свой — попробуйте и оставьте тот, что читается легче.",
+    "description": "Font row caption."
+  },
+  "fontSample": {
+    "message": "Аа",
+    "description": "Font sample glyphs (Cyrillic A, a)."
+  },
+  "fontSystem": {
+    "message": "Системный",
+    "description": "Font: system."
+  },
+  "sizeTitle": {
+    "message": "Размер текста как на странице",
+    "description": "Text size row title."
+  },
+  "sizeCaption": {
+    "message": "Перевод того же размера, что и текст, который вы читаете. Выключено — всегда 15 px.",
+    "description": "Text size row caption."
+  },
+  "previewTitle": {
+    "message": "Предпросмотр",
+    "description": "Card preview caption."
+  },
+  "previewHeader": {
+    "message": "Перевод · с английского",
+    "description": "Card preview header."
+  },
+  "previewText": {
+    "message": "Париж — столица и крупнейший город Франции, и по воскресным утрам его улицы тихие.",
+    "description": "Card preview sample translation."
+  },
+  "footnoteAutosave": {
+    "message": "Настройки сохраняются автоматически.",
+    "description": "Footnote: autosave."
+  },
+  "footnoteShortcut": {
+    "message": "Горячую клавишу можно переназначить на странице",
+    "description": "Footnote: shortcut; the chrome://extensions/shortcuts address follows."
+  }
+}

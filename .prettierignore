@@ -1,0 +1,14 @@
+dist/
+node_modules/
+package-lock.json
+
+# Design-locked files: any byte change here counts as a visual change
+# (see scripts/design-lock.js), so they are never reformatted automatically.
+src/popup.html
+src/popup.css
+src/options.html
+
+# Prose, store copy and test pages are edited by hand.
+*.md
+store/
+tests/fixtures/

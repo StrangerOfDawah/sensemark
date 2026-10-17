@@ -1,158 +1,204 @@
-# Инструкции для AI-агентов
+# AGENTS.md
 
-Этот файл действует для всего репозитория. Явные указания пользователя имеют
-приоритет, но агент не должен молча нарушать описанные ниже продуктовые
-инварианты, требования к тестам и релизному процессу.
+Guidance for AI coding agents working in this repository. Explicit instructions
+from the repository owner take precedence, but never silently break the product
+invariants, test requirements or release process below.
 
-## Что прочитать до изменений
+## Project overview
 
-Перед работой обязательно прочитайте:
+Sensemark is a Manifest V3 browser extension (Chrome, plus a Safari build for
+macOS) that translates selected or typed text from any language into Russian.
+Two modes: a free on-device translator (default) and OpenAI with the user's own
+key. Plain JavaScript, no bundler, no runtime dependencies.
 
-1. [Архитектуру](docs/ARCHITECTURE.md).
-2. [Принятые решения и известные ловушки](docs/DECISIONS.md).
-3. [Направление продукта](docs/PRODUCT_DIRECTION.md).
-4. [Историю версий](CHANGELOG.md).
-5. Для выпуска версии — [релизный процесс](docs/RELEASING.md).
+Read before changing anything:
 
-После этого проверьте `git status`, найдите существующие тесты затрагиваемого
-поведения и изучите их до редактирования runtime-кода.
+1. [docs/architecture.md](docs/architecture.md): layers, data flow, which file owns what.
+2. [docs/adr/](docs/adr/README.md): recorded decisions and known traps.
+3. [docs/product-direction.md](docs/product-direction.md): priorities and non-goals.
+4. [CHANGELOG.md](CHANGELOG.md): what shipped recently.
+5. For a release: [docs/releasing.md](docs/releasing.md).
 
-## Продуктовые инварианты
+Then check `git status`, find the existing tests for the behaviour you are about
+to touch and read them before editing runtime code.
 
-- Sensemark переводит на русский с автоматически определяемого языка.
-- Два режима: бесплатный встроенный переводчик Chrome (по умолчанию) и OpenAI
-  со своим ключом. Любая функция должна работать в обоих режимах или явно
-  объяснять пользователю, почему она доступна только в OpenAI.
-- Модель OpenAI по умолчанию — самая дешёвая актуальная. Перед сменой модели
-  проверьте дату отключения на странице deprecations OpenAI и параметры модели
-  (рассуждающие модели не принимают `temperature`).
-- Выделение только на русском должно завершаться локально: без API-запроса и
-  без появления карточки.
-- В смешанном выделении русский текст сохраняется, а иностранные фрагменты
-  переводятся. Настоящие многоязычные блоки показываются в исходном порядке с
-  понятными подписями языков.
-- Скрытые дубликаты, элементы интерфейса и управляющие Unicode-символы
-  очищаются локально до отправки текста модели.
-- Sensemark универсален: на вход — любой язык и любой текст, на выход —
-  русский перевод. Нельзя добавлять правила, промпты, примеры или описания
-  под отдельные сайты, тематики или тексты.
-- Одно слово переводится по контексту. Имя, название, бренд, никнейм, опечатка
-  или неизвестный термин показываются как отдельное объяснение, а не как
-  выдуманный перевод.
-- Карточка на странице появляется только после первого видимого фрагмента
-  перевода. Пустое окно ожидания показывать нельзя; пока ответа нет, допустима
-  только маленькая пилюля статуса, которая сжимается в кружок (D-016).
-- Закрытие карточки, очистка или изменение ручного ввода должны отменять
-  незавершённый запрос.
-- API-ключ и пользовательские настройки остаются в `chrome.storage.local`.
-  Нельзя добавлять аналитику, сервер разработчика или отправку данных третьим
-  сторонам без отдельного явного решения пользователя и обновления политики
-  конфиденциальности.
+## Commands
 
-## Экономия токенов
+Node 24 (`.nvmrc`). Install with `npm ci --ignore-scripts`.
 
-- Всё, что надёжно определяется локально, не должно отправляться модели.
-- Один пользовательский перевод по умолчанию означает один API-запрос.
-  Повторный repair-запрос допустим только после конкретной проверяемой ошибки
-  формата или неполного ответа.
-- Нельзя добавлять второй запрос только для определения языка, классификации
-  или косметического форматирования, если это можно сделать локально либо в
-  основном prompt.
-- Сохраняйте кэш повторных переводов и немедленную отмену стрима.
-- Не увеличивайте prompt без измеримой необходимости. Новые инструкции должны
-  быть короткими, непротиворечивыми и покрыты тестом соответствующего кейса.
+| Command                  | What it does                                                         |
+| ------------------------ | -------------------------------------------------------------------- |
+| `npm test`               | Unit and integration tests (`tests/unit`, `tests/integration`)        |
+| `npm run test:coverage`  | The same with coverage thresholds (CI gate)                           |
+| `npm run test:e2e`       | Real Chromium via Playwright with the extension loaded, OpenAI stubbed |
+| `npm run lint`           | ESLint                                                                |
+| `npm run format`         | Prettier (locked design files are excluded)                           |
+| `npm run check`          | Validates the manifest, file lists and packaging script               |
+| `npm run verify`         | lint + format check + check + coverage: run before every commit       |
+| `npm run package`        | Builds `dist/sensemark-vX.Y.Z.zip`                                    |
+| `npm run safari:kit`     | Also builds `dist/sensemark-safari-vX.Y.Z.zip`                        |
+| `npm run design:status`  | Shows whether any design-locked file changed                          |
 
-## Обязательные тесты
+To try the extension, load `src/` via `chrome://extensions` → "Load unpacked".
 
-Каждая новая функция и каждое исправление бага **обязаны** включать новый
-автоматический тест либо изменение существующего теста в том же commit/PR.
-Изменение поведения без теста не считается завершённым.
+## Layout
 
-Для исправления бага:
+- `src/`: the shipped extension. `src/content/` holds the content scripts;
+  their load order is listed in `src/manifest.json` and in the `executeScript`
+  fallback in `src/background.js`, and a test keeps both in sync.
+- `platforms/safari/`: Swift sources and `install.sh` for the Safari kit.
+- `scripts/`: packaging, validation, the design lock and the Safari kit build.
+- `tests/unit`, `tests/integration`, `tests/e2e`, with `helpers/` and `fixtures/`.
+- `docs/`, `store/` (Chrome Web Store copy), `PRIVACY.md` at the root (the
+  store's privacy link points to it; do not move it).
 
-1. Добавьте регрессионный тест, воспроизводящий точный пользовательский пример
-   или минимальный эквивалент.
-2. Убедитесь, что тест проверяет первопричину, а не только текст ошибки.
-3. После исправления оставьте тест навсегда, чтобы баг не вернулся.
+## Code style
 
-Для новой функции:
+- Classic scripts with a UMD wrapper (`globalThis.SensemarkX` in the browser,
+  `module.exports` under Node), so files run unbundled and are unit-tested as is.
+- Prefer small pure modules (see `card-theme.js`, `content/placement.js`) and keep
+  DOM work in the thin controller (`content/content.js`).
+- Prettier and ESLint are the source of truth for formatting and lint.
+- Language: everything in the repository is in English, except four files:
+  `README.md` (the Russian front page; `README.en.md` is its English twin),
+  `src/_locales/ru/messages.json` (every user-facing string, read through
+  `src/i18n.js`), `tests/fixtures/russian.json` (Russian test samples) and
+  `store/listing.ru.txt` (the store listing). Never write Russian in code,
+  comments, tests or other docs; `tests/integration/language-policy.test.js`
+  enforces this. In HTML, put text in `<!--t:key-->` comments and attributes in
+  `data-i18n-*`; in JavaScript, call `t("key", ...values)`.
+- Cyrillic letter ranges in regular expressions are written as code points
+  (`\u0410-\u044F\u0401\u0451`).
 
-1. Покройте основной успешный сценарий.
-2. Покройте важный граничный случай и отказ/отмену, если они применимы.
-3. Для UI добавьте DOM-интеграционный тест, а для пользовательского пути —
-   сценарий в `tests/e2e/extension.e2e.js` (настоящий Chromium); для парсеров и детекторов — чистые
-   unit-тесты; для background/runtime — тест количества запросов, стрима, кэша
-   или отмены по необходимости.
+## Product invariants
 
-Если автоматизировать сценарий объективно невозможно, явно объясните причину в
-PR, добавьте ближайший автоматический тест и внесите ручную проверку в описание
-PR. Нельзя удалять тесты или снижать coverage-пороги ради прохождения CI.
+- The target language is always Russian; the source language is detected.
+- Free mode (Chrome Translator API, or Apple's translator in Safari,
+  [ADR 0017](docs/adr/0017-safari-uses-apple-translation.md)) is the default;
+  OpenAI is optional. Every feature works in both modes or explains to the user
+  why it is OpenAI-only.
+- A Russian-only selection is handled locally: no API request, no card.
+- In a mixed selection, Russian is kept and foreign fragments are translated.
+  Real multilingual blocks are shown in source order with clear language labels.
+- Hidden duplicates, UI elements and Unicode control characters are removed
+  locally before any text reaches a model.
+- Sensemark is universal: any language and any text in, Russian out. Never add
+  rules, prompts, examples or descriptions for particular sites, topics or texts
+  ([ADR 0012](docs/adr/0012-universal-translator.md)).
+- A single word is translated in context. A name, title, brand, nickname, typo or
+  unknown term is shown as an explanation, not as an invented translation.
+- The on-page card appears only with the first visible piece of translation.
+  While waiting, only the small status pill may show
+  ([ADR 0016](docs/adr/0016-chameleon-card.md)).
+- Closing the card, clearing or editing manual input cancels the unfinished request.
+- Auto-translate is on by default, but a user who turned it off stays off
+  ([ADR 0018](docs/adr/0018-auto-translate-on-by-default.md)). Users who saved an
+  OpenAI key keep it and stay in OpenAI mode after an update.
+- The API key and settings stay in `chrome.storage.local`. No analytics, no
+  developer server, no third-party data sharing without an explicit decision by
+  the owner and an updated privacy policy.
+- The default OpenAI model is the cheapest current one. Before changing it, check
+  the OpenAI deprecations page and the model's parameters (reasoning models do
+  not accept `temperature`).
 
-Минимальная проверка перед commit:
+## Token budget
 
-```bash
-npm test
-npm run test:coverage
-npm run test:e2e
-npm run check
-bash scripts/package-extension.sh
-node scripts/validate-extension.js dist/sensemark-v$(node -p "require('./manifest.json').version").zip
-```
+- Anything that can be decided locally is not sent to the model.
+- One user translation means one API request by default. A repair request is
+  allowed only after a concrete, checkable format error or incomplete answer.
+- No second request just to detect a language, classify or format cosmetically.
+- Keep the translation cache and immediate stream cancellation.
+- Do not grow the prompt without a measurable need; new instructions are short,
+  consistent and covered by a test.
 
-## UI и Chrome popup
+## Tests are mandatory
 
-- Карточка на странице живёт в Shadow DOM; не переносите её стили в глобальный
-  DOM страницы.
-- Ручной popup — обычные `popup.html`, `popup.css` и `popup.js`, без React и
-  без `#root`.
-- Chrome сам вычисляет размер popup по содержимому. Не задавайте
-  `height: 100%` одновременно для `html`, `body` и корневого контейнера: это уже
-  приводило к растянутому пустому окну.
-- Не меняйте внешнюю геометрию popup по скриншоту обычной веб-страницы.
-  Проверяйте распакованную сборку именно через `chrome://extensions`.
-- Внутренние отступы, читаемость, светлая/тёмная тема, повышенный контраст и
-  reduced-motion должны сохраняться.
+Every new feature and every bug fix **must** add a new automated test or change an
+existing one in the same commit/PR. A behaviour change without a test is not done.
 
-## Замок дизайна
+For a bug fix:
 
-- Внешний вид зафиксирован тестом `tests/design-lock.test.js`: он хранит
-  отпечатки `popup.css`, `popup.html`, `options.html` и CSS карточки в
-  `content.js` (файл `tests/design-lock.json`).
-- Агент **не меняет** дизайн и **не запускает** `npm run design:approve`
-  без явного разрешения пользователя на конкретную визуальную правку.
-- Если тест упал из-за вашего изменения, откатите визуальную часть, а не
-  обновляйте отпечатки.
-- Пользователь принимает свою намеренную правку командой
-  `npm run design:approve`; `npm run design:status` показывает, что изменилось.
+1. Add a regression test that reproduces the exact user example or a minimal
+   equivalent.
+2. Make sure it checks the root cause, not only the error text.
+3. Keep the test forever so the bug cannot return.
 
-## Зависимости и готовые решения
+For a feature:
 
-- Перед созданием собственного детектора, парсера или библиотеки проверьте
-  стандартные Web/Chrome API и существующее проверенное решение.
-- Новая runtime-зависимость требует объяснения пользы, стоимости, размера,
-  лицензии и влияния на конфиденциальность. Не добавляйте зависимость ради
-  небольшой функции, которую уже покрывает платформа.
-- Не загружайте удалённый код: Manifest V3 и текущая политика проекта требуют,
-  чтобы исполняемый код был упакован в расширение.
+1. Cover the main success path.
+2. Cover the important edge case and the failure/cancel path where relevant.
+3. UI: a DOM integration test, and a scenario in `tests/e2e/extension.e2e.js` for
+   the user journey. Parsers and detectors: pure unit tests. Background/runtime:
+   tests for request count, streaming, cache or cancellation as needed.
 
-## Порядок изменения
+If a scenario truly cannot be automated, explain why in the PR, add the closest
+automated test and describe the manual check. Never delete tests or lower coverage
+thresholds to make CI pass.
 
-1. Сформулируйте наблюдаемое поведение и риск расхода токенов.
-2. Найдите слой-владелец проблемы по `docs/ARCHITECTURE.md`.
-3. Добавьте или обновите тест.
-4. Внесите минимальное исправление без несвязанных переделок.
-5. Выполните все проверки.
-6. Обязательно проверьте, какие Markdown-файлы устарели из-за изменения, и
-   актуализируйте их в том же commit/PR:
-   - пользовательское поведение и релизные изменения — `CHANGELOG.md` и README;
-   - поток данных или ответственность файлов — `docs/ARCHITECTURE.md`;
-   - новый инвариант, компромисс или известная ловушка — `docs/DECISIONS.md`;
-   - изменение продуктового курса — `docs/PRODUCT_DIRECTION.md`;
-   - изменение проверок или публикации — `docs/RELEASING.md`;
-   - изменение правил для следующих агентов — `AGENTS.md`.
-   Если ни один MD-файл не требует правки, явно укажите причину в PR.
-7. Публикуйте только проверенную ветку. Не создавайте тег и GitHub Release до
-   успешного CI на точном commit, который будет выпущен.
+## UI and the toolbar popup
 
-Не коммитьте API-ключи, пользовательские данные, содержимое `chrome.storage`
-или локальные сборочные каталоги.
+- The on-page card lives in a Shadow DOM; never move its styles into the page DOM.
+- The popup is plain `popup.html`, `popup.css` and `popup.js`: no React, no `#root`.
+- Chrome sizes the popup from its content. Never set `height: 100%` on `html`,
+  `body` and the root container together: it once stretched the popup into an
+  empty window ([ADR 0007](docs/adr/0007-toolbar-popup-stays-compact.md)).
+- Check popup geometry in the unpacked build via `chrome://extensions`, not in a
+  regular web page.
+- Keep inner spacing, readability, light/dark themes, high contrast and
+  reduced motion.
+
+## Design lock
+
+- The look is fingerprinted in `tests/design-lock.json`: `src/popup.css`,
+  `src/popup.html`, `src/options.html` and the styles in
+  `src/content/card-styles.js` ([ADR 0011](docs/adr/0011-design-lock.md)).
+- Agents **do not change** the design and **never run** `npm run design:approve`
+  without the owner's explicit approval of that specific visual change. Show
+  screenshots first.
+- If the lock test fails because of your change, revert the visual part instead of
+  updating the fingerprints.
+
+## Safari
+
+- Safari-specific code lives in `builtin-translator.js` (`platformDeps`,
+  `createAppleBridge`), `platforms/safari/` and `scripts/build-safari-kit.js`.
+  Never add `nativeMessaging` to `src/manifest.json`; it goes only into the Safari
+  manifest.
+- When you change bridge operations, change `SafariWebExtensionHandler.swift` too;
+  `tests/integration/safari-kit.test.js` compares them. Swift builds only on a Mac.
+- `platforms/safari/install.sh` must run on macOS bash 3.2: write every variable as
+  `${NAME}` (a test enforces this).
+
+## Dependencies
+
+- Check standard Web/Chrome APIs and proven solutions before writing your own
+  detector, parser or library ([ADR 0010](docs/adr/0010-platform-first.md)).
+- A new runtime dependency needs a stated benefit, cost, size, licence and privacy
+  impact.
+- No remote code: Manifest V3 and this project require all executable code to be
+  packaged in the extension.
+
+## Workflow
+
+1. State the observable behaviour and the token-cost risk.
+2. Find the layer that owns the problem in `docs/architecture.md`.
+3. Add or update the test.
+4. Make the smallest fix, without unrelated rewrites.
+5. Run `npm run verify` and, for UI or flow changes, `npm run test:e2e`.
+6. Check which Markdown files are now stale and update them in the same commit/PR:
+   - user-visible behaviour and release notes: `CHANGELOG.md` and the READMEs;
+   - data flow or file ownership: `docs/architecture.md`;
+   - a new invariant, trade-off or known trap: a new record in `docs/adr/`;
+   - product course: `docs/product-direction.md`;
+   - checks or publishing: `docs/releasing.md`;
+   - rules for the next agent: `AGENTS.md`.
+   If no Markdown file needs a change, say why in the PR.
+7. Publish only a verified branch. No tag or GitHub Release before CI passes on the
+   exact commit being released.
+
+## Commits and pull requests
+
+- English, imperative subject line ("Split content.js into focused modules").
+- No AI co-author or session trailers in commits or PR descriptions.
+- Never commit API keys, user data, `chrome.storage` contents, `.idea/`,
+  `.mcp.json` or build output (`dist/`).

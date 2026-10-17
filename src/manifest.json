@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "Sensemark",
+  "description": "__MSG_extDescription__",
+  "default_locale": "ru",
+  "version": "1.5.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["contextMenus", "storage", "scripting", "activeTab"],
+  "host_permissions": ["https://api.openai.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "i18n.js",
+        "language-detection.js",
+        "selection-text.js",
+        "word-response.js",
+        "text-response.js",
+        "ui-scale.js",
+        "builtin-translator.js",
+        "card-theme.js",
+        "content/card-styles.js",
+        "content/page-text.js",
+        "content/placement.js",
+        "content/status-pill.js",
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "__MSG_actionTitle__",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "__MSG_commandTranslate__"
+    }
+  }
+}

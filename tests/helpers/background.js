@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const { getMessage } = require("./i18n.js");
 
 function eventHub() {
   const listeners = [];
@@ -19,7 +20,7 @@ function loadBackground(overrides = {}) {
   const settings = {
     apiKey: "test-key",
     model: "gpt-4o-mini",
-    targetLang: "русский",
+    targetLang: getMessage("targetLanguage"),
     autoTranslate: false,
     privacyConsentVersion: 1,
     ...overrides.settings
@@ -40,7 +41,7 @@ function loadBackground(overrides = {}) {
     storageWrites: []
   };
   let sendMessage = overrides.sendMessage || (async () => ({}));
-  // Общая «сессия» браузера: переживает перезапуск service worker в тестах.
+  // A shared browser "session": survives a service worker restart in tests.
   const sessionStore = overrides.sessionStore || {};
 
   const context = {
@@ -51,13 +52,16 @@ function loadBackground(overrides = {}) {
     setTimeout,
     fetch: overrides.fetch,
     chrome: {
+      i18n: { getMessage },
       runtime: {
         onInstalled: events.installed,
         onMessage: events.message,
         onConnect: events.connect,
         openOptionsPage() {
           state.optionsOpened++;
-        }
+        },
+        // Safari only: the bridge to the Sensemark app.
+        ...(overrides.sendNativeMessage ? { sendNativeMessage: overrides.sendNativeMessage } : {})
       },
       contextMenus: {
         onClicked: events.contextClick,
@@ -109,7 +113,7 @@ function loadBackground(overrides = {}) {
   };
   context.globalThis = context;
   vm.createContext(context);
-  const source = fs.readFileSync(path.join(__dirname, "..", "..", "background.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "background.js"), "utf8");
   vm.runInContext(source, context, { filename: "background.js" });
   context.__events = events;
   context.__settings = settings;

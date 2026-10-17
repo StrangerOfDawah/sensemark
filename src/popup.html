@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="actionTitle">Sensemark</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="ambient" aria-hidden="true"><i></i><i></i></div>
+
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-orb"><img src="icons/icon-32.png" alt="" /></span>
+          <span>
+            <strong>Sensemark</strong>
+            <small><!--t:popupSubtitle--></small>
+          </span>
+        </div>
+        <button class="icon-button" id="settingsButton" type="button" data-i18n-title="settingsTitle" data-i18n-aria-label="settingsAria">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M8.2 2.4h3.6l.55 2.05 1.45.84 2.05-.55 1.8 3.12-1.5 1.5v1.68l1.5 1.5-1.8 3.12-2.05-.55-1.45.84-.55 2.05H8.2l-.55-2.05-1.45-.84-2.05.55-1.8-3.12 1.5-1.5V9.36l-1.5-1.5 1.8-3.12 2.05.55 1.45-.84.55-2.05Z" />
+            <circle cx="10" cy="10.2" r="2.5" />
+          </svg>
+        </button>
+      </header>
+
+      <section class="setup-banner" id="setupBanner" hidden>
+        <span class="setup-icon" aria-hidden="true">!</span>
+        <p id="setupText"></p>
+        <button id="setupButton" type="button"><!--t:setupAction--></button>
+      </section>
+
+      <section class="composer" data-i18n-aria-label="sourceLabel">
+        <div class="composer-head">
+          <span class="field-label"><!--t:sourceLabel--></span>
+          <span class="route" data-i18n-aria-label="routeAria">
+            <b><!--t:routeAuto--></b>
+            <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h7m-2.5-2.5L9 6 6.5 8.5" /></svg>
+            <b><!--t:routeTarget--></b>
+          </span>
+        </div>
+
+        <textarea
+          id="sourceText"
+          maxlength="5000"
+          rows="3"
+          data-i18n-placeholder="sourcePlaceholder"
+          data-i18n-aria-label="sourceLabel"
+          spellcheck="true"
+        ></textarea>
+
+        <div class="composer-foot">
+          <span class="activity" id="activity"><i aria-hidden="true"></i><span id="status"><!--t:statusAutoStart--></span></span>
+          <span class="counter" id="charCount">0 / 5000</span>
+          <button class="clear-button" id="clearButton" type="button" data-i18n-title="clearTitle" data-i18n-aria-label="clearAria" hidden>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m5 5 6 6m0-6-6 6" />
+            </svg>
+          </button>
+        </div>
+      </section>
+
+      <div class="message" id="message" role="status" aria-live="polite" hidden></div>
+
+      <section class="result" id="result" data-i18n-aria-label="resultAria" hidden>
+        <div class="result-head">
+          <span class="eyebrow" id="resultLabel"><!--t:labelTranslation--></span>
+          <button class="copy-button" id="copyButton" type="button" disabled>
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <rect x="6.1" y="5.4" width="8.4" height="9.3" rx="2" />
+              <path d="M11.8 3.3H5.4a2 2 0 0 0-2 2v6.4" />
+            </svg>
+            <span><!--t:actionCopy--></span>
+          </button>
+        </div>
+        <div class="result-body" id="resultBody" aria-live="polite"></div>
+      </section>
+
+    </main>
+
+    <script src="i18n.js"></script>
+    <script src="language-detection.js"></script>
+    <script src="word-response.js"></script>
+    <script src="text-response.js"></script>
+    <script src="builtin-translator.js"></script>
+    <script src="manual-translation.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

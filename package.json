@@ -2,20 +2,35 @@
   "name": "sensemark-extension",
   "version": "1.5.0",
   "private": true,
-  "description": "Tests and packaging checks for the Sensemark Chrome extension.",
+  "description": "Development tooling, tests and packaging for the Sensemark browser extension.",
   "scripts": {
     "check": "node scripts/validate-extension.js",
-    "test": "node --test tests/*.test.js",
-    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=95 --test-coverage-branches=75 --test-coverage-include=language-detection.js --test-coverage-include=selection-text.js --test-coverage-include=word-response.js --test-coverage-include=text-response.js --test-coverage-include=manual-translation.js --test-coverage-include=ui-scale.js --test-coverage-include=builtin-translator.js --test-coverage-include=card-theme.js --test tests/*.test.js",
-    "design:approve": "node scripts/design-lock.js --approve",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=95 --test-coverage-branches=75 --test-coverage-include=src/language-detection.js --test-coverage-include=src/selection-text.js --test-coverage-include=src/word-response.js --test-coverage-include=src/text-response.js --test-coverage-include=src/manual-translation.js --test-coverage-include=src/ui-scale.js --test-coverage-include=src/builtin-translator.js --test-coverage-include=src/card-theme.js --test-coverage-include=src/content/placement.js --test-coverage-include=src/i18n.js --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
+    "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.e2e.js\"",
+    "verify": "npm run lint && npm run format:check && npm run check && npm run test:coverage",
     "design:status": "node scripts/design-lock.js",
-    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.js"
+    "design:approve": "node scripts/design-lock.js --approve",
+    "package": "bash scripts/package-extension.sh",
+    "safari:kit": "npm run package && node scripts/build-safari-kit.js"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "globals": "17.13.0",
     "jsdom": "29.1.1",
-    "playwright": "1.56.0"
+    "playwright": "1.56.0",
+    "prettier": "3.9.10"
   },
   "engines": {
     "node": ">=24"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StrangerOfDawah/sensemark.git"
+  },
+  "license": "MIT"
 }
