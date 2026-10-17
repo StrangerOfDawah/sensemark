@@ -43,3 +43,15 @@ test("Safari kit ships the native Swift sources, the installer and the guide", (
     assert.match(bridge, new RegExp(`op: "${op}"`), op);
   }
 });
+
+test("install.sh survives macOS bash 3.2: every variable is written as ${NAME}", () => {
+  const script = fs.readFileSync(path.join(ROOT, "safari/install.sh"), "utf8");
+  // bash 3.2 считает байты русских букв частью имени переменной:
+  // "$PROJECT_DIR…" превращалось в несуществующую "PROJECT_DIR?".
+  const code = script
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+  const unbraced = code.match(/\$[A-Za-z_][A-Za-z0-9_]*/g) || [];
+  assert.deepEqual(unbraced, [], `переменные без фигурных скобок: ${unbraced.join(", ")}`);
+});

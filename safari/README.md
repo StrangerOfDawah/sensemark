@@ -9,8 +9,9 @@
 1. **Распакуйте** архив `sensemark-safari-vX.Y.Z.zip`, например в «Загрузки».
 2. **Откройте Терминал** и выполните (путь к папке поправьте, если распаковали в другое место):
    ```
-   cd ~/Downloads/sensemark-safari-v*/ && ./install.sh
+   cd ~/Downloads/sensemark-safari-v*/ && bash install.sh
    ```
+   Именно `bash install.sh`, а не `./install.sh`: macOS не даёт напрямую запускать файлы, полученные по AirDrop или из интернета («operation not permitted»).
    Скрипт создаст проект в папке `~/Sensemark-Safari` и сам откроет его в Xcode.
    Если Терминал ответит, что не нашёл `safari-web-extension-converter`, выполните один раз
    `sudo xcode-select -s /Applications/Xcode.app` и повторите команду.
@@ -28,7 +29,7 @@
 
 ## Обновление
 
-Распакуйте новый архив, снова выполните `./install.sh` и нажмите ▶ в Xcode. Подпись и настройки сохраняются.
+Распакуйте новый архив, снова выполните `bash install.sh` и нажмите ▶ в Xcode. Подпись и настройки сохраняются.
 
 ## Если что-то не так
 
