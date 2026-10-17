@@ -80,8 +80,10 @@
   let view = { ...VIEW_DEFAULTS };
   const scaleController = createScaleController();
 
+  // Автоперевод по умолчанию включён; до чтения настроек флаг выше — false,
+  // чтобы не перевести лишнего у тех, кто его выключил.
   const STORED_DEFAULTS = {
-    autoTranslate: false,
+    autoTranslate: true,
     autoPausedUntil: 0,
     provider: "builtin",
     ...VIEW_DEFAULTS,

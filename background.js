@@ -20,7 +20,8 @@ const DEFAULTS = {
   apiKey: "",
   model: DEFAULT_MODEL,
   targetLang: "русский",
-  autoTranslate: false,
+  // Автоперевод по умолчанию включён: выделил — получил перевод.
+  autoTranslate: true,
   privacyConsentVersion: 0
 };
 
@@ -139,7 +140,7 @@ chrome.contextMenus.onClicked.addListener(onMenuClicked);
 async function onMenuClicked(info, tab) {
   if (info.menuItemId === AUTO_MENU_ID) {
     const { autoTranslate, autoPausedUntil } = await chrome.storage.local.get({
-      autoTranslate: false,
+      autoTranslate: DEFAULTS.autoTranslate,
       autoPausedUntil: 0
     });
     const paused = autoTranslate && Date.now() < autoPausedUntil;
@@ -156,7 +157,7 @@ async function onMenuClicked(info, tab) {
 // Заголовок пункта на значке отражает текущее состояние автоперевода.
 async function refreshAutoMenuTitle() {
   const { autoTranslate, autoPausedUntil } = await chrome.storage.local.get({
-    autoTranslate: false,
+    autoTranslate: DEFAULTS.autoTranslate,
     autoPausedUntil: 0
   });
   const title = !autoTranslate

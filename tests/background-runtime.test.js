@@ -357,3 +357,28 @@ test("translation cache survives a service worker restart", async () => {
   assert.equal(await restarted.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
   assert.equal(calls, 1);
 });
+
+
+test("toolbar icon menu offers «Выключить автоперевод» on a fresh install (on by default)", async () => {
+  const background = loadBackground();
+  delete background.__settings.autoTranslate;
+  await background.refreshAutoMenuTitle();
+  assert.equal(background.__state.menuUpdates.at(-1).title, "Выключить автоперевод");
+  await background.onMenuClicked({ menuItemId: "toggle-auto-translate" }, null);
+  assert.equal(background.__settings.autoTranslate, false, "первый клик выключает");
+});
+
+test("an update never touches a saved OpenAI key, consent or retired model's key", async () => {
+  const background = loadBackground({
+    settings: { provider: "openai", apiKey: "sk-saved", model: "gpt-4o-mini", privacyConsentVersion: 1 }
+  });
+  background.__events.installed.emit({ reason: "update" });
+  await tick();
+  assert.equal(background.__settings.apiKey, "sk-saved");
+  assert.equal(background.__settings.provider, "openai");
+  assert.equal(background.__settings.privacyConsentVersion, 1);
+  assert.equal(background.__state.optionsOpened, 0, "согласие уже есть — настройки не открываются");
+  for (const write of background.__state.storageWrites) {
+    assert.equal("apiKey" in write, false, "при обновлении ключ не перезаписывается");
+  }
+});

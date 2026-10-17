@@ -31,7 +31,7 @@ Productivity
 
 Sensemark помогает читать статьи, документацию и рабочие материалы на разных языках, не покидая текущую страницу. Исходный язык определяется автоматически, а результат всегда выводится на русском.
 
-Выделите текст и нажмите ⌘⇧Y на Mac или Ctrl+Shift+Y на Windows. Перевод появится рядом с выделением и будет выводиться сразу по мере генерации. Также можно использовать контекстное меню или включить автоматический перевод при выделении.
+Выделите текст и нажмите ⌘⇧Y на Mac или Ctrl+Shift+Y на Windows. Перевод появится рядом с выделением и будет выводиться сразу по мере генерации. Автоперевод включён сразу: достаточно просто выделить текст мышью. Его можно поставить на паузу или выключить кнопкой в карточке. Также есть пункт в контекстном меню.
 
 Если сайт не позволяет корректно выделить текст, нажмите на иконку Sensemark и вставьте его в компактное окно ручного перевода. Перевод начнётся автоматически, без дополнительной кнопки. Окно использует тот же потоковый режим, многоязычные секции, объяснение неизвестных терминов и отмену незавершённого запроса.
 
@@ -86,7 +86,7 @@ Sensemark помогает читать статьи, документацию �
 - `scripting`: injects the packaged content script into an already-open tab when the user explicitly invokes translation after installing or reloading the extension.
 - `activeTab`: grants temporary access to the active tab after an explicit user action so the extension can read the current selection and show the translation card.
 - `https://api.openai.com/*`: sends the selected text to the OpenAI API and receives the generated translation over HTTPS.
-- `<all_urls>` content-script match: enables translation of user selections on arbitrary web pages and supports the optional automatic-translation mode. The extension does not collect URLs or browsing history.
+- `<all_urls>` content-script match: enables translation of user selections on arbitrary web pages and supports the automatic-translation mode (on by default, can be paused or turned off by the user). The extension does not collect URLs or browsing history.
 
 **Remote code**
 

@@ -131,7 +131,7 @@ Sensemark has two modes, chosen in settings. The default is **free**: Chrome's b
 | --- | --- |
 | Keyboard shortcut | Select text → <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Mac) or <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Y</kbd> (Windows) |
 | Context menu | Select text → right-click → «Перевести на русский» |
-| Automatic | Enable the toggle in settings — translates a mouse selection after half a second. Pressing <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>C</kbd> or the right mouse button right away cancels it; selections inside input fields are ignored |
+| Automatic | On right after installation — a mouse selection is translated after half a second. Turn it off in settings or with the ⏸ button in the card. Pressing <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>C</kbd> or the right mouse button right away cancels it; selections inside input fields are ignored |
 | Pause | The ⏸ button on the card pauses auto-translation for 5 minutes or turns it off. Turn it back on in settings or by right-clicking the Sensemark toolbar icon |
 | Manual | Click the extension icon → paste text; translation starts automatically |
 | Scale | <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + scroll over the card |

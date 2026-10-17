@@ -25,7 +25,7 @@
     apiKey: "",
     model: "gpt-6-luna",
     targetLang: "русский",
-    autoTranslate: false,
+    autoTranslate: true,
     privacyConsentVersion: 0
   };
 

@@ -105,6 +105,8 @@ async function setupContent(markup, options = {}) {
     storage: {
       local: {
         async get(defaults) {
+          // freshInstall — в хранилище ещё ничего нет, работают значения по умолчанию.
+          if (options.freshInstall) return { ...defaults, provider: "openai", ...options.settings };
           return { ...defaults, autoTranslate: false, provider: "openai", ...options.settings };
         },
         async set() {}
@@ -529,4 +531,28 @@ test("manual light theme ignores a dark page; chosen font is loaded from the ext
   assert.match(host.style.getPropertyValue("--tr-font"), /Sensemark Literata/);
   assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "размер как на странице");
   assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [{ type: "get-font", font: "literata" }]);
+});
+
+
+test("auto-translate is on by default: a fresh install translates a mouse selection", async () => {
+  const context = await setupContent('<p id="x">The weather is nice today, let us go for a walk.</p>', {
+    freshInstall: true
+  });
+  await wait(10);
+  context.select(context.document.getElementById("x"));
+  context.document.dispatchEvent(new context.window.MouseEvent("mouseup", { bubbles: true, button: 0 }));
+  await wait(700);
+  assert.equal(context.ports.length, 1, "перевод запущен без горячей клавиши");
+});
+
+test("auto-translate stays off for someone who turned it off", async () => {
+  const context = await setupContent('<p id="x">The weather is nice today, let us go for a walk.</p>', {
+    freshInstall: true,
+    settings: { autoTranslate: false }
+  });
+  await wait(10);
+  context.select(context.document.getElementById("x"));
+  context.document.dispatchEvent(new context.window.MouseEvent("mouseup", { bubbles: true, button: 0 }));
+  await wait(700);
+  assert.equal(context.ports.length, 0);
 });
