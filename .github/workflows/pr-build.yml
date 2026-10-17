@@ -131,8 +131,7 @@ jobs:
 
       - name: Show Xcode and SDK versions
         run: |
-          xcodebuild -version
-          xcrun --sdk macosx --show-sdk-version
+          echo "::notice title=Xcode::$(xcodebuild -version | tr '\n' ' ') SDK $(xcrun --sdk macosx --show-sdk-version)"
 
       - name: Create the Xcode project with install.sh
         env:
@@ -148,12 +147,19 @@ jobs:
         run: |
           project="$(find "$PROJECT_DIR" -maxdepth 3 -name '*.xcodeproj' -print -quit)"
           xcodebuild -list -project "$project"
+          set +e
           xcodebuild build \
             -project "$project" \
             -scheme Sensemark \
             -configuration Debug \
             -destination "platform=macOS" \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            | tail -n 60
-          exit "${PIPESTATUS[0]}"
+            CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/xcodebuild.log" 2>&1
+          status=$?
+          set -e
+          tail -n 80 "$RUNNER_TEMP/xcodebuild.log"
+          # Surface compiler errors as annotations on the PR.
+          grep -E "error:|\*\* BUILD" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -n 20 | while IFS= read -r line; do
+            echo "::error title=xcodebuild::${line}"
+          done
+          exit "$status"
