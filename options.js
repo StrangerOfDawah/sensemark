@@ -4,7 +4,7 @@ const DEFAULTS = {
   apiKey: "",
   model: DEFAULT_MODEL,
   targetLang: "русский",
-  autoTranslate: false,
+  autoTranslate: true,
   privacyConsentVersion: 0,
   cardTheme: "auto",
   cardFont: "system",

@@ -25,6 +25,7 @@ async function setupOptions(overrides = {}) {
     privacyConsentVersion: 1,
     ...overrides.settings
   };
+  for (const key of overrides.omit || []) delete settings[key];
   const writes = [];
   const messages = [];
   dom.window.chrome = {
@@ -128,4 +129,10 @@ test("the OpenAI option explains the benefit and the approximate cost", () => {
   assert.match(html, /\$1 в год/);
   assert.match(html, /\$5 хватает на несколько лет/);
   assert.match(html, /выбирает нужное значение слова/);
+});
+
+
+test("auto-translate switch is on by default for a fresh install", async () => {
+  const context = await setupOptions({ omit: ["autoTranslate"] });
+  assert.equal(context.document.getElementById("autoTranslate").checked, true);
 });
