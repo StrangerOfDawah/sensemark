@@ -167,7 +167,8 @@ thresholds to make CI pass.
   Never add `nativeMessaging` to `src/manifest.json`; it goes only into the Safari
   manifest.
 - When you change bridge operations, change `SafariWebExtensionHandler.swift` too;
-  `tests/integration/safari-kit.test.js` compares them. Swift builds only on a Mac.
+  `tests/integration/safari-kit.test.js` compares them. The `Safari app (Xcode)` CI
+  job builds the Swift part on macOS through `install.sh`, without signing.
 - `platforms/safari/install.sh` must run on macOS bash 3.2: write every variable as
   `${NAME}` (a test enforces this).
 

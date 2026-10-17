@@ -27,6 +27,7 @@ keeps it out of `src/manifest.json`.
 
 ## Consequences
 
-- Swift cannot be built in CI (macOS and Xcode required). A test checks that its
-  operations match the bridge; the build is verified on a Mac.
+- A test checks that the Swift operations match the bridge, and the
+  `Safari app (Xcode)` CI job builds the Swift part on a macOS runner through the
+  same `install.sh` users run, without signing. Running it still needs a Mac.
 - The Safari kit is a separate release asset, `sensemark-safari-vX.Y.Z.zip`.
