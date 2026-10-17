@@ -4,6 +4,7 @@ const test = require("node:test");
 const { eventHub, loadBackground } = require("../helpers/background.js");
 const { t } = require("../helpers/i18n.js");
 const RU = require("../fixtures/russian.json");
+const { normalizeSourceScripts } = require("../../src/background/prompts.js");
 
 const sseChunk = (content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
 
@@ -65,7 +66,7 @@ test("request preparation blocks missing consent, key, and empty text", async ()
 test("source scripts are sanitized, deduplicated, and included in cache identity", async () => {
   const background = loadBackground();
   assert.deepEqual(
-    [...background.normalizeSourceScripts(["Latin", "Arabic", "Latin", "bad-script", 4])],
+    [...normalizeSourceScripts(["Latin", "Arabic", "Latin", "bad-script", 4])],
     ["Latin", "Arabic"]
   );
 

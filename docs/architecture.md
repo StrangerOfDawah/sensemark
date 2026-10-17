@@ -17,7 +17,8 @@ There is no developer server. Settings stay in local extension storage.
 ```text
 src/                     the extension itself; this folder is what ships
   manifest.json
-  background.js          service worker: prompts, OpenAI streaming, cache, repair
+  background.js          service worker: menus, OpenAI streaming, cache, repair
+  background/            prompts and answer validation, loaded with importScripts
   builtin-translator.js  free mode: Translator API or the Apple bridge
   *.js                   shared pure modules (detection, parsing, theme, scale)
   content/               content scripts injected into pages
@@ -60,7 +61,9 @@ response parser → on-page card or toolbar popup
 | Messages          | `src/_locales/ru/messages.json`, `src/i18n.js` | Every user-facing string and the Russian words of the model protocol     |
 | Detection         | `src/language-detection.js`                | Scripts, Russian text, small technical Latin inserts                         |
 | Selection text    | `src/selection-text.js`                    | Joining fragments, invisible characters, icon-font glyphs                    |
-| Request & stream  | `src/background.js`                        | Prompt, OpenAI, SSE, cache, repair, answer validation, model parameters      |
+| Request & stream  | `src/background.js`                        | Menus, OpenAI requests, SSE, cache, repair, error messages                   |
+| Prompts           | `src/background/prompts.js`                | Instructions, messages, model parameters and the request body                |
+| Answer checks     | `src/background/validation.js`             | Format, sections, scripts and copied-instruction checks before showing an answer |
 | Free mode         | `src/builtin-translator.js`                | Translator API or Apple bridge, language packs, local "port"                 |
 | Word answer       | `src/word-response.js`                     | `[[translation]]` and `[[reference]]`                                        |
 | Text answer       | `src/text-response.js`                     | `[[text]]`, `[[multilingual]]` and language sections                         |
@@ -173,7 +176,7 @@ must contain every section.
 
 ## Validation and repair
 
-`background.js` rejects:
+`background/validation.js` rejects:
 
 - `[[skip]]` from the model;
 - missing required sections;

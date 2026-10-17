@@ -56,8 +56,10 @@ To try the extension, load `src/` via `chrome://extensions` → "Load unpacked".
 
 - Classic scripts with a UMD wrapper (`globalThis.SensemarkX` in the browser,
   `module.exports` under Node), so files run unbundled and are unit-tested as is.
-- Prefer small pure modules (see `card-theme.js`, `content/placement.js`) and keep
-  DOM work in the thin controller (`content/content.js`).
+- Prefer small pure modules (see `card-theme.js`, `content/placement.js`,
+  `background/prompts.js`) and keep DOM and browser APIs in the thin controllers
+  (`content/content.js`, `background.js`). The service worker loads its modules
+  with `importScripts`; a structure test keeps that list and the package in sync.
 - Prettier and ESLint are the source of truth for formatting and lint.
 - Language: everything in the repository is in English, except four files:
   `README.md` (the Russian front page; `README.en.md` is its English twin),

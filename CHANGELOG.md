@@ -29,7 +29,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The extension moved to `src/`, the Safari part to `platforms/safari/`, and
   tests are split into `unit`, `integration` and `e2e`. `content.js` is split
   into modules in `src/content/`: card styles, page text, placement and the
-  status pill. The Chrome Web Store archive is built from `src/`, with
+  status pill. Prompts and answer validation moved out of `background.js` into
+  `src/background/`. The Chrome Web Store archive is built from `src/`, with
   `manifest.json` still at its root.
 - All user-facing text moved to `src/_locales/ru/messages.json` and is read
   through `chrome.i18n`; code, comments, tests and docs are in English, and a

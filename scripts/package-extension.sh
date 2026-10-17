@@ -21,6 +21,8 @@ cd "$ROOT_DIR/src"
 zip -q -r "$ARCHIVE" \
   manifest.json \
   background.js \
+  background/prompts.js \
+  background/validation.js \
   i18n.js \
   language-detection.js \
   selection-text.js \
