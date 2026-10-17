@@ -1,5 +1,16 @@
-// User-facing text lives in _locales/ru/messages.json.
-const t = (key, ...values) => chrome.i18n.getMessage(key, values.map(String)) || key;
+// The service worker: context menus, the toolbar icon menu, OpenAI requests and
+// their cache. Prompts and answer checks are pure modules loaded below.
+importScripts("i18n.js", "background/prompts.js", "background/validation.js");
+
+const { t } = self.SensemarkI18n;
+const {
+  buildTextMessages,
+  buildWordMessages,
+  isParallelTitleCandidate,
+  normalizeSourceScripts,
+  requestBody
+} = self.SensemarkBackgroundPrompts;
+const { responseIssue } = self.SensemarkBackgroundValidation;
 
 const MENU_ID = "translate-selection";
 const AUTO_MENU_ID = "toggle-auto-translate";
@@ -65,39 +76,6 @@ function cacheSet(key, value) {
   }
   cache.set(key, value);
   chrome.storage.session?.set({ [CACHE_STORAGE_KEY]: [...cache] }).catch(() => {});
-}
-
-// Request parameters per model. Newer OpenAI models "reason" before
-// answering: that is slower and billed as output tokens, and they reject
-// temperature. Translation needs no reasoning.
-function modelParams(model, maxOutputTokens) {
-  const name = String(model || "");
-  if (/^(?:gpt-6|gpt-5\.\d)/.test(name)) {
-    return { reasoning_effort: "none", max_completion_tokens: maxOutputTokens };
-  }
-  if (/^gpt-5(?:-|$)/.test(name)) {
-    return { reasoning_effort: "minimal", max_completion_tokens: maxOutputTokens };
-  }
-  if (/^o\d/.test(name)) {
-    return { reasoning_effort: "low", max_completion_tokens: maxOutputTokens };
-  }
-  return { temperature: 0.2, max_tokens: maxOutputTokens };
-}
-
-// Answer length cap: a translation is never much longer than the original, and
-// a model that gets chatty by accident must not cost extra money.
-function maxOutputTokens(text, wordMode) {
-  if (wordMode) return 300;
-  return Math.min(4096, 300 + Math.ceil(String(text || "").length * 0.8));
-}
-
-function requestBody(settings, messages, { text, wordMode, stream }) {
-  return JSON.stringify({
-    model: settings.model,
-    ...modelParams(settings.model, maxOutputTokens(text, wordMode)),
-    ...(stream ? { stream: true } : {}),
-    messages
-  });
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -474,153 +452,6 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
   }
 }
 
-function normalizeSourceScripts(scripts) {
-  if (!Array.isArray(scripts)) return [];
-  return [...new Set(scripts.filter((script) => /^[A-Za-z]+$/.test(script)))];
-}
-
-// Short titles are often duplicated in two languages:
-// "Japanese Daycares – 日本の保育園". One translation reads better for them
-// than two sections that look the same. Long paragraphs never qualify.
-function isParallelTitleCandidate(text, rawSourceScripts = []) {
-  const value = String(text || "").trim();
-  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  if (sourceScripts.length !== 2 || !value || value.length > 160) return false;
-
-  let parts = value
-    .split(/\s+(?:[-–—|/·•])\s+|\n+/u)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (parts.length !== 2) {
-    const parenthetical = value.match(/^(.+?)\s*[（(]([^()（）]+)[）)]\s*$/u);
-    parts = parenthetical ? parenthetical.slice(1).map((part) => part.trim()) : [];
-  }
-
-  return (
-    parts.length === 2 &&
-    parts.every((part) => {
-      const letters = [...part].filter((char) => /\p{L}/u.test(char));
-      return letters.length >= 2 && letters.length <= 80 && !/[.!?。！？]\s+\p{L}/u.test(part);
-    })
-  );
-}
-
-function responsePayload(value) {
-  return String(value || "")
-    .split("\n")
-    .filter((line) => !/^\s*\[\[.+\]\]\s*$/.test(line))
-    .join("\n")
-    .trim();
-}
-
-function translatedBodies(value) {
-  const sections = [
-    ...String(value || "").matchAll(
-      /^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:[^\]]+\]\]\s*\n([\s\S]*?)(?=^\[\[(?:script\s*:|lang\s*:)|$)/gim
-    )
-  ].map((match) => match[1].trim());
-  return sections.length ? sections : [responsePayload(value)];
-}
-
-const FOREIGN_SCRIPT_LETTER =
-  /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u;
-
-// The Russian alphabet, including the letter Yo, as code points.
-const RUSSIAN_LETTER = /[\u0410-\u044F\u0401\u0451]/u;
-const COPIED_INSTRUCTIONS = new RegExp(
-  `full translation into|translate the text|${t("patternCopiedInstructions")}`,
-  "i"
-);
-const TRANSLATION_LABEL = new RegExp(`^(?:${t("protocolTranslationLabel")}|translation)\\s*:`, "im");
-
-// Validation is lenient on purpose: every retry doubles the price of a translation.
-// Catch only a clearly broken answer, not legitimately kept names,
-// brands and terms ("GitHub Copilot", "API", "東京").
-function contentIssue(value) {
-  const payload = responsePayload(value);
-  if (COPIED_INSTRUCTIONS.test(payload)) {
-    return "The answer repeats the instructions instead of a translation.";
-  }
-  if (TRANSLATION_LABEL.test(payload)) {
-    return "The answer starts with a translation label instead of a clean result.";
-  }
-
-  const letters = [...payload].filter((char) => /\p{L}/u.test(char));
-  const foreign = letters.filter((char) => FOREIGN_SCRIPT_LETTER.test(char)).length;
-  if (letters.length && foreign / letters.length > 0.2) {
-    return "The answer is written in the source script instead of Russian.";
-  }
-
-  const untranslated = translatedBodies(value).find(
-    (body) =>
-      !RUSSIAN_LETTER.test(body) && body.split(/\s+/).filter((word) => /\p{L}/u.test(word)).length >= 4
-  );
-  return untranslated ? "A section is not translated into Russian." : "";
-}
-
-function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
-  const value = String(text || "").trim();
-  if (/^\[\[skip\]\]/i.test(value)) {
-    return "The answer contains the forbidden [[skip]] marker.";
-  }
-
-  const firstLine = value.split("\n", 1)[0].trim().toLowerCase();
-  if (wordMode) {
-    if (firstLine === "[[reference]]") return "";
-    if (firstLine !== "[[translation]]") {
-      return "The answer must start with [[translation]] or [[reference]].";
-    }
-    return contentIssue(value);
-  }
-
-  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  const multilingual = firstLine === "[[multilingual]]";
-  const unifiedParallelTitle =
-    firstLine === "[[text]]" && isParallelTitleCandidate(sourceText, sourceScripts);
-  const declaredScripts = [...value.matchAll(/^\[\[script\s*:\s*([^|\]]+)\s*\|/gim)].map((match) =>
-    match[1].trim()
-  );
-  const unexpectedScripts = declaredScripts.filter((script) => !sourceScripts.includes(script));
-  if (unexpectedScripts.length) {
-    return `The answer added scripts that are not in the selection: ${[...new Set(unexpectedScripts)].join(
-      ", "
-    )}.`;
-  }
-  if (sourceScripts.length > 1 && !multilingual && !unifiedParallelTitle) {
-    return "The selection has several scripts, so the answer must use the [[multilingual]] format.";
-  }
-  if (sourceScripts.length < 2 && multilingual) {
-    const languages = [...value.matchAll(/^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:\s*([^\]]+)\]\]/gim)].map(
-      (match) => match[1].trim().toLowerCase()
-    );
-    if (new Set(languages).size < 2) {
-      return "The text is in one language, so [[multilingual]] is wrong.";
-    }
-  } else if (!multilingual && firstLine !== "[[text]]") {
-    return "The answer must start with [[text]].";
-  }
-
-  if (multilingual && sourceScripts.length > 1) {
-    const missing = sourceScripts.filter((script) => {
-      const escaped = script.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const section = value.match(
-        new RegExp(
-          `\\[\\[script\\s*:\\s*${escaped}\\s*\\|\\s*lang\\s*:[^\\]]+\\]\\]\\s*` +
-            "([\\s\\S]*?)(?=\\n\\[\\[script\\s*:|$)",
-          "i"
-        )
-      );
-      return !section?.[1]?.trim();
-    });
-    if (missing.length) {
-      return `Sections are missing for scripts: ${missing.join(", ")}.`;
-    }
-  }
-
-  return contentIssue(value);
-}
-
 async function repairResponse(
   settings,
   messages,
@@ -671,71 +502,6 @@ async function repairResponse(
     throw new Error(t("errorIncompleteTranslation"));
   }
   return repaired;
-}
-
-// Instructions are in English: the same meaning costs roughly half the tokens
-// of Russian, and we pay for them on every request. The model still answers
-// in Russian.
-const COMMON_RULES =
-  "Translate directly from the source language into Russian; do not go through English and do not paraphrase. " +
-  "Skip leftover page UI (menu items, buttons, counters, labels like “Share” or “Read more”) without mentioning it. " +
-  `Never output [[skip]], the untranslated original, a third language, these instructions, or labels like “${t("protocolTranslationLabel")}:”.`;
-
-function buildTextMessages(text, lang, rawSourceScripts = []) {
-  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  const scriptList = sourceScripts.join(", ");
-  const sections =
-    "[[multilingual]] on the first line, then for each consecutive fragment a line [[script:SCRIPT|lang:LANGUAGE]] " +
-    "followed by its Russian translation (Russian fragments verbatim). " +
-    `SCRIPT is one of: ${scriptList} — it names the source script, never write the result in it. ` +
-    "LANGUAGE is the source language name in Russian.";
-  const format = isParallelTitleCandidate(text, sourceScripts)
-    ? "The text looks like one short title written in two scripts. If both parts mean the same, answer [[text]] " +
-      `on the first line and one Russian translation below. Otherwise answer ${sections}`
-    : sourceScripts.length > 1
-      ? `The selection contains these scripts: ${scriptList}. Answer ${sections} ` +
-        "Every listed script needs at least one non-empty section."
-      : "Answer [[text]] on the first line and the Russian translation below. Only if the text truly mixes " +
-        "several languages of one script, answer [[multilingual]] on the first line, then for each language a line " +
-        "[[script:SCRIPT|lang:LANGUAGE]] and its Russian translation.";
-
-  return [
-    {
-      role: "system",
-      content:
-        "You translate the user's text into Russian. Detect the language of each sentence yourself; never assume English. " +
-        "Keep parts already in Russian verbatim. Preserve order, paragraphs, line breaks, names and technical terms.\n" +
-        `${COMMON_RULES}\n${format}`
-    },
-    { role: "user", content: text }
-  ];
-}
-
-// A short fragment is translated with its sentence in mind: a word has many
-// meanings, and we need the one used here.
-function buildWordMessages(text, context, lang, rawSourceScripts = []) {
-  const sourceScripts = normalizeSourceScripts(rawSourceScripts);
-  const scriptHint = sourceScripts.length ? ` Script: ${sourceScripts.join(", ")}.` : "";
-  return [
-    {
-      role: "system",
-      content:
-        `Explain a selected word or short phrase to a Russian reader. Detect its language; never assume English.${scriptHint} ` +
-        "Use the context only to choose the meaning; do not translate the context. " +
-        `A capital letter alone does not make a name: “Why” is the word «${t("promptExampleWhy")}»; “Apple released an update” is a brand, “I ate an apple” is a word. ` +
-        "Prefer a normal translation whenever the fragment is a dictionary word.\n" +
-        `${COMMON_RULES}\n` +
-        "Ordinary word or phrase — answer exactly:\n[[translation]]\n<Russian translation in this context>\n" +
-        `${t("protocolOtherMeanings")}: <short comma-separated list> (omit this line if there are none)\n` +
-        "Only for a name, title, brand, nickname, typo or made-up word — answer exactly:\n[[reference]]\n" +
-        `<one category in Russian: ${t("protocolCategories")} or ${t("protocolUnknownTerm")}>\n` +
-        "<one short cautious explanation in Russian; do not invent facts; if unsure, say it is probably a name or a title>"
-    },
-    {
-      role: "user",
-      content: `${context ? `Context: ${context}\n` : ""}Fragment: ${text}`
-    }
-  ];
 }
 
 async function describeError(response) {

@@ -1,6 +1,6 @@
 {
   "name": "sensemark-extension",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "Development tooling, tests and packaging for the Sensemark browser extension.",
   "scripts": {
@@ -9,7 +9,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
-    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=95 --test-coverage-branches=75 --test-coverage-include=src/language-detection.js --test-coverage-include=src/selection-text.js --test-coverage-include=src/word-response.js --test-coverage-include=src/text-response.js --test-coverage-include=src/manual-translation.js --test-coverage-include=src/ui-scale.js --test-coverage-include=src/builtin-translator.js --test-coverage-include=src/card-theme.js --test-coverage-include=src/content/placement.js --test-coverage-include=src/i18n.js --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=90 --test-coverage-functions=95 --test-coverage-branches=75 --test-coverage-include=src/language-detection.js --test-coverage-include=src/selection-text.js --test-coverage-include=src/word-response.js --test-coverage-include=src/text-response.js --test-coverage-include=src/manual-translation.js --test-coverage-include=src/ui-scale.js --test-coverage-include=src/builtin-translator.js --test-coverage-include=src/card-theme.js --test-coverage-include=src/content/placement.js --test-coverage-include=src/i18n.js --test-coverage-include=src/background/prompts.js --test-coverage-include=src/background/validation.js --test \"tests/unit/*.test.js\" \"tests/integration/*.test.js\"",
     "test:e2e": "node --test --test-concurrency=1 \"tests/e2e/*.e2e.js\"",
     "verify": "npm run lint && npm run format:check && npm run check && npm run test:coverage",
     "design:status": "node scripts/design-lock.js",

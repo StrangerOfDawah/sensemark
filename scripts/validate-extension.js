@@ -20,6 +20,8 @@ const packageJson = JSON.parse(readRepo("package.json"));
 const runtimeFiles = [
   "manifest.json",
   "background.js",
+  "background/prompts.js",
+  "background/validation.js",
   "i18n.js",
   "language-detection.js",
   "selection-text.js",

@@ -112,6 +112,14 @@ function loadBackground(overrides = {}) {
     }
   };
   context.globalThis = context;
+  context.self = context;
+  // Like a classic service worker: load each file into the same global scope.
+  context.importScripts = (...files) => {
+    for (const file of files) {
+      const code = fs.readFileSync(path.join(__dirname, "..", "..", "src", file), "utf8");
+      vm.runInContext(code, context, { filename: file });
+    }
+  };
   vm.createContext(context);
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "background.js"), "utf8");
   vm.runInContext(source, context, { filename: "background.js" });

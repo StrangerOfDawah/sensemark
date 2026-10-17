@@ -1,10 +1,13 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { loadBackground } = require("../helpers/background.js");
+const Prompts = require("../../src/background/prompts.js");
+const Validation = require("../../src/background/validation.js");
+const pure = () => ({ ...Prompts, ...Validation });
 const RU = require("../fixtures/russian.json");
 
 test("text prompt auto-detects the source language", () => {
-  const { buildTextMessages } = loadBackground();
+  const { buildTextMessages } = pure();
   const prompt = buildTextMessages("مرحبا", RU.langRussian, ["Arabic"])[0].content;
 
   assert.match(prompt, /Detect the language of each sentence yourself; never assume English/);
@@ -17,7 +20,7 @@ test("text prompt auto-detects the source language", () => {
 });
 
 test("multiscript prompt requires a section for every detected script", () => {
-  const { buildTextMessages } = loadBackground();
+  const { buildTextMessages } = pure();
   const prompt = buildTextMessages("Hello مرحبا", RU.langRussian, ["Latin", "Arabic"])[0].content;
 
   assert.match(prompt, /Latin, Arabic/);
@@ -28,7 +31,7 @@ test("multiscript prompt requires a section for every detected script", () => {
 });
 
 test("instructions are short: English costs about half the tokens of the old Russian prompt", () => {
-  const { buildTextMessages, buildWordMessages } = loadBackground();
+  const { buildTextMessages, buildWordMessages } = pure();
   // The old Russian instructions took ~2300–2700 characters (430–550 tokens).
   assert.ok(buildTextMessages("Hello there my friend", RU.langRussian, ["Latin"])[0].content.length < 1300);
   assert.ok(
@@ -37,7 +40,7 @@ test("instructions are short: English costs about half the tokens of the old Rus
 });
 
 test("parallel bilingual titles may produce one natural translation", () => {
-  const { buildTextMessages, isParallelTitleCandidate, responseIssue } = loadBackground();
+  const { buildTextMessages, isParallelTitleCandidate, responseIssue } = pure();
   const source = "Japanese Daycares – 日本の保育園";
   const scripts = ["Latin", "Japanese"];
   const prompt = buildTextMessages(source, RU.langRussian, scripts)[0].content;
@@ -60,7 +63,7 @@ test("parallel bilingual titles may produce one natural translation", () => {
 });
 
 test("ordinary multiscript prose still requires every source section", () => {
-  const { isParallelTitleCandidate, responseIssue } = loadBackground();
+  const { isParallelTitleCandidate, responseIssue } = pure();
   const source = "Read this English sentence. ثم اقرأ هذه الجملة العربية.";
   const scripts = ["Latin", "Arabic"];
 
@@ -72,7 +75,7 @@ test("ordinary multiscript prose still requires every source section", () => {
 });
 
 test("response validation rejects skip and missing script sections", () => {
-  const { responseIssue } = loadBackground();
+  const { responseIssue } = pure();
 
   assert.match(responseIssue("[[skip]]", true, ["Arabic"]), /forbidden \[\[skip\]\]/);
   assert.match(
@@ -105,7 +108,7 @@ test("response validation rejects skip and missing script sections", () => {
 });
 
 test("response validation rejects copied instructions, labels and untranslated output", () => {
-  const { responseIssue } = loadBackground();
+  const { responseIssue } = pure();
   const arabic = "هذا كتاب جيد جدا";
 
   assert.match(
@@ -153,7 +156,7 @@ test("response validation rejects copied instructions, labels and untranslated o
 });
 
 test("validation accepts kept names, brands and short terms (no wasted repair request)", () => {
-  const { responseIssue } = loadBackground();
+  const { responseIssue } = pure();
   // Each of these correct answers used to trigger a paid retry.
   assert.equal(
     responseIssue(
@@ -196,7 +199,7 @@ test("repair request replaces an invalid skip response", async () => {
 });
 
 test("word prompt defines a safe unknown-term response", () => {
-  const { buildWordMessages } = loadBackground();
+  const { buildWordMessages } = pure();
   const messages = buildWordMessages("Sensemark", null, RU.langRussian, ["Latin"]);
   const prompt = messages[0].content;
 
@@ -225,7 +228,7 @@ test("word mode is explicit even when sentence context is unavailable", async ()
 });
 
 test("new reasoning models get reasoning_effort none and no temperature", () => {
-  const { modelParams } = loadBackground();
+  const { modelParams } = pure();
   assert.deepEqual(JSON.parse(JSON.stringify(modelParams("gpt-6-luna", 300))), {
     reasoning_effort: "none",
     max_completion_tokens: 300
@@ -238,7 +241,7 @@ test("new reasoning models get reasoning_effort none and no temperature", () => 
 });
 
 test("output is capped by the length of the selection", () => {
-  const { maxOutputTokens } = loadBackground();
+  const { maxOutputTokens } = pure();
   assert.equal(maxOutputTokens("bank", true), 300);
   assert.equal(maxOutputTokens("x".repeat(100), false), 380);
   assert.equal(maxOutputTokens("x".repeat(5000), false), 4096);

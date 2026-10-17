@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-17
+
 ### Added
 
 - Sensemark for Safari on the Mac (personal use, not published): free mode
@@ -12,6 +14,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
   as in Chrome. Languages are downloaded once in the Sensemark app. The kit is
   built with `npm run safari:kit`; installation is described in
   `platforms/safari/README.md`.
+
+### Fixed
+
+- The Safari Xcode project now gets matching identifiers for the app and the
+  extension (`com.sensemark.safari` and `com.sensemark.safari.Extension`).
+  Before, Xcode refused to embed the extension, and the app window could not
+  find it. A new CI job builds the Safari app on macOS for every pull request.
 
 ### Changed
 
@@ -22,10 +31,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### For developers
 
+- The Chrome Web Store description written for 1.5.0 is back in the
+  repository (`store/listing.ru.txt`) and mentions that auto-translate is on.
 - The extension moved to `src/`, the Safari part to `platforms/safari/`, and
   tests are split into `unit`, `integration` and `e2e`. `content.js` is split
   into modules in `src/content/`: card styles, page text, placement and the
-  status pill. The Chrome Web Store archive is built from `src/`, with
+  status pill. Prompts and answer validation moved out of `background.js` into
+  `src/background/`. The Chrome Web Store archive is built from `src/`, with
   `manifest.json` still at its root.
 - All user-facing text moved to `src/_locales/ru/messages.json` and is read
   through `chrome.i18n`; code, comments, tests and docs are in English, and a
@@ -173,7 +185,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Dark theme, scaling and card resizing.
 - Russian and English README versions.
 
-[Unreleased]: https://github.com/StrangerOfDawah/sensemark/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/StrangerOfDawah/sensemark/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.3.0...v1.5.0
 [1.3.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.1.0...v1.2.0

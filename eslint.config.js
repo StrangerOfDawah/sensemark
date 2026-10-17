@@ -21,6 +21,11 @@ module.exports = [
     }
   },
   {
+    // The service worker loads its modules with importScripts.
+    files: ["src/background.js"],
+    languageOptions: { globals: { ...globals.serviceworker } }
+  },
+  {
     files: ["scripts/**/*.js", "tests/**/*.js", "eslint.config.js"],
     languageOptions: {
       ecmaVersion: 2024,

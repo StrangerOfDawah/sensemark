@@ -3,7 +3,7 @@
   "name": "Sensemark",
   "description": "__MSG_extDescription__",
   "default_locale": "ru",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",

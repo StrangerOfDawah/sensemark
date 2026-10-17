@@ -85,6 +85,19 @@ test("content runtime declares every helper in manifest and fallback injection",
   assert.doesNotMatch(background, /chrome\.action\.onClicked/);
 });
 
+test("the service worker loads only packaged modules with importScripts", () => {
+  const background = read("background.js");
+  const call = background.match(/importScripts\(([^)]*)\)/);
+  assert.ok(call, "background.js imports its modules");
+  const files = [...call[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(files, ["i18n.js", "background/prompts.js", "background/validation.js"]);
+  const packageScript = readRepo("scripts/package-extension.sh");
+  for (const file of files) {
+    assert.ok(fs.existsSync(path.join(root, file)), `${file} exists`);
+    assert.match(packageScript, new RegExp(`(?:^|\\s)${file.replace(/[./]/g, "\\$&")}(?:\\s|\\\\|$)`, "m"));
+  }
+});
+
 test("privacy disclosures include selected and manually entered text", () => {
   assert.match(readRepo("PRIVACY.md"), /manually types or pastes/);
   const options = read("options.html");

@@ -1,6 +1,6 @@
 # Chrome Web Store submission copy
 
-Use these values in the Chrome Web Store Developer Dashboard for version `1.5.0`.
+Use these values in the Chrome Web Store Developer Dashboard for version `1.6.0`.
 
 ## Store listing
 
@@ -10,7 +10,7 @@ Sensemark
 
 **Summary**
 
-The SUMMARY block of [listing.ru.txt](listing.ru.txt).
+The SUMMARY block of [listing.ru.txt](listing.ru.txt); it matches `extDescription` in `src/_locales/ru/messages.json`, which the manifest uses.
 
 **Category**
 
