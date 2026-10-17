@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-17
+
 ### Added
 
 - Sensemark for Safari on the Mac (personal use, not published): free mode
@@ -22,6 +24,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### For developers
 
+- The Chrome Web Store description written for 1.5.0 is back in the
+  repository (`store/listing.ru.txt`) and mentions that auto-translate is on.
 - The extension moved to `src/`, the Safari part to `platforms/safari/`, and
   tests are split into `unit`, `integration` and `e2e`. `content.js` is split
   into modules in `src/content/`: card styles, page text, placement and the
@@ -173,7 +177,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Dark theme, scaling and card resizing.
 - Russian and English README versions.
 
-[Unreleased]: https://github.com/StrangerOfDawah/sensemark/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/StrangerOfDawah/sensemark/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.3.0...v1.5.0
 [1.3.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/StrangerOfDawah/sensemark/compare/v1.1.0...v1.2.0

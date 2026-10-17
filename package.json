@@ -1,6 +1,6 @@
 {
   "name": "sensemark-extension",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "Development tooling, tests and packaging for the Sensemark browser extension.",
   "scripts": {
