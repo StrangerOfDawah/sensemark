@@ -15,6 +15,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
   built with `npm run safari:kit`; installation is described in
   `platforms/safari/README.md`.
 
+### Fixed
+
+- The Safari Xcode project now gets matching identifiers for the app and the
+  extension (`com.sensemark.safari` and `com.sensemark.safari.Extension`).
+  Before, Xcode refused to embed the extension, and the app window could not
+  find it. A new CI job builds the Safari app on macOS for every pull request.
+
 ### Changed
 
 - Auto-translate on selection is on by default: select text with the mouse and

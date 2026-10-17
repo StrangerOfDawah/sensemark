@@ -161,7 +161,7 @@ jobs:
           set -e
           tail -n 80 "$RUNNER_TEMP/xcodebuild.log"
           # Surface compiler errors as annotations on the PR.
-          grep -E "error:|\*\* BUILD" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -n 20 | while IFS= read -r line; do
+          grep -E "error:|\*\* BUILD FAILED" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -n 20 | while IFS= read -r line; do
             echo "::error title=xcodebuild::${line}"
           done
           exit "$status"
