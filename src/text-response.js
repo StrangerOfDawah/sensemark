@@ -10,8 +10,7 @@
   const MULTILINGUAL_MARKER = "[[multilingual]]";
   const SKIP_MARKER = "[[skip]]";
   const LANGUAGE_MARKER = /^\[\[lang\s*:\s*(.+?)\]\]$/i;
-  const SCRIPT_LANGUAGE_MARKER =
-    /^\[\[script\s*:\s*([^|\]]+)\s*\|\s*lang\s*:\s*(.+?)\]\]$/i;
+  const SCRIPT_LANGUAGE_MARKER = /^\[\[script\s*:\s*([^|\]]+)\s*\|\s*lang\s*:\s*(.+?)\]\]$/i;
 
   function afterFirstLine(text) {
     const newline = text.indexOf("\n");

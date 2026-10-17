@@ -61,7 +61,7 @@ const fitKey = () => {
 // В Safari бесплатный режим — это переводчик Apple, а не Chrome: меняем
 // только подписи, вёрстка та же.
 function adaptForSafari() {
-  let safari = false;
+  let safari;
   try {
     safari = /^safari-web-extension:/i.test(chrome.runtime.getURL(""));
   } catch {
@@ -105,7 +105,10 @@ function init() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(save, 400);
   };
-  fields.apiKey.addEventListener("input", () => { fitKey(); scheduleSave(); });
+  fields.apiKey.addEventListener("input", () => {
+    fitKey();
+    scheduleSave();
+  });
   fields.model.addEventListener("change", scheduleSave);
   fields.autoTranslate.addEventListener("change", scheduleSave);
   for (const input of [...themeInputs, ...fontInputs, fields.matchPageSize]) {

@@ -105,7 +105,9 @@ test("key verification validates setup and reports API success", async () => {
 });
 
 test("free mode hides every OpenAI setting and needs no key", async () => {
-  const context = await setupOptions({ settings: { provider: "builtin", apiKey: "", privacyConsentVersion: 0 } });
+  const context = await setupOptions({
+    settings: { provider: "builtin", apiKey: "", privacyConsentVersion: 0 }
+  });
   assert.equal(context.document.querySelector('input[value="builtin"]').checked, true);
   assert.equal(context.document.getElementById("openaiSettings").hidden, true);
 
@@ -130,7 +132,6 @@ test("the OpenAI option explains the benefit and the approximate cost", () => {
   assert.match(html, /\$5 хватает на несколько лет/);
   assert.match(html, /выбирает нужное значение слова/);
 });
-
 
 test("auto-translate switch is on by default for a fresh install", async () => {
   const context = await setupOptions({ omit: ["autoTranslate"] });

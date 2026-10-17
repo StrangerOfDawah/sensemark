@@ -61,9 +61,7 @@ function cacheSet(key, value) {
     cache.delete(cache.keys().next().value);
   }
   cache.set(key, value);
-  chrome.storage.session
-    ?.set({ [CACHE_STORAGE_KEY]: [...cache] })
-    .catch(() => {});
+  chrome.storage.session?.set({ [CACHE_STORAGE_KEY]: [...cache] }).catch(() => {});
 }
 
 // Параметры запроса под модель. Новые модели OpenAI «размышляют» перед
@@ -198,10 +196,7 @@ async function ping(tabId, frameId) {
   } catch {
     try {
       await chrome.scripting.executeScript({
-        target:
-          frameId === undefined
-            ? { tabId, allFrames: true }
-            : { tabId, frameIds: [frameId] },
+        target: frameId === undefined ? { tabId, allFrames: true } : { tabId, frameIds: [frameId] },
         files: [
           "language-detection.js",
           "selection-text.js",
@@ -329,9 +324,7 @@ async function prepareRequest(rawText, context, wordMode = false, rawSourceScrip
   const settings = await chrome.storage.local.get(DEFAULTS);
   if (!settings.model || RETIRED_MODELS.has(settings.model)) settings.model = DEFAULT_MODEL;
   if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-    throw new Error(
-      "Перед переводом подтвердите отправку текста в OpenAI в настройках расширения."
-    );
+    throw new Error("Перед переводом подтвердите отправку текста в OpenAI в настройках расширения.");
   }
   if (!settings.apiKey) {
     throw new Error("Не задан API-ключ. Откройте настройки расширения.");
@@ -354,13 +347,7 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "translate") return;
   port.onMessage.addListener((message) => {
     if (message?.type === "start") {
-      streamTranslate(
-        port,
-        message.text,
-        message.context,
-        message.wordMode,
-        message.sourceScripts
-      );
+      streamTranslate(port, message.text, message.context, message.wordMode, message.sourceScripts);
     }
   });
 });
@@ -523,16 +510,6 @@ function responsePayload(value) {
     .trim();
 }
 
-function normalizeComparable(value) {
-  return String(value || "")
-    .normalize("NFKD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function translatedBodies(value) {
   const sections = [
     ...String(value || "").matchAll(
@@ -550,7 +527,11 @@ const FOREIGN_SCRIPT_LETTER =
 // бренды и термины («GitHub Copilot», «API», «東京»).
 function contentIssue(value) {
   const payload = responsePayload(value);
-  if (/full translation into|translate the text|полный перевод на язык|без пояснений и исходного текста/i.test(payload)) {
+  if (
+    /full translation into|translate the text|полный перевод на язык|без пояснений и исходного текста/i.test(
+      payload
+    )
+  ) {
     return "The answer repeats the instructions instead of a translation.";
   }
   if (/^(?:перевод|translation)\s*:/im.test(payload)) {
@@ -588,22 +569,22 @@ function responseIssue(text, wordMode, rawSourceScripts = [], sourceText = "") {
   const multilingual = firstLine === "[[multilingual]]";
   const unifiedParallelTitle =
     firstLine === "[[text]]" && isParallelTitleCandidate(sourceText, sourceScripts);
-  const declaredScripts = [
-    ...value.matchAll(/^\[\[script\s*:\s*([^|\]]+)\s*\|/gim)
-  ].map((match) => match[1].trim());
+  const declaredScripts = [...value.matchAll(/^\[\[script\s*:\s*([^|\]]+)\s*\|/gim)].map((match) =>
+    match[1].trim()
+  );
   const unexpectedScripts = declaredScripts.filter((script) => !sourceScripts.includes(script));
   if (unexpectedScripts.length) {
-    return `The answer added scripts that are not in the selection: ${[
-      ...new Set(unexpectedScripts)
-    ].join(", ")}.`;
+    return `The answer added scripts that are not in the selection: ${[...new Set(unexpectedScripts)].join(
+      ", "
+    )}.`;
   }
   if (sourceScripts.length > 1 && !multilingual && !unifiedParallelTitle) {
     return "The selection has several scripts, so the answer must use the [[multilingual]] format.";
   }
   if (sourceScripts.length < 2 && multilingual) {
-    const languages = [
-      ...value.matchAll(/^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:\s*([^\]]+)\]\]/gim)
-    ].map((match) => match[1].trim().toLowerCase());
+    const languages = [...value.matchAll(/^\[\[(?:script\s*:[^|\]]+\|\s*)?lang\s*:\s*([^\]]+)\]\]/gim)].map(
+      (match) => match[1].trim().toLowerCase()
+    );
     if (new Set(languages).size < 2) {
       return "The text is in one language, so [[multilingual]] is wrong.";
     }
@@ -642,9 +623,10 @@ async function repairResponse(
   signal
 ) {
   const parallelTitle = isParallelTitleCandidate(sourceText, sourceScripts);
-  const required = sourceScripts.length > 1 && !parallelTitle
-    ? ` Include sections for all scripts: ${sourceScripts.join(", ")}.`
-    : "";
+  const required =
+    sourceScripts.length > 1 && !parallelTitle
+      ? ` Include sections for all scripts: ${sourceScripts.join(", ")}.`
+      : "";
   const unifiedOption = parallelTitle
     ? " If the two short parts are one bilingual title, return a single [[text]] translation; otherwise return all [[multilingual]] sections."
     : "";

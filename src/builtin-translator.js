@@ -47,7 +47,9 @@
   }
 
   function normalizeLanguage(code) {
-    const value = String(code || "").trim().toLowerCase();
+    const value = String(code || "")
+      .trim()
+      .toLowerCase();
     if (!value || value === "und") return "";
     const base = value.split(/[-_]/)[0];
     if (base === "zh") return value.includes("hant") || /-(?:tw|hk|mo)$/.test(value) ? "zh-Hant" : "zh";
@@ -59,7 +61,9 @@
     const units = [];
     for (const line of String(text || "").split("\n")) {
       const parts = line.split(/(?<=[.!?…。！？؟])\s+/u).filter((part) => part.trim());
-      parts.forEach((part, index) => units.push({ text: part.trim(), newline: index === 0 && units.length > 0 }));
+      parts.forEach((part, index) =>
+        units.push({ text: part.trim(), newline: index === 0 && units.length > 0 })
+      );
     }
     return units;
   }
@@ -153,10 +157,7 @@
       let timer;
       const timeout = new Promise((_, reject) => {
         timer = setTimeout(
-          () =>
-            reject(
-              new BuiltinError("download-failed", labels.downloadFailed, language)
-            ),
+          () => reject(new BuiltinError("download-failed", labels.downloadFailed, language)),
           downloadTimeoutMs
         );
       });
@@ -230,7 +231,9 @@
       const groups = [];
       for (const unit of units) {
         const russian = Boolean(isRussianOnly?.(unit.text));
-        const language = russian ? TARGET : await detect(unit.text, detectScripts ? detectScripts(unit.text) : sourceScripts);
+        const language = russian
+          ? TARGET
+          : await detect(unit.text, detectScripts ? detectScripts(unit.text) : sourceScripts);
         const last = groups.at(-1);
         if (last && last.language === language) {
           last.text += unit.newline ? `\n${unit.text}` : ` ${unit.text}`;
@@ -349,8 +352,7 @@
               type: "error",
               code: error?.code || "failed",
               language: error?.language || "",
-              error:
-                error instanceof BuiltinError ? error.message : (engine.labels || CHROME_LABELS).failed
+              error: error instanceof BuiltinError ? error.message : (engine.labels || CHROME_LABELS).failed
             });
           });
       }
@@ -408,11 +410,20 @@
       async create({ sourceLanguage, targetLanguage = TARGET }) {
         const status = await Translator.availability({ sourceLanguage, targetLanguage });
         if (status !== "available") {
-          throw new BuiltinError("needs-download", APPLE_LABELS.needsDownload(sourceLanguage), sourceLanguage);
+          throw new BuiltinError(
+            "needs-download",
+            APPLE_LABELS.needsDownload(sourceLanguage),
+            sourceLanguage
+          );
         }
         return {
           async translate(text) {
-            const reply = await call({ op: "translate", text, source: sourceLanguage, target: targetLanguage });
+            const reply = await call({
+              op: "translate",
+              text,
+              source: sourceLanguage,
+              target: targetLanguage
+            });
             return String(reply.text ?? "");
           }
         };
@@ -437,7 +448,10 @@
     // Тот же формат, что у chrome.i18n.detectLanguage.
     async function detectLanguage(text) {
       const reply = await call({ op: "detect", text });
-      return { isReliable: Boolean(reply.isReliable), languages: Array.isArray(reply.languages) ? reply.languages : [] };
+      return {
+        isReliable: Boolean(reply.isReliable),
+        languages: Array.isArray(reply.languages) ? reply.languages : []
+      };
     }
 
     return { Translator, detectLanguage };
@@ -447,7 +461,9 @@
   function platformDeps(api = globalThis.chrome, scope = globalThis) {
     if (isSafariExtension(api?.runtime) && !scope.Translator) {
       const runtime = scope.browser?.runtime || api.runtime;
-      const bridge = createAppleBridge({ send: (payload) => runtime.sendMessage({ type: "native", payload }) });
+      const bridge = createAppleBridge({
+        send: (payload) => runtime.sendMessage({ type: "native", payload })
+      });
       return {
         platform: "safari",
         Translator: bridge.Translator,

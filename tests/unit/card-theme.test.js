@@ -41,7 +41,10 @@ test("sepia page gets a warm card with readable text", () => {
 test("manual theme ignores the page; unknown page follows the system", () => {
   const dark = rgb("rgb(13, 17, 23)");
   assert.equal(Theme.buildPalette({ mode: "light", background: dark }).surface, Theme.LIGHT.surface);
-  assert.equal(Theme.buildPalette({ mode: "dark", background: rgb("rgb(255,255,255)") }).surface, Theme.DARK.surface);
+  assert.equal(
+    Theme.buildPalette({ mode: "dark", background: rgb("rgb(255,255,255)") }).surface,
+    Theme.DARK.surface
+  );
   assert.equal(Theme.buildPalette({ background: null, prefersDark: true }).scheme, "dark");
   assert.equal(Theme.buildPalette({ background: null }).scheme, "light");
 });
@@ -67,7 +70,11 @@ test("translation size follows the page within readable limits", () => {
 test("long selection: more than one paragraph or at least 300 characters", () => {
   assert.equal(Theme.isLongSelection("One short paragraph."), false);
   assert.equal(Theme.isLongSelection("First.\nSecond."), false, "два коротких абзаца остаются карточкой");
-  assert.equal(Theme.isLongSelection(`${"a".repeat(70)}\n${"b".repeat(60)}`), true, "два абзаца от 120 символов");
+  assert.equal(
+    Theme.isLongSelection(`${"a".repeat(70)}\n${"b".repeat(60)}`),
+    true,
+    "два абзаца от 120 символов"
+  );
   assert.equal(Theme.isLongSelection("a".repeat(299)), false);
   assert.equal(Theme.isLongSelection("a".repeat(300)), true);
   assert.equal(Theme.countParagraphs("A\n\nB\n  \nC"), 3);
@@ -85,10 +92,13 @@ test("layout: short text under the selection, long text on the margin or in a dr
     width: 400
   });
   // Текст на всю ширину — справа места нет.
-  assert.deepEqual(Theme.chooseLayout({ text: long, rect: { ...column, right: 1164 }, viewportWidth: 1200 }), {
-    kind: "drawer",
-    width: 420
-  });
+  assert.deepEqual(
+    Theme.chooseLayout({ text: long, rect: { ...column, right: 1164 }, viewportWidth: 1200 }),
+    {
+      kind: "drawer",
+      width: 420
+    }
+  );
   // На узком экране панель закрыла бы почти весь текст — оставляем карточку.
   assert.deepEqual(Theme.chooseLayout({ text: long, rect: { ...column, right: 560 }, viewportWidth: 600 }), {
     kind: "anchor"
@@ -114,7 +124,11 @@ test("header label names paragraphs and the source language", () => {
 
 function hexRgb(value) {
   const raw = value.replace("#", "");
-  return { r: parseInt(raw.slice(0, 2), 16), g: parseInt(raw.slice(2, 4), 16), b: parseInt(raw.slice(4, 6), 16) };
+  return {
+    r: parseInt(raw.slice(0, 2), 16),
+    g: parseInt(raw.slice(2, 4), 16),
+    b: parseInt(raw.slice(4, 6), 16)
+  };
 }
 
 function hexParts(value) {

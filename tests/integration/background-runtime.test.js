@@ -67,12 +67,7 @@ test("source scripts are sanitized, deduplicated, and included in cache identity
     ["Latin", "Arabic"]
   );
 
-  const request = await background.prepareRequest(
-    "Hello مرحبا",
-    null,
-    false,
-    ["Latin", "Arabic", "Latin"]
-  );
+  const request = await background.prepareRequest("Hello مرحبا", null, false, ["Latin", "Arabic", "Latin"]);
   assert.match(request.cacheKey, /\|text\|Latin,Arabic\|/);
   assert.deepEqual([...request.sourceScripts], ["Latin", "Arabic"]);
 });
@@ -135,18 +130,18 @@ test("parallel bilingual title accepts one streamed translation without a repair
   });
   const port = createPort();
 
-  await background.streamTranslate(
-    port,
-    "Japanese Daycares – 日本の保育園",
-    null,
-    false,
-    ["Latin", "Japanese"]
-  );
+  await background.streamTranslate(port, "Japanese Daycares – 日本の保育園", null, false, [
+    "Latin",
+    "Japanese"
+  ]);
 
   assert.equal(fetchCount, 1);
   assert.equal(port.messages.at(-1).type, "done");
   assert.equal(port.messages.at(-1).text, "[[text]]\nЯпонские детские сады");
-  assert.equal(port.messages.some((message) => message.type === "error"), false);
+  assert.equal(
+    port.messages.some((message) => message.type === "error"),
+    false
+  );
 });
 
 test("disconnecting a stream aborts the fetch without surfacing an error", async () => {
@@ -209,10 +204,7 @@ test("API errors receive actionable Russian descriptions", async () => {
   const background = loadBackground();
   assert.match(await background.describeError(jsonResponse("", 401)), /Неверный API-ключ/);
   assert.match(await background.describeError(jsonResponse("", 403)), /Доступ запрещён/);
-  assert.match(
-    await background.describeError(jsonResponse("", 404, "unknown model")),
-    /unknown model/
-  );
+  assert.match(await background.describeError(jsonResponse("", 404, "unknown model")), /unknown model/);
   assert.match(await background.describeError(jsonResponse("", 429)), /баланс/);
   assert.match(await background.describeError(jsonResponse("", 500, "server")), /500.*server/);
 });
@@ -279,13 +271,9 @@ test("runtime translate messages keep the response channel open", async () => {
     fetch: async () => jsonResponse("[[text]]\nПривет.")
   });
   let response = null;
-  const returns = background.__events.message.emit(
-    { type: "translate", text: "Hello." },
-    {},
-    (value) => {
-      response = value;
-    }
-  );
+  const returns = background.__events.message.emit({ type: "translate", text: "Hello." }, {}, (value) => {
+    response = value;
+  });
   assert.equal(returns[0], true);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(response.ok, true);
@@ -328,11 +316,7 @@ test("toolbar icon menu title reflects off, paused and on states", async () => {
   await record();
   background.__settings.autoPausedUntil = 0;
   await record();
-  assert.deepEqual(titles, [
-    "Включить автоперевод",
-    "Снять паузу автоперевода",
-    "Выключить автоперевод"
-  ]);
+  assert.deepEqual(titles, ["Включить автоперевод", "Снять паузу автоперевода", "Выключить автоперевод"]);
 });
 
 test("selection context menu item runs the same translation path as the hotkey", async () => {
@@ -353,15 +337,20 @@ test("translation cache survives a service worker restart", async () => {
     return jsonResponse("[[text]]\nПривет, друзья мои.");
   };
   const first = loadBackground({ fetch, sessionStore });
-  assert.equal(await first.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
+  assert.equal(
+    await first.translate("Hello, my dear friends.", null, false),
+    "[[text]]\nПривет, друзья мои."
+  );
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   // Chrome усыпил service worker: память пропала, сессия браузера осталась.
   const restarted = loadBackground({ fetch, sessionStore });
-  assert.equal(await restarted.translate("Hello, my dear friends.", null, false), "[[text]]\nПривет, друзья мои.");
+  assert.equal(
+    await restarted.translate("Hello, my dear friends.", null, false),
+    "[[text]]\nПривет, друзья мои."
+  );
   assert.equal(calls, 1);
 });
-
 
 test("toolbar icon menu offers «Выключить автоперевод» on a fresh install (on by default)", async () => {
   const background = loadBackground();

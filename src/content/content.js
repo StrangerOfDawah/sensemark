@@ -193,7 +193,6 @@
     return Boolean(autoTranslate) && Date.now() >= autoPausedUntil;
   }
 
-
   function cancelPendingAuto() {
     clearTimeout(autoTimer);
     autoTimer = null;
@@ -247,10 +246,17 @@
     // OCR не запускаем автоматически: это дорого и ненадёжно для декоративных
     // шрифтов. Изображение без иностранного текстового слоя объясняем локально,
     // не отправляя пустые данные и русские подписи в API.
-    const imageTextUnsupported =
-      selectedImages.length > 0 && (text.length < 2 || isRussianOnly(text));
+    const imageTextUnsupported = selectedImages.length > 0 && (text.length < 2 || isRussianOnly(text));
     if (imageTextUnsupported) {
-      return { ...anchor, text: "", rect, context: null, wordMode: false, sourceScripts: [], imageTextUnsupported };
+      return {
+        ...anchor,
+        text: "",
+        rect,
+        context: null,
+        wordMode: false,
+        sourceScripts: [],
+        imageTextUnsupported
+      };
     }
     if (text.length < 2) return null;
 
@@ -261,7 +267,6 @@
 
     return { ...anchor, text, rect, context, wordMode, sourceScripts: detectSignificantScripts(text) };
   }
-
 
   // Палитра, шрифт и размер для карточки и пилюли этого выделения.
   function lookFor(info) {
@@ -309,14 +314,6 @@
     return loading;
   }
 
-
-
-
-
-
-
-
-
   // Русский ли это текст и с какого языка переводим — для подписи
   // «Перевожу с английского…». Определяет сам Chrome, локально и бесплатно.
   // На одном слове определитель часто ошибается («bank» → себуано), поэтому
@@ -344,8 +341,6 @@
       return null; // локальный CLD может не дать результат для очень короткого текста
     }
   }
-
-
 
   async function handleSelection({ auto = false } = {}) {
     autoTimer = null;
@@ -557,9 +552,6 @@
     placement: Placement
   });
 
-
-
-
   function ensureHost() {
     if (host && document.documentElement.contains(host)) return;
 
@@ -567,8 +559,7 @@
     host.id = HOST_ID;
     // Стили самого хоста задаём инлайном, чтобы CSS страницы не мог их перебить.
     // position: absolute — координаты страницы: карточка едет вместе с текстом.
-    host.style.cssText =
-      "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
+    host.style.cssText = "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
     shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `${CARD_STYLE}
       <div class="bracket" hidden></div>
@@ -617,7 +608,11 @@
     () => {
       if (card && anchorInfo) {
         setLayout(
-          CardTheme.chooseLayout({ text: anchorInfo.text, rect: liveRect(anchorInfo), viewportWidth: window.innerWidth })
+          CardTheme.chooseLayout({
+            text: anchorInfo.text,
+            rect: liveRect(anchorInfo),
+            viewportWidth: window.innerWidth
+          })
         );
         place();
       }
@@ -943,7 +938,8 @@
       streamState.copyText = parsed.text;
       // В длинном переводе (поля, панель) абзацы разделяем пустой строкой,
       // иначе они сливаются в сплошной текст. Копируется перевод как есть.
-      streamState.live.textContent = layout.kind === "anchor" ? parsed.text : parsed.text.replace(/\n+/g, "\n\n");
+      streamState.live.textContent =
+        layout.kind === "anchor" ? parsed.text : parsed.text.replace(/\n+/g, "\n\n");
       streamState.live.after(streamState.caret);
       return;
     }
@@ -1005,7 +1001,10 @@
     }
 
     (lastText || state.segments).appendChild(state.caret);
-    const combined = sections.map((section) => section.text).filter(Boolean).join("\n\n");
+    const combined = sections
+      .map((section) => section.text)
+      .filter(Boolean)
+      .join("\n\n");
     state.main = combined;
     state.copyText = combined;
   }

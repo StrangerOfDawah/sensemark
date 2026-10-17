@@ -210,9 +210,7 @@
       for (const section of view.sections) {
         const item = createElement("section", "segment");
         const isRussian = /^русск/i.test(section.language);
-        const label = isRussian
-          ? `${section.language} · без изменений`
-          : `${section.language} → русский`;
+        const label = isRussian ? `${section.language} · без изменений` : `${section.language} → русский`;
         item.append(
           createElement("div", `segment-language${isRussian ? " kept" : ""}`, label),
           createElement("p", "segment-text", section.text)
@@ -362,7 +360,7 @@
 
     async function copyResult() {
       if (!copyValue) return false;
-      let copied = false;
+      let copied;
       try {
         await navigator.clipboard.writeText(copyValue);
         copied = true;

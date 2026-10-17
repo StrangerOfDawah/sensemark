@@ -56,7 +56,10 @@
   function parseColor(value) {
     const match = String(value || "").match(/rgba?\(([^)]+)\)/i);
     if (!match) return null;
-    const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    const parts = match[1]
+      .split(/[\s,/]+/)
+      .filter(Boolean)
+      .map(Number);
     if (parts.length < 3 || parts.slice(0, 3).some((part) => !Number.isFinite(part))) return null;
     const alpha = parts.length > 3 && Number.isFinite(parts[3]) ? parts[3] : 1;
     return { r: parts[0], g: parts[1], b: parts[2], a: alpha };

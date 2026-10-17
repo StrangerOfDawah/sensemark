@@ -77,7 +77,11 @@ test("status pill: under the selection, above it near the bottom, pinned in the 
   assert.deepEqual([below.x, below.y, below.fixed], [100, 128, false]);
   assert.deepEqual(below.origin, { x: 100, y: 142 });
 
-  const nearBottom = Placement.statusPlacement({ rect: rectangle(100, 770, 60, 20), kind: "anchor", viewport });
+  const nearBottom = Placement.statusPlacement({
+    rect: rectangle(100, 770, 60, 20),
+    kind: "anchor",
+    viewport
+  });
   assert.equal(nearBottom.y, 770 - 8 - 28);
 
   const margin = Placement.statusPlacement({ rect: rectangle(90, 120, 600, 200), kind: "margin", viewport });

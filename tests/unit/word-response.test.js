@@ -33,9 +33,7 @@ test("never exposes an unexpected skip marker as a translation", () => {
 });
 
 test("keeps compatibility with the previous unknown-word format", () => {
-  const result = parse(
-    "Такого общеупотребительного слова не существует.\nВозможно, это: название проекта."
-  );
+  const result = parse("Такого общеупотребительного слова не существует.\nВозможно, это: название проекта.");
 
   assert.equal(result.mode, "reference");
   assert.equal(result.category, "неизвестный термин");

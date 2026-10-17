@@ -9,17 +9,7 @@
   const RUSSIAN_LETTER = /^[А-Яа-яЁё]$/u;
   const LATIN_LETTER = /^\p{Script=Latin}$/u;
   const LETTER = /^\p{L}$/u;
-  const CYRILLIC_LANGUAGE_CODES = new Set([
-    "be",
-    "bg",
-    "kk",
-    "ky",
-    "mk",
-    "mn",
-    "sr",
-    "tg",
-    "uk"
-  ]);
+  const CYRILLIC_LANGUAGE_CODES = new Set(["be", "bg", "kk", "ky", "mk", "mn", "sr", "tg", "uk"]);
   const SCRIPT_DEFINITIONS = [
     ["Latin", /\p{Script=Latin}/u],
     ["Cyrillic", /\p{Script=Cyrillic}/u],
@@ -71,8 +61,10 @@
     for (const script of detectScripts(text)) merged.set(script, 0);
     for (const [script, count] of counts) {
       const target =
-        script === "Han" && merged.has("Japanese") ? "Japanese"
-          : script === "Han" && merged.has("Korean") ? "Korean"
+        script === "Han" && merged.has("Japanese")
+          ? "Japanese"
+          : script === "Han" && merged.has("Korean")
+            ? "Korean"
             : script;
       if (merged.has(target)) merged.set(target, merged.get(target) + count);
     }
@@ -136,11 +128,7 @@
 
     // CLD может назвать такой смешанный фрагмент английским из-за identifier-ов.
     // Но надёжный результат другого кириллического языка всё ещё имеет приоритет.
-    if (
-      detection?.isReliable &&
-      detected &&
-      CYRILLIC_LANGUAGE_CODES.has(detected.language.toLowerCase())
-    ) {
+    if (detection?.isReliable && detected && CYRILLIC_LANGUAGE_CODES.has(detected.language.toLowerCase())) {
       return false;
     }
 

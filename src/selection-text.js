@@ -9,7 +9,7 @@
   const DIRECTIONAL_CONTROL = /[؜‎‏‪-‮⁦-⁩]/gu;
   // Мягкий перенос, zero-width space и BOM не видны и смысла не несут.
   // ZWJ/ZWNJ (‌, ‍) не трогаем: они нужны персидскому, хинди и эмодзи.
-  const INVISIBLE_CHARS = /[­​﻿]/gu;
+  const INVISIBLE_CHARS = /[\u00AD\u200B\uFEFF]/gu;
   // Private Use Area — символы иконочных шрифтов (стрелки, «поделиться» и т. п.).
   // Настоящий текст на любом языке в эти диапазоны не попадает.
   const PRIVATE_USE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;

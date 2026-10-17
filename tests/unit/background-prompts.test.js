@@ -17,8 +17,7 @@ test("text prompt auto-detects the source language", () => {
 
 test("multiscript prompt requires a section for every detected script", () => {
   const { buildTextMessages } = loadBackground();
-  const prompt = buildTextMessages("Hello مرحبا", "русский", ["Latin", "Arabic"])[0]
-    .content;
+  const prompt = buildTextMessages("Hello مرحبا", "русский", ["Latin", "Arabic"])[0].content;
 
   assert.match(prompt, /Latin, Arabic/);
   assert.match(prompt, /\[\[multilingual\]\]/);
@@ -43,10 +42,7 @@ test("parallel bilingual titles may produce one natural translation", () => {
   assert.equal(isParallelTitleCandidate(source, scripts), true);
   assert.match(prompt, /one short title written in two scripts/);
   assert.match(prompt, /one Russian translation below/);
-  assert.equal(
-    responseIssue("[[text]]\nЯпонские детские сады", false, scripts, source),
-    ""
-  );
+  assert.equal(responseIssue("[[text]]\nЯпонские детские сады", false, scripts, source), "");
   assert.equal(
     responseIssue(
       "[[multilingual]]\n" +
@@ -77,11 +73,7 @@ test("response validation rejects skip and missing script sections", () => {
 
   assert.match(responseIssue("[[skip]]", true, ["Arabic"]), /forbidden \[\[skip\]\]/);
   assert.match(
-    responseIssue(
-      "[[multilingual]]\n[[script:Latin|lang:английский]]\nПеревод.",
-      false,
-      ["Latin", "Arabic"]
-    ),
+    responseIssue("[[multilingual]]\n[[script:Latin|lang:английский]]\nПеревод.", false, ["Latin", "Arabic"]),
     /Arabic/
   );
   assert.match(
@@ -111,7 +103,12 @@ test("response validation rejects copied instructions, labels and untranslated o
   const arabic = "هذا كتاب جيد جدا";
 
   assert.match(
-    responseIssue("[[text]]\nполный перевод на язык «русский» без пояснений и исходного текста", false, ["Arabic"], arabic),
+    responseIssue(
+      "[[text]]\nполный перевод на язык «русский» без пояснений и исходного текста",
+      false,
+      ["Arabic"],
+      arabic
+    ),
     /repeats the instructions/
   );
   assert.match(
@@ -134,7 +131,12 @@ test("response validation rejects copied instructions, labels and untranslated o
     /«Перевод:»/
   );
   assert.match(
-    responseIssue("[[text]]\nThe report is ready for review today.", false, ["Latin"], "The report is ready for review today."),
+    responseIssue(
+      "[[text]]\nThe report is ready for review today.",
+      false,
+      ["Latin"],
+      "The report is ready for review today."
+    ),
     /not translated into Russian/
   );
   assert.match(
@@ -159,7 +161,12 @@ test("validation accepts kept names, brands and short terms (no wasted repair re
   assert.equal(responseIssue("[[translation]]\nOK", true, ["Latin"], "OK"), "");
   assert.equal(responseIssue("[[text]]\nGitHub Copilot", false, ["Latin"], "GitHub Copilot"), "");
   assert.equal(
-    responseIssue("[[text]]\nОфис в 東京 открылся сегодня, и сотрудники довольны.", false, ["Latin"], "The 東京 office opened today."),
+    responseIssue(
+      "[[text]]\nОфис в 東京 открылся сегодня, и сотрудники довольны.",
+      false,
+      ["Latin"],
+      "The 東京 office opened today."
+    ),
     ""
   );
 });

@@ -58,10 +58,12 @@ async function setupPopup(overrides = {}) {
   const copied = [];
   const chrome = {
     i18n: {
-      detectLanguage: overrides.detectLanguage || (async () => ({
-        isReliable: true,
-        languages: [{ language: "en", percentage: 100 }]
-      }))
+      detectLanguage:
+        overrides.detectLanguage ||
+        (async () => ({
+          isReliable: true,
+          languages: [{ language: "en", percentage: 100 }]
+        }))
     },
     runtime: {
       connect() {

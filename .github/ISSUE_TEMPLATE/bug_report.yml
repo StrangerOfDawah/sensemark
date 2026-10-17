@@ -1,0 +1,38 @@
+name: Bug report
+description: Something translated wrong, the card looked broken, or the extension stopped working.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you selected, what you expected and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: A public URL where it happens, if you can share one.
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Translation mode
+      options:
+        - Free (built-in browser translator)
+        - OpenAI
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Sensemark version (chrome://extensions) and browser version.
+      placeholder: "Sensemark 1.5.0, Chrome 141"
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional. Please do not include API keys or private text.

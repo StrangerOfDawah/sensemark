@@ -1,3 +1,4 @@
+/* global cache, ping, onMenuClicked -- service-worker globals used inside worker.evaluate() */
 // E2E: настоящий Chromium с загруженным расширением, настоящие страницы и
 // выделения. OpenAI подменяется заглушкой — ключ и деньги не нужны.
 // Запуск: npm run test:e2e   Скриншоты для ручного просмотра: dist/e2e-screenshots/
@@ -128,10 +129,13 @@ beforeEach(async () => {
 // ---------- помощники ----------
 
 async function setSettings(overrides) {
-  await worker.evaluate(
-    (settings) => chrome.storage.local.set(settings),
-    { provider: "openai", apiKey: "sk-test", privacyConsentVersion: 1, autoTranslate: true, ...overrides }
-  );
+  await worker.evaluate((settings) => chrome.storage.local.set(settings), {
+    provider: "openai",
+    apiKey: "sk-test",
+    privacyConsentVersion: 1,
+    autoTranslate: true,
+    ...overrides
+  });
 }
 
 async function openPage(name, html, { colorScheme = "light" } = {}) {
@@ -408,7 +412,6 @@ test("окно ручного перевода: вставка текста за
   await page.close();
 });
 
-
 // ---------- случайные выделения и управление автопереводом ----------
 
 const AUTO_BUTTON = "#__gpt_translate_popup_host__ [data-act=auto]";
@@ -537,7 +540,10 @@ test("пауза заканчивается сама", async () => {
 
 test("выключить автоперевод из карточки и включить обратно с иконки расширения", async () => {
   replyWith("[[text]]\nПеревод.");
-  const page = await openPage("off", '<p id="p">Here is some text that needs a translation.</p><p id="q">This text should be translated a bit later.</p>');
+  const page = await openPage(
+    "off",
+    '<p id="p">Here is some text that needs a translation.</p><p id="q">This text should be translated a bit later.</p>'
+  );
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   await page.locator(AUTO_BUTTON).click();
@@ -573,7 +579,6 @@ test("тёмная тема: меню автоперевода", async () => {
   await shot(page, "11-auto-menu-dark");
   await page.close();
 });
-
 
 // ---------- бесплатный режим: встроенный переводчик Chrome ----------
 // Языковые модели Chrome в облачной машине скачать нельзя (нет доступа к
@@ -631,7 +636,13 @@ test("настройки: бесплатный режим скрывает вс�
 
 // ---------- «Хамелеон»: статус, цвет под страницу, длинный текст ----------
 
-function article({ background = "#ffffff", color = "#222222", font = "17px/1.65 Georgia, serif", width = 600, body }) {
+function article({
+  background = "#ffffff",
+  color = "#222222",
+  font = "17px/1.65 Georgia, serif",
+  width = 600,
+  body
+}) {
   return `<!doctype html><html><head><meta charset="utf-8"></head>
     <body style="margin: 0; background: ${background}; color: ${color}; font: ${font}">
       <div style="width: ${width}px; margin: 34px 0 0 90px">${body}</div>
@@ -642,7 +653,9 @@ const PARIS =
   "Paris is the capital and largest city of France, and on Sunday mornings its streets feel surprisingly quiet.";
 
 test("статус: пилюля «Перевожу с английского…» сжимается в кружок, затем раскрывается карточка", async () => {
-  replyWith("[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие.");
+  replyWith(
+    "[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие."
+  );
   api.delayMs = 2600;
   const page = await openPage("status", article({ body: `<p id="p">${PARIS}</p>` }));
   await selectAndRelease(page, "#p");
@@ -678,13 +691,17 @@ test("тёмная страница: пилюля и карточка тёмны
   );
   await selectAndRelease(page, "#p");
   await page.locator(STATUS).waitFor();
-  const pillBackground = await page.locator(STATUS).evaluate((element) => getComputedStyle(element).backgroundColor);
+  const pillBackground = await page
+    .locator(STATUS)
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
   assert.notEqual(pillBackground, "rgb(255, 255, 255)", "пилюля не белая на тёмном сайте");
   await shot(page, "17-status-dark");
 
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor({ timeout: 6000 });
   assert.equal(await page.locator(CARD).getAttribute("data-scheme"), "dark");
-  const cardBackground = await page.locator(CARD).evaluate((element) => getComputedStyle(element).backgroundColor);
+  const cardBackground = await page
+    .locator(CARD)
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
   assert.notEqual(cardBackground, "rgb(255, 255, 255)", "карточка тёмная");
   assert.equal(cardBackground, pillBackground, "кружок и карточка одного цвета");
   await shot(page, "17b-card-dark");
@@ -706,7 +723,9 @@ test("сепия: тёплая карточка и перевод размеро
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   const size = await page.locator(`${CARD} .tr`).evaluate((element) => getComputedStyle(element).fontSize);
   assert.equal(size, "19px");
-  const background = await page.locator(CARD).evaluate((element) => getComputedStyle(element).backgroundColor);
+  const background = await page
+    .locator(CARD)
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
   assert.notEqual(background, "rgb(255, 255, 255)", "карточка тёплая, а не белая");
   await shot(page, "18-sepia");
   await page.close();
@@ -784,7 +803,9 @@ test("шрифт Golos Text из настроек подключается из 
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .acts:not(.pending)`).waitFor();
   await page.waitForFunction(() => document.fonts.check('16px "Sensemark Golos"', "Париж"));
-  const family = await page.locator(`${CARD} .tr`).evaluate((element) => getComputedStyle(element).fontFamily);
+  const family = await page
+    .locator(`${CARD} .tr`)
+    .evaluate((element) => getComputedStyle(element).fontFamily);
   assert.match(family, /Sensemark Golos/);
   await shot(page, "22-font-golos");
   await page.close();

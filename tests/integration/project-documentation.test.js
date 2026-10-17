@@ -48,9 +48,10 @@ test("agent policy requires regression tests and documentation updates", () => {
   assert.match(agents, /height: 100%/);
   assert.match(agents, /один API-запрос/);
 
-  assert.match(template, /Для каждой новой функции добавлен или обновлён автоматический тест/);
-  assert.match(template, /Для каждого исправленного бага добавлен регрессионный тест/);
-  assert.match(template, /Markdown-файлы[\s\S]*актуализированы/);
+  assert.match(template, /New behaviour has an automated test/);
+  assert.match(template, /every fixed bug has a regression test/);
+  assert.match(template, /Affected docs are updated/);
+  assert.match(template, /npm run design:status/);
 });
 
 test("changelog contains the package version and documented release history", () => {
@@ -62,10 +63,7 @@ test("changelog contains the package version and documented release history", ()
   assert.equal(packageJson.version, manifest.version);
   assert.equal(packageLock.version, manifest.version);
   assert.equal(packageLock.packages[""].version, manifest.version);
-  assert.match(
-    changelog,
-    new RegExp(`^## \\[${manifest.version.replaceAll(".", "\\.")}\\]`, "m")
-  );
+  assert.match(changelog, new RegExp(`^## \\[${manifest.version.replaceAll(".", "\\.")}\\]`, "m"));
   assert.match(changelog, /^## \[1\.2\.0\]/m);
   assert.match(changelog, /^## \[1\.1\.0\]/m);
 });
@@ -75,20 +73,14 @@ test("local Markdown links in project guidance resolve to existing files", () =>
 
   for (const file of markdownFiles) {
     const source = read(file);
-    const links = [...source.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)].map(
-      (match) => match[1].trim()
-    );
+    const links = [...source.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1].trim());
 
     for (const link of links) {
       if (/^(?:https?:|mailto:|#)/i.test(link)) continue;
       const target = decodeURIComponent(link.split("#", 1)[0]);
       if (!target) continue;
       const resolved = path.resolve(root, path.dirname(file), target);
-      assert.equal(
-        fs.existsSync(resolved),
-        true,
-        `${file} references missing local file: ${link}`
-      );
+      assert.equal(fs.existsSync(resolved), true, `${file} references missing local file: ${link}`);
     }
   }
 });

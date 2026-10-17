@@ -35,13 +35,7 @@
   const parseTextResponse = dependencies.textResponse?.parse;
   const parseWordResponse = dependencies.wordResponse?.parse;
 
-  if (
-    !detectScripts ||
-    !hasMultipleScripts ||
-    !isRussianOnly ||
-    !parseTextResponse ||
-    !parseWordResponse
-  ) {
+  if (!detectScripts || !hasMultipleScripts || !isRussianOnly || !parseTextResponse || !parseWordResponse) {
     throw new Error("Sensemark: manual translation dependencies are unavailable.");
   }
 

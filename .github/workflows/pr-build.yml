@@ -31,6 +31,12 @@ jobs:
       - name: Install locked test dependencies
         run: npm ci --ignore-scripts
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Validate extension structure
         run: npm run check
 
@@ -52,8 +58,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Build extension archive
-        run: bash scripts/package-extension.sh
+      - name: Build extension archive and Safari kit
+        run: npm run safari:kit
 
       - name: Validate and prepare unpacked test build
         run: |

@@ -30,7 +30,10 @@ test("Safari kit ships the native Swift sources, the installer and the guide", (
   ]) {
     assert.ok(fs.existsSync(path.join(ROOT, file)), file);
   }
-  const handler = fs.readFileSync(path.join(ROOT, "platforms/safari/native/SafariWebExtensionHandler.swift"), "utf8");
+  const handler = fs.readFileSync(
+    path.join(ROOT, "platforms/safari/native/SafariWebExtensionHandler.swift"),
+    "utf8"
+  );
   // Swift отвечает на те же операции, что посылает createAppleBridge.
   for (const op of ["detect", "availability", "translate", "openApp"]) {
     assert.match(handler, new RegExp(`case "${op}"`), op);

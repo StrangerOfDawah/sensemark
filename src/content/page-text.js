@@ -44,7 +44,11 @@
       background = dark ? { r: 18, g: 18, b: 18, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
     }
     const style = getComputedStyle(start);
-    return { background, text: globalThis.SensemarkCardTheme.parseColor(style.color), fontSize: style.fontSize };
+    return {
+      background,
+      text: globalThis.SensemarkCardTheme.parseColor(style.color),
+      fontSize: style.fontSize
+    };
   }
 
   function extractVisibleRangeText(range) {
@@ -57,16 +61,12 @@
     if (root.nodeType === Node.TEXT_NODE) {
       nodes.push(root);
     } else {
-      const walker = document.createTreeWalker(
-        root,
-        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode: (node) =>
-            node.nodeType === Node.TEXT_NODE || node.nodeName === "BR"
-              ? NodeFilter.FILTER_ACCEPT
-              : NodeFilter.FILTER_SKIP
-        }
-      );
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+        acceptNode: (node) =>
+          node.nodeType === Node.TEXT_NODE || node.nodeName === "BR"
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP
+      });
       let node;
       while ((node = walker.nextNode())) nodes.push(node);
     }
@@ -189,10 +189,7 @@
       style.visibility === "collapse" ||
       Number(style.opacity) === 0 ||
       style.clipPath === "inset(50%)" ||
-      (style.position === "absolute" &&
-        style.overflow === "hidden" &&
-        rect.width <= 1 &&
-        rect.height <= 1);
+      (style.position === "absolute" && style.overflow === "hidden" && rect.width <= 1 && rect.height <= 1);
 
     const visible = !hidden && isVisibleElement(element.parentElement, cache);
     cache.set(element, visible);

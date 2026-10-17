@@ -113,7 +113,10 @@ test("short non-Latin text falls back to the language of its script", async () =
 
 test("an unsupported language explains how to switch to OpenAI", async () => {
   await assert.rejects(
-    engine(fakeTranslator({ unsupported: ["ja"] })).run({ text: "日本の保育園です", sourceScripts: ["Japanese"] }),
+    engine(fakeTranslator({ unsupported: ["ja"] })).run({
+      text: "日本の保育園です",
+      sourceScripts: ["Japanese"]
+    }),
     (error) => {
       assert.equal(error.code, "unsupported");
       assert.match(error.message, /не умеет переводить с японского/);
@@ -135,7 +138,9 @@ test("a missing language pack needs one click, then translation works", async ()
   const progress = [];
   const create = Translator.create;
   Translator.create = async (options) => {
-    const target = { addEventListener: (_name, listener) => [0.25, 1].forEach((loaded) => listener({ loaded })) };
+    const target = {
+      addEventListener: (_name, listener) => [0.25, 1].forEach((loaded) => listener({ loaded }))
+    };
     options.monitor?.(target);
     return create(options);
   };
@@ -195,7 +200,11 @@ test("local port turns engine errors into user-facing messages with a code", asy
   assert.equal(messages[0].language, "ar");
   assert.match(messages[0].error, /с арабского/);
 
-  const broken = Builtin.openLocalPort({ run: async () => { throw new Error("boom"); } });
+  const broken = Builtin.openLocalPort({
+    run: async () => {
+      throw new Error("boom");
+    }
+  });
   const errors = [];
   broken.onMessage.addListener((message) => errors.push(message));
   broken.postMessage({ type: "start", text: "x" });

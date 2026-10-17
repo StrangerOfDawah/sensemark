@@ -110,7 +110,11 @@ test("Safari: a language that is not downloaded yet asks for the «Скачат�
       return true;
     }
   );
-  assert.equal(native.state.calls.some((call) => call.op === "translate"), false, "без языка не переводим");
+  assert.equal(
+    native.state.calls.some((call) => call.op === "translate"),
+    false,
+    "без языка не переводим"
+  );
 });
 
 test("Safari: «Скачать» opens the Sensemark app and waits until the language is installed", async () => {

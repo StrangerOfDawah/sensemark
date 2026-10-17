@@ -75,17 +75,14 @@ test("manual response parses text and word translations", () => {
     copyText: "Готовый перевод."
   });
 
-  assert.deepEqual(
-    parseManualResponse("[[translation]]\nпочему\nдругие значения: зачем", true, "Why"),
-    {
-      visible: true,
-      kind: "translation",
-      text: "почему",
-      detail: "зачем",
-      detailLabel: "Другие значения",
-      copyText: "почему"
-    }
-  );
+  assert.deepEqual(parseManualResponse("[[translation]]\nпочему\nдругие значения: зачем", true, "Why"), {
+    visible: true,
+    kind: "translation",
+    text: "почему",
+    detail: "зачем",
+    detailLabel: "Другие значения",
+    copyText: "почему"
+  });
 });
 
 test("manual response preserves multilingual order and builds copy text", () => {
@@ -106,11 +103,7 @@ test("manual response preserves multilingual order and builds copy text", () => 
 
 test("manual response gives unknown terms a separate reference view", () => {
   assert.deepEqual(
-    parseManualResponse(
-      "[[reference]]\nназвание\nВероятно, название проекта.",
-      true,
-      "Sensemark"
-    ),
+    parseManualResponse("[[reference]]\nназвание\nВероятно, название проекта.", true, "Sensemark"),
     {
       visible: true,
       kind: "reference",

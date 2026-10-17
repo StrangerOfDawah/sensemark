@@ -1,35 +1,22 @@
-## Что изменилось
+## What changed
 
-<!-- Кратко опишите наблюдаемое изменение. -->
+<!-- The observable change, in a sentence or two. -->
 
-## Почему
+## Why
 
-<!-- Для бага укажите первопричину и исходный пользовательский пример. -->
+<!-- For a bug: the root cause and the original user example. -->
 
-## Тесты
+## Checklist
 
-- [ ] Для каждой новой функции добавлен или обновлён автоматический тест.
-- [ ] Для каждого исправленного бага добавлен регрессионный тест.
-- [ ] `npm test`
-- [ ] `npm run test:coverage`
-- [ ] `npm run check`
-- [ ] ZIP собран и проверен через `scripts/validate-extension.js`.
-- [ ] Все затронутые Markdown-файлы (README, `CHANGELOG.md`, `docs/*.md`,
-      `AGENTS.md`) актуализированы; если правки не нужны, причина указана ниже.
+- [ ] New behaviour has an automated test; every fixed bug has a regression test.
+- [ ] `npm run verify` passes (lint, formatting, structure, tests with coverage).
+- [ ] `npm run test:e2e` passes, or this change cannot affect the browser flow.
+- [ ] `npm run design:status` reports no change, or the visual change was reviewed
+      with screenshots before `npm run design:approve`.
+- [ ] Affected docs are updated (README, `CHANGELOG.md`, `docs/`, `AGENTS.md`).
 
-Если тест неприменим, объясните конкретную причину и укажите выполненную ручную
-проверку:
+## Risks
 
-<!-- Объяснение или «неприменимо». -->
-
-Документация не изменялась, потому что:
-
-<!-- Причина или «документация обновлена». -->
-
-## Риски
-
-- [ ] Количество API-запросов не выросло без необходимости.
-- [ ] Русский-only текст по-прежнему не открывает карточку и не тратит токены.
-- [ ] Изменение Chrome popup проверено в распакованной сборке.
-- [ ] Конфиденциальность, разрешения и remote code не изменились либо изменения
-      явно описаны.
+- [ ] No extra API requests without a reason.
+- [ ] Russian-only text still opens no card and spends no tokens.
+- [ ] Privacy, permissions and remote code are unchanged, or the change is described above.

@@ -29,9 +29,9 @@
       lastAppliedAt = now;
 
       const direction = deltaY > 0 ? -1 : 1;
-      const value = Math.round(
-        Math.min(config.max, Math.max(config.min, currentScale + direction * config.step)) * 100
-      ) / 100;
+      const value =
+        Math.round(Math.min(config.max, Math.max(config.min, currentScale + direction * config.step)) * 100) /
+        100;
       if (value === currentScale) {
         return { changed: false, value, reason: "limit" };
       }

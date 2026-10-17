@@ -1,0 +1,22 @@
+name: Feature request
+description: An idea that would make Sensemark more useful.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Proposed behaviour
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: >
+        Sensemark is universal by design: it works the same on every site, so
+        site-specific rules are out of scope. See docs/product-direction.md.

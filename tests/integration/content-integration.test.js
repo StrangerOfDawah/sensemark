@@ -346,7 +346,10 @@ test("free mode: a missing language pack is downloaded by one click on the card"
   await new Promise((resolve) => setTimeout(resolve, 20));
 
   const host = context.document.getElementById("__gpt_translate_popup_host__");
-  assert.match(host.shadowRoot.querySelector(".err-t").textContent, /скачать языковой пакет для перевода с английского/);
+  assert.match(
+    host.shadowRoot.querySelector(".err-t").textContent,
+    /скачать языковой пакет для перевода с английского/
+  );
   const button = host.shadowRoot.querySelector("[data-act=options]");
   assert.equal(button.textContent, "Скачать");
 
@@ -388,10 +391,15 @@ test("while waiting: a small pill, then a circle, and no empty card", async () =
 });
 
 test("a single word gets its source language from the sentence, not a wrong guess", async () => {
-  const context = await setupContent('<p>I went to the <span id="w">bank</span> yesterday to deposit a check.</p>');
+  const context = await setupContent(
+    '<p>I went to the <span id="w">bank</span> yesterday to deposit a check.</p>'
+  );
   context.select(context.document.getElementById("w"));
   await context.translateSelection();
-  context.ports[0].serverMessage({ type: "done", text: "[[translation]]\nбанк\nдругие значения: берег, вал" });
+  context.ports[0].serverMessage({
+    type: "done",
+    text: "[[translation]]\nбанк\nдругие значения: берег, вал"
+  });
 
   const badge = context.document.getElementById(CARD_HOST).shadowRoot.querySelector(".badge");
   assert.equal(badge.textContent, "Перевод · с английского");
@@ -538,9 +546,10 @@ test("manual light theme ignores a dark page; chosen font is loaded from the ext
   assert.equal(host.style.getPropertyValue("--surface"), "#ffffff");
   assert.match(host.style.getPropertyValue("--tr-font"), /Sensemark Literata/);
   assert.equal(host.style.getPropertyValue("--tr-size"), "18px", "размер как на странице");
-  assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [{ type: "get-font", font: "literata" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(context.sentMessages)), [
+    { type: "get-font", font: "literata" }
+  ]);
 });
-
 
 test("auto-translate is on by default: a fresh install translates a mouse selection", async () => {
   const context = await setupContent('<p id="x">The weather is nice today, let us go for a walk.</p>', {
@@ -572,7 +581,11 @@ function fakeAppleNative({ installed = ["en"] } = {}) {
   const native = async (payload) => {
     calls.push(payload);
     if (payload.op === "detect") {
-      return { ok: true, isReliable: true, languages: [{ language: /[ぁ-ん]/u.test(payload.text) ? "ja" : "en", percentage: 99 }] };
+      return {
+        ok: true,
+        isReliable: true,
+        languages: [{ language: /[ぁ-ん]/u.test(payload.text) ? "ja" : "en", percentage: 99 }]
+      };
     }
     if (payload.op === "availability") {
       return { ok: true, status: installed.includes(payload.source) ? "installed" : "supported" };
@@ -602,7 +615,9 @@ test("Safari free mode: the card shows the Apple translation and nothing goes to
   assert.equal(context.ports.length, 0, "к OpenAI ничего не отправлено");
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
   assert.equal(root.querySelector(".live").textContent, "APPLE The weather is nice today, let us go out.");
-  assert.ok(apple.calls.some((call) => call.op === "translate" && call.source === "en" && call.target === "ru"));
+  assert.ok(
+    apple.calls.some((call) => call.op === "translate" && call.source === "en" && call.target === "ru")
+  );
 });
 
 test("Safari free mode: a missing language offers «Скачать», which opens the Sensemark app", async () => {
@@ -618,7 +633,9 @@ test("Safari free mode: a missing language offers «Скачать», which open
 
   const root = context.document.getElementById(CARD_HOST).shadowRoot;
   assert.match(root.querySelector(".err-t").textContent, /приложение Sensemark/);
-  const download = [...root.querySelectorAll("button")].find((button) => button.textContent.includes("Скачать"));
+  const download = [...root.querySelectorAll("button")].find((button) =>
+    button.textContent.includes("Скачать")
+  );
   assert.ok(download, "есть кнопка «Скачать»");
   download.click();
   await wait(30);

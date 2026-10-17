@@ -34,9 +34,7 @@
   }
 
   function parseReference(lines) {
-    const category = (lines[0] || "неизвестный термин")
-      .replace(/^категория\s*:\s*/i, "")
-      .trim();
+    const category = (lines[0] || "неизвестный термин").replace(/^категория\s*:\s*/i, "").trim();
     const detail = lines
       .slice(1)
       .join(" ")
@@ -53,7 +51,9 @@
   }
 
   function parse(text) {
-    const value = String(text || "").trim().toLowerCase();
+    const value = String(text || "")
+      .trim()
+      .toLowerCase();
     const markers = [TRANSLATION_MARKER, REFERENCE_MARKER, SKIP_MARKER];
     if (value && markers.some((marker) => marker.startsWith(value) && marker !== value)) {
       return { mode: "pending", main: "", category: "", detail: "" };
