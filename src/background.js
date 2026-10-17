@@ -210,7 +210,11 @@ async function ping(tabId, frameId) {
           "ui-scale.js",
           "builtin-translator.js",
           "card-theme.js",
-          "content.js"
+          "content/card-styles.js",
+          "content/page-text.js",
+          "content/placement.js",
+          "content/status-pill.js",
+          "content/content.js"
         ]
       });
       await chrome.tabs.sendMessage(tabId, message, options);

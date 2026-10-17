@@ -35,7 +35,11 @@ zip -q -r "$ARCHIVE" \
   fonts/literata-cyrillic-400.woff2 \
   fonts/OFL-GolosText.txt \
   fonts/OFL-Literata.txt \
-  content.js \
+  content/card-styles.js \
+  content/page-text.js \
+  content/placement.js \
+  content/status-pill.js \
+  content/content.js \
   popup.html \
   popup.css \
   popup.js \

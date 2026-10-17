@@ -129,7 +129,11 @@ async function setupContent(markup, options = {}) {
     "ui-scale.js",
     "builtin-translator.js",
     "card-theme.js",
-    "content.js"
+    "content/card-styles.js",
+    "content/page-text.js",
+    "content/placement.js",
+    "content/status-pill.js",
+    "content/content.js"
   ]) {
     const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", file), "utf8");
     vm.runInContext(source, context, { filename: file });

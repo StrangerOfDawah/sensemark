@@ -1,5 +1,6 @@
-// Замок дизайна: хранит отпечатки (SHA-256) файлов, отвечающих за внешний вид.
-// Проверка: tests/design-lock.test.js. Принять намеренное изменение:
+// Design lock: SHA-256 fingerprints of everything that defines how Sensemark
+// looks. Checked by tests/integration/design-lock.test.js. To accept an
+// intentional, reviewed visual change:
 //   npm run design:approve
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -8,23 +9,23 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const lockFile = path.join(root, "tests", "design-lock.json");
 
-// Каждый элемент — отдельная часть дизайна. Для content.js берём только
-// CSS карточки, чтобы правки логики перевода не задевали замок.
+// Each entry is one part of the design. The on-page UI lives in its own
+// stylesheet module, so changes to the translation logic never touch the lock.
 const PARTS = {
   "popup.css": (read) => read("popup.css"),
   "popup.html": (read) => read("popup.html"),
   "options.html": (read) => read("options.html"),
-  // Все блоки <style> из content.js: карточка и пилюля статуса.
-  "content.js (CSS карточки)": (read) => {
-    const source = read("content.js");
+  // Every <style> block of the on-page UI: the status pill and the card.
+  "content/card-styles.js": (read) => {
+    const source = read("content/card-styles.js");
     const blocks = [...source.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1]);
-    if (!blocks.length) throw new Error("В content.js не найден блок <style> карточки.");
+    if (!blocks.length) throw new Error("No <style> blocks found in content/card-styles.js.");
     return blocks.join("\n/* --- */\n");
   }
 };
 
 function read(file) {
-  // Убираем различие переносов строк Windows/Unix, чтобы не было ложных срабатываний.
+  // Normalise Windows line endings so a checkout on Windows is not a false alarm.
   return fs.readFileSync(path.join(root, "src", file), "utf8").replace(/\r\n/g, "\n");
 }
 
@@ -49,15 +50,15 @@ function changedParts() {
 if (require.main === module) {
   if (!process.argv.includes("--approve")) {
     const changed = changedParts();
-    console.log(changed.length ? `Изменено: ${changed.join(", ")}` : "Дизайн не менялся.");
+    console.log(changed.length ? `Changed: ${changed.join(", ")}` : "Design unchanged.");
     process.exit(0);
   }
   const before = fs.existsSync(lockFile) ? changedParts() : Object.keys(PARTS);
   fs.writeFileSync(lockFile, `${JSON.stringify(currentHashes(), null, 2)}\n`);
   console.log(
     before.length
-      ? `Новая версия дизайна принята: ${before.join(", ")}`
-      : "Дизайн не менялся — принимать нечего."
+      ? `New design version accepted: ${before.join(", ")}`
+      : "Design unchanged — nothing to accept."
   );
 }
 

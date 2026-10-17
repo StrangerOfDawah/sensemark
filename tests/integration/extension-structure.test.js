@@ -64,7 +64,11 @@ test("content runtime declares every helper in manifest and fallback injection",
     "ui-scale.js",
     "builtin-translator.js",
     "card-theme.js",
-    "content.js"
+    "content/card-styles.js",
+    "content/page-text.js",
+    "content/placement.js",
+    "content/status-pill.js",
+    "content/content.js"
   ]);
 
   const background = read("background.js");

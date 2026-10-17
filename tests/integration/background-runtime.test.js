@@ -239,7 +239,11 @@ test("old tabs receive all content helpers after an initial ping failure", async
       "ui-scale.js",
       "builtin-translator.js",
       "card-theme.js",
-      "content.js"
+      "content/card-styles.js",
+      "content/page-text.js",
+      "content/placement.js",
+      "content/status-pill.js",
+      "content/content.js"
     ]
   );
   assert.equal(background.__state.sentMessages.length, 2);

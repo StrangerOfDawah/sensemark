@@ -12,6 +12,17 @@
   const createScaleController = globalThis.SensemarkScale?.createScaleController;
   const Builtin = globalThis.SensemarkBuiltin;
   const CardTheme = globalThis.SensemarkCardTheme;
+  const { CARD_STYLE, STATUS_STYLE, ICONS } = globalThis.SensemarkCardStyles || {};
+  const PageText = globalThis.SensemarkPageText;
+  const Placement = globalThis.SensemarkPlacement;
+  const {
+    extractContext,
+    extractSelectedImages,
+    extractVisibleRangeText,
+    isEditableSelection,
+    isShort,
+    samplePage
+  } = PageText || {};
   if (
     !parseWordResponse ||
     !parseTextResponse ||
@@ -22,7 +33,11 @@
     !joinSelectionParts ||
     !createScaleController ||
     !Builtin ||
-    !CardTheme
+    !CardTheme ||
+    !CARD_STYLE ||
+    !PageText ||
+    !Placement ||
+    !globalThis.SensemarkStatusPill
   ) {
     console.error("Sensemark: response helpers are unavailable.");
     return;
@@ -30,7 +45,6 @@
   window.__gptTranslateLoaded = true;
 
   const HOST_ID = "__gpt_translate_popup_host__";
-  const STATUS_HOST_ID = "__sensemark_status_host__";
   const MAX_CHARS = 5000;
 
   let host = null;
@@ -48,7 +62,6 @@
   let layout = { kind: "anchor" };
   let anchorInfo = null;
   let anchorOffset = null;
-  let lastStatusPoint = null;
 
   // Размеры карточки живут в storage, чтобы держаться на всех страницах.
   const VIEW_DEFAULTS = { uiScale: 1, cardWidth: 0, cardHeight: 0 };
@@ -180,16 +193,6 @@
     return Boolean(autoTranslate) && Date.now() >= autoPausedUntil;
   }
 
-  // Выделение внутри поля ввода или редактора — это правка, а не чтение.
-  function isEditableSelection() {
-    const active = document.activeElement;
-    if (active && (/^(?:INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) {
-      return true;
-    }
-    const anchor = window.getSelection()?.anchorNode;
-    const element = anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
-    return Boolean(element?.isContentEditable);
-  }
 
   function cancelPendingAuto() {
     clearTimeout(autoTimer);
@@ -198,7 +201,7 @@
       requestId++;
       currentPort?.disconnect(); // background оборвёт запрос
       currentPort = null;
-      hideStatus();
+      pill.hide();
     }
     autoPendingId = 0;
   }
@@ -259,29 +262,6 @@
     return { ...anchor, text, rect, context, wordMode, sourceScripts: detectSignificantScripts(text) };
   }
 
-  // Цвет фона и текста там, где человек читает, — по ним карточка
-  // подстраивается под страницу. Прозрачные слои пропускаем до первого фона.
-  function samplePage(range) {
-    const node = range.startContainer;
-    const start = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) || document.body;
-    let background = null;
-    for (let element = start; element; element = element.parentElement) {
-      const color = CardTheme.parseColor(getComputedStyle(element).backgroundColor);
-      if (color && color.a >= 0.5) {
-        background = color;
-        break;
-      }
-    }
-    if (!background) {
-      // У страницы нет своего фона: Chrome рисует белый, а тёмный — только
-      // если сайт сам объявил тёмную схему.
-      const scheme = getComputedStyle(document.documentElement).colorScheme || "";
-      const dark = /dark/.test(scheme) && !/light/.test(scheme);
-      background = dark ? { r: 18, g: 18, b: 18, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
-    }
-    const style = getComputedStyle(start);
-    return { background, text: CardTheme.parseColor(style.color), fontSize: style.fontSize };
-  }
 
   // Палитра, шрифт и размер для карточки и пилюли этого выделения.
   function lookFor(info) {
@@ -329,167 +309,13 @@
     return loading;
   }
 
-  function extractVisibleRangeText(range) {
-    const root = range.commonAncestorContainer;
-    const nodes = [];
-    // Кэши на одно выделение: при выделении всей страницы иначе getComputedStyle
-    // вызывается заново для каждого предка каждого текстового узла.
-    const cache = { visible: new Map(), block: new Map(), noise: new Map() };
 
-    if (root.nodeType === Node.TEXT_NODE) {
-      nodes.push(root);
-    } else {
-      const walker = document.createTreeWalker(
-        root,
-        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode: (node) =>
-            node.nodeType === Node.TEXT_NODE || node.nodeName === "BR"
-              ? NodeFilter.FILTER_ACCEPT
-              : NodeFilter.FILTER_SKIP
-        }
-      );
-      let node;
-      while ((node = walker.nextNode())) nodes.push(node);
-    }
 
-    const parts = [];
-    for (const node of nodes) {
-      try {
-        if (!range.intersectsNode(node)) continue;
-        const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-        if (!element) continue;
 
-        if (node.nodeName === "BR") {
-          if (!isVisibleElement(element, cache.visible)) continue;
-          parts.push({
-            lineBreak: true,
-            block: blockOf(element, cache.block),
-            noise: isNoiseElement(element, cache.noise)
-          });
-          continue;
-        }
 
-        if (!isVisibleTextNode(node, cache.visible)) continue;
 
-        let start = 0;
-        let end = node.data.length;
-        if (node === range.startContainer) start = range.startOffset;
-        if (node === range.endContainer) end = range.endOffset;
-        const part = node.data.slice(start, end);
-        if (!part) continue;
 
-        parts.push({
-          text: part,
-          block: blockOf(element, cache.block),
-          noise: isNoiseElement(element, cache.noise),
-          preserveLines: /^(?:pre|break-spaces)/.test(getComputedStyle(element).whiteSpace || "")
-        });
-      } catch {
-        // Некоторые сложные Range на динамических страницах нельзя пересечь.
-      }
-    }
-    return joinSelectionParts(parts);
-  }
 
-  // Ближайший блочный предок: текст внутри одного блока — один абзац.
-  function blockOf(element, cache) {
-    if (cache.has(element)) return cache.get(element);
-    let current = element;
-    while (current && current !== document.body && current !== document.documentElement) {
-      const display = getComputedStyle(current).display;
-      if (display && !display.startsWith("inline") && display !== "contents") break;
-      current = current.parentElement;
-    }
-    const block = current || document.body;
-    cache.set(element, block);
-    return block;
-  }
-
-  // Мусор интерфейса, общий для любого сайта: элементы управления, меню и
-  // навигация, шапка/подвал/боковая панель сайта, сноски-ссылки.
-  // Ссылки внутри текста — это содержимое, их не трогаем.
-  const CONTROL_SELECTOR =
-    "button, input, select, textarea, option, summary, nav, menu, " +
-    '[role="button"], [role="menuitem"], [role="menu"], [role="menubar"], ' +
-    '[role="navigation"], [role="toolbar"], [role="tablist"], [role="tab"], ' +
-    '[role="search"], [role="tooltip"]';
-  const SITE_CHROME_SELECTOR =
-    'header, footer, aside, [role="banner"], [role="contentinfo"], [role="complementary"]';
-  const CONTENT_SELECTOR = 'article, main, [role="main"], [role="article"]';
-
-  function isNoiseElement(element, cache) {
-    if (cache.has(element)) return cache.get(element);
-    let noise = Boolean(element.closest(CONTROL_SELECTOR));
-    if (!noise) {
-      // Шапка статьи с заголовком — содержимое; шапка всего сайта — нет.
-      const chrome = element.closest(SITE_CHROME_SELECTOR);
-      noise = Boolean(chrome && !chrome.closest(CONTENT_SELECTOR));
-    }
-    if (!noise) {
-      // Сноска вида [1] — ссылка в верхнем индексе. Обычный x² остаётся.
-      const sup = element.closest("sup");
-      noise = Boolean(sup && (sup.querySelector("a") || sup.closest("a")));
-    }
-    cache.set(element, noise);
-    return noise;
-  }
-
-  function extractSelectedImages(range) {
-    const root =
-      range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-        ? range.commonAncestorContainer
-        : range.commonAncestorContainer.parentElement;
-    if (!root) return [];
-
-    const images = root.matches?.("img") ? [root] : [...root.querySelectorAll("img")];
-    return images.filter((image) => {
-      try {
-        if (!range.intersectsNode(image) || !isVisibleElement(image)) return false;
-        const rect = image.getBoundingClientRect();
-        return rect.width >= 12 && rect.height >= 12;
-      } catch {
-        return false;
-      }
-    });
-  }
-
-  function isVisibleElement(element, cache = new Map()) {
-    if (!element || element === document.documentElement) return true;
-    if (cache.has(element)) return cache.get(element);
-
-    const style = getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    const hidden =
-      element.hidden ||
-      element.inert ||
-      element.getAttribute("aria-hidden") === "true" ||
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      style.visibility === "collapse" ||
-      Number(style.opacity) === 0 ||
-      style.clipPath === "inset(50%)" ||
-      (style.position === "absolute" &&
-        style.overflow === "hidden" &&
-        rect.width <= 1 &&
-        rect.height <= 1);
-
-    const visible = !hidden && isVisibleElement(element.parentElement, cache);
-    cache.set(element, visible);
-    return visible;
-  }
-
-  function isVisibleTextNode(node, cache) {
-    if (!node.parentElement || !isVisibleElement(node.parentElement, cache)) return false;
-
-    const probe = document.createRange();
-    probe.selectNodeContents(node);
-    return [...probe.getClientRects()].some((rect) => rect.width > 1 && rect.height > 1);
-  }
-
-  function isShort(text) {
-    return text.length <= 40 && text.split(/\s+/).length <= 3;
-  }
 
   // Русский ли это текст и с какого языка переводим — для подписи
   // «Перевожу с английского…». Определяет сам Chrome, локально и бесплатно.
@@ -519,63 +345,7 @@
     }
   }
 
-  // Ближайший блочный предок — за его границы предложение не выходит.
-  function nearestBlock(node) {
-    let element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-    while (element && element !== document.body) {
-      const display = getComputedStyle(element).display;
-      if (display && !display.startsWith("inline") && display !== "contents") {
-        return element;
-      }
-      element = element.parentElement;
-    }
-    return element || document.body;
-  }
 
-  function extractContext(range, selectedText) {
-    const block = nearestBlock(range.startContainer);
-    if (!block) return null;
-
-    let full;
-    let offset;
-    try {
-      const whole = document.createRange();
-      whole.selectNodeContents(block);
-      full = whole.toString();
-
-      const before = document.createRange();
-      before.selectNodeContents(block);
-      before.setEnd(range.startContainer, range.startOffset);
-      offset = before.toString().length;
-    } catch {
-      return null; // выделение через границы узлов, с которыми Range не справился
-    }
-
-    if (!full || offset < 0 || offset > full.length) return null;
-
-    const LOOKAROUND = 400;
-    const BOUNDARY = /[.!?…\n\r]/;
-
-    let start = offset;
-    while (start > 0 && offset - start < LOOKAROUND && !BOUNDARY.test(full[start - 1])) {
-      start--;
-    }
-
-    let end = offset + selectedText.length;
-    const from = end;
-    while (end < full.length && end - from < LOOKAROUND && !BOUNDARY.test(full[end])) {
-      end++;
-    }
-    if (end < full.length) end++; // забираем сам знак конца предложения
-
-    const sentence = full.slice(start, end).replace(/\s+/g, " ").trim();
-
-    // Контекст полезен, только если он реально шире выделения и содержит его.
-    if (sentence.length <= selectedText.length + 5) return null;
-    if (!sentence.includes(selectedText)) return null;
-
-    return sentence;
-  }
 
   async function handleSelection({ auto = false } = {}) {
     autoTimer = null;
@@ -629,7 +399,7 @@
     // создаём. Она появится только вместе с первым содержательным фрагментом,
     // а пока ждём — только маленькая пилюля «Перевожу с английского…».
     if (host) close({ cancelRequest: false, animate: false });
-    hideStatus({ animate: false });
+    pill.hide({ animate: false });
     prepareCardFor(info);
 
     // Стриминг: перевод печатается по мере генерации, не дожидаясь всего ответа.
@@ -650,7 +420,7 @@
       if (currentPort === port) currentPort = null;
     };
     // Бесплатный режим отвечает за ~30 мс — тогда пилюля не мелькает зря.
-    scheduleStatus(info, id, {
+    pill.schedule(info, id, {
       label: info.language ? `Перевожу с ${info.language}…` : "Перевожу…"
     });
 
@@ -671,7 +441,7 @@
         }
         if (!started) {
           if (autoPendingId === id) autoPendingId = 0; // карточка показана — больше не отменяем
-          hideStatus();
+          pill.hide();
           beginStreamCard(info);
           started = true;
         }
@@ -684,7 +454,7 @@
         }
       } else if (message.type === "status") {
         // Например, скачивание языкового пакета — кольцо заполняется по-настоящему.
-        if (!started) showStatus(info, id, statusFromMessage(message));
+        if (!started) pill.show(info, id, statusFromMessage(message));
       } else if (message.type === "error") {
         release();
         port.disconnect();
@@ -702,7 +472,7 @@
                 // Chrome сообщает настоящий процент; переводчик Apple скачивает
                 // язык в приложении Sensemark — там кольцо просто крутится.
                 const labels = builtinEngine.labels;
-                showStatus(info, downloadId, {
+                pill.show(info, downloadId, {
                   label: labels.downloading(name),
                   kind: "download",
                   progress: labels.reportsProgress ? 0 : null
@@ -710,7 +480,7 @@
                 try {
                   await builtinEngine.prepare(message.language, (progress) => {
                     if (downloadId !== requestId) return;
-                    showStatus(info, downloadId, {
+                    pill.show(info, downloadId, {
                       label: `Скачиваю ${name} · ${Math.round(progress * 100)}%`,
                       kind: "download",
                       progress
@@ -777,192 +547,18 @@
     };
   }
 
-  // ---------- пилюля статуса → кружок ----------
-  // Пока перевода нет, у выделения видна небольшая пилюля, через секунду она
-  // сжимается в кружок, а дуга продолжает бежать. Она отдельно от карточки:
-  // пустую карточку до первого фрагмента перевода мы не показываем.
-  const STATUS_DELAY = 200;
-  const COLLAPSE_AFTER = { translate: 1200, info: 4000, download: 3000 };
-  let statusHost = null;
-  let statusEl = null;
-  let statusInfo = null;
-  let statusTimer = null;
-  let collapseTimer = null;
+  // Status pill → circle while waiting for the first piece of translation.
+  const pill = globalThis.SensemarkStatusPill.createStatusPill({
+    isCurrent: (id) => id === requestId,
+    hasCard: () => Boolean(card),
+    liveRect: (info) => liveRect(info),
+    applyLook: (element, look) => applyLook(element, look),
+    style: STATUS_STYLE,
+    placement: Placement
+  });
 
-  function scheduleStatus(info, id, status) {
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => {
-      statusTimer = null;
-      if (id === requestId && !card) showStatus(info, id, status);
-    }, STATUS_DELAY);
-  }
 
-  function showStatus(info, id, { label, kind = "translate", progress = null, hint = "" }) {
-    if (id !== requestId) return;
-    clearTimeout(statusTimer);
-    statusTimer = null;
-    const fresh = !statusEl;
-    if (fresh) {
-      statusHost = document.createElement("div");
-      statusHost.id = STATUS_HOST_ID;
-      statusHost.style.cssText = "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
-      const root = statusHost.attachShadow({ mode: "open" });
-      root.innerHTML = `${STATUS_STYLE}
-        <div class="status" role="status" aria-live="polite">
-          <svg class="ring" viewBox="0 0 20 20" aria-hidden="true">
-            <circle class="track" cx="10" cy="10" r="7.5"/>
-            <circle class="arc" cx="10" cy="10" r="7.5" pathLength="100"/>
-          </svg>
-          <span class="lbl"></span>
-        </div>`;
-      document.documentElement.appendChild(statusHost);
-      statusEl = root.querySelector(".status");
-    }
-    statusInfo = info;
-    applyLook(statusHost, info.look);
-    statusEl.dataset.scheme = info.look?.scheme || "light";
-    statusEl.classList.toggle("drawer", info.layout?.kind === "drawer");
 
-    const labelEl = statusEl.querySelector(".lbl");
-    const changedKind = statusEl.dataset.kind !== kind;
-    labelEl.textContent = label;
-    statusEl.title = hint || label;
-    statusEl.setAttribute("aria-label", label);
-    statusEl.dataset.kind = kind;
-    const determinate = typeof progress === "number";
-    statusEl.classList.toggle("determinate", determinate);
-    if (determinate) statusEl.style.setProperty("--progress", String(Math.round(progress * 100)));
-
-    if (fresh || changedKind) {
-      statusEl.classList.remove("mini");
-      clearTimeout(collapseTimer);
-      collapseTimer = setTimeout(() => statusEl?.classList.add("mini"), COLLAPSE_AFTER[kind] || 1200);
-    }
-    placeStatus();
-    if (fresh) requestAnimationFrame(() => statusEl?.classList.add("in"));
-  }
-
-  function placeStatus() {
-    if (!statusEl || !statusInfo) return;
-    const rect = liveRect(statusInfo);
-    const kind = statusInfo.layout?.kind || "anchor";
-    if (kind === "drawer") {
-      lastStatusPoint = { x: window.innerWidth - 16, y: 16, fixed: true };
-      return;
-    }
-    let x;
-    let y;
-    if (kind === "margin") {
-      x = rect.right + 28;
-      y = Math.max(rect.top, Math.min(16, rect.bottom - 28));
-    } else {
-      x = Math.max(10, Math.min(rect.left, window.innerWidth - 200));
-      y = rect.bottom + 8 + 28 > window.innerHeight ? rect.top - 8 - 28 : rect.bottom + 8;
-    }
-    statusEl.style.left = `${x + window.scrollX}px`;
-    statusEl.style.top = `${y + window.scrollY}px`;
-    lastStatusPoint = { x, y: y + 14 };
-  }
-
-  function hideStatus({ animate = true } = {}) {
-    clearTimeout(statusTimer);
-    clearTimeout(collapseTimer);
-    statusTimer = null;
-    collapseTimer = null;
-    if (!statusHost) {
-      lastStatusPoint = null;
-      return;
-    }
-    const dying = statusHost;
-    if (animate && statusEl) {
-      statusEl.classList.add("out");
-      setTimeout(() => dying.remove(), 160);
-    } else {
-      dying.remove();
-    }
-    statusHost = null;
-    statusEl = null;
-    statusInfo = null;
-  }
-
-  const STATUS_STYLE = `
-      <style>
-        :host { all: initial; }
-        .status {
-          position: absolute;
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          height: 28px;
-          padding: 0 12px 0 7px;
-          box-sizing: border-box;
-          border-radius: 999px;
-          background: var(--surface, #fff);
-          border: 1px solid var(--border, #e3e3e8);
-          box-shadow: var(--shadow, 0 10px 26px rgba(0, 0, 0, 0.12));
-          color: var(--sec, #62646f);
-          font: 500 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-          letter-spacing: -0.003em;
-          -webkit-font-smoothing: antialiased;
-          white-space: nowrap;
-          opacity: 0;
-          transform: translateY(3px) scale(0.96);
-          transform-origin: 14px 50%;
-          transition:
-            opacity 0.2s ease,
-            transform 0.24s cubic-bezier(0.21, 1.02, 0.36, 1),
-            padding 0.38s cubic-bezier(0.32, 0.72, 0, 1),
-            gap 0.38s cubic-bezier(0.32, 0.72, 0, 1);
-        }
-        .status.in { opacity: 1; transform: none; }
-        .status.out { opacity: 0; transform: scale(0.9); }
-        .status.drawer { position: fixed; top: 16px; right: 16px; }
-        .lbl {
-          display: inline-block;
-          max-width: 280px;
-          overflow: hidden;
-          transition: max-width 0.38s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease;
-        }
-        /* Кружок: подпись уезжает, остаётся кольцо прогресса. */
-        .status.mini { gap: 0; padding: 0 6px; }
-        .status.mini .lbl { max-width: 0; opacity: 0; }
-        .ring { width: 14px; height: 14px; flex: none; animation: spin 0.9s linear infinite; }
-        .ring circle { fill: none; stroke-width: 2.4; }
-        .track { stroke: var(--track, #e6e6ef); }
-        .arc {
-          stroke: var(--accent, #5e5ce6);
-          stroke-linecap: round;
-          stroke-dasharray: 26 100;
-          transform: rotate(-90deg);
-          transform-origin: 50% 50%;
-          transition: stroke-dasharray 0.3s ease;
-        }
-        .status.determinate .ring { animation: none; }
-        .status.determinate .arc { stroke-dasharray: var(--progress, 0) 100; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (prefers-reduced-motion: reduce) {
-          .status, .lbl { transition: opacity 0.2s ease; }
-          .ring { animation-duration: 2.4s; }
-        }
-        @media (prefers-contrast: more) {
-          .status { border-color: var(--text, #16171c); color: var(--text, #16171c); }
-        }
-      </style>`;
-
-  const ICONS = {
-    close:
-      '<svg viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    copy:
-      '<svg viewBox="0 0 16 16" fill="none"><rect x="5.2" y="5.2" width="8" height="8.6" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M10.8 3.4v-.2a1.8 1.8 0 0 0-1.8-1.8H4.6a1.8 1.8 0 0 0-1.8 1.8V8a1.8 1.8 0 0 0 1.8 1.8h.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
-    check:
-      '<svg viewBox="0 0 16 16" fill="none"><path d="M3.2 8.6 6.6 12l6.2-7.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    chevron:
-      '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.5 10 8l-4 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    pause:
-      '<svg viewBox="0 0 16 16" fill="none"><path d="M6 4.2v7.6M10 4.2v7.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-    warn:
-      '<svg viewBox="0 0 16 16" fill="none"><path d="M8 2.4 14.5 13a1 1 0 0 1-.86 1.5H2.36A1 1 0 0 1 1.5 13L8 2.4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 6.4v3.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="8" cy="11.8" r=".9" fill="currentColor"/></svg>'
-  };
 
   function ensureHost() {
     if (host && document.documentElement.contains(host)) return;
@@ -974,401 +570,7 @@
     host.style.cssText =
       "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
     shadow = host.attachShadow({ mode: "open" });
-    shadow.innerHTML = `
-      <style>
-        /* Цвета приходят переменными из card-theme.js (на самом хосте):
-           под страницу, светлая или тёмная. Здесь — только запасные значения;
-           они стоят на :host, чтобы не перекрывать цвета страницы. */
-        :host {
-          all: initial;
-          --surface: #ffffff;
-          --border: #e3e3e8;
-          --text: #16171c;
-          --sec: #62646f;
-          --hair: rgba(22, 23, 28, 0.06);
-          --fill: rgba(22, 23, 28, 0.06);
-          --fill-hover: rgba(22, 23, 28, 0.11);
-          --accent: #5e5ce6;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-
-        .card {
-          --warn: #ff9500;
-          --ok: #34c759;
-          --notch-x: 28px;
-          position: absolute;
-          width: max-content;
-          min-width: 240px;
-          max-width: 420px;
-          border-radius: 16px;
-          border: 1px solid var(--border);
-          background: var(--surface);
-          box-shadow: var(--shadow, 0 14px 36px rgba(0, 0, 0, 0.14), 0 2px 4px rgba(0, 0, 0, 0.05));
-          color: var(--text);
-          /* Всё внутри задано в em — карточка целиком тянется от этого размера. */
-          font: calc(14px * var(--ui-scale, 1)) / 1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-          -webkit-font-smoothing: antialiased;
-          opacity: 0;
-          display: flex;
-          flex-direction: column;
-        }
-        .card[data-scheme="dark"] { --warn: #ff9f0a; --ok: #30d158; }
-        .card.in {
-          opacity: 1;
-          animation: pop 0.34s cubic-bezier(0.21, 1.02, 0.36, 1);
-          transition:
-            top 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-            left 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-            font-size 0.09s ease-out;
-        }
-        /* При прокрутке карточка следует за текстом без задержки. */
-        .card.in.tracking { transition: none; }
-        .card.out {
-          opacity: 0;
-          transform: translateY(4px) scale(0.98);
-          transition: opacity 0.16s ease, transform 0.16s ease;
-        }
-        @keyframes pop {
-          from { opacity: 0; transform: scale(0.94); }
-          to { opacity: 1; transform: none; }
-        }
-
-        /* Носик к выделению. */
-        .card.anchor::before {
-          content: "";
-          position: absolute;
-          top: -6px;
-          left: var(--notch-x);
-          width: 11px;
-          height: 11px;
-          margin-left: -5.5px;
-          transform: rotate(45deg);
-          background: var(--surface);
-          border-left: 1px solid var(--border);
-          border-top: 1px solid var(--border);
-          border-radius: 2px 0 0 0;
-        }
-        .card.anchor.above::before {
-          top: auto;
-          bottom: -6px;
-          border: 0;
-          border-right: 1px solid var(--border);
-          border-bottom: 1px solid var(--border);
-          border-radius: 0 0 2px 0;
-        }
-        .card.anchor.free::before { display: none; }
-
-        /* Заметка на полях справа от длинного выделения. */
-        .card.margin { max-width: none; }
-        .bracket {
-          position: absolute;
-          width: 10px;
-          border: 2px solid var(--accent, #5e5ce6);
-          border-left: 0;
-          border-radius: 0 8px 8px 0;
-          opacity: 0.5;
-          pointer-events: none;
-        }
-        .bracket[hidden] { display: none; }
-
-        /* Панель у правого края окна, когда справа от текста нет места. */
-        .card.drawer {
-          position: fixed;
-          top: 0;
-          right: 0;
-          bottom: 0;
-          max-width: none;
-          border-radius: 0;
-          border-width: 0 0 0 1px;
-        }
-        .card.drawer.in { animation: slide 0.32s cubic-bezier(0.21, 1.02, 0.36, 1); }
-        @keyframes slide {
-          from { opacity: 0; transform: translateX(28px); }
-          to { opacity: 1; transform: none; }
-        }
-        .card.margin .bd, .card.drawer .bd { min-height: 0; }
-        .card.drawer .hd { padding-top: 1.1em; padding-bottom: 0.6em; border-bottom: 1px solid var(--hair); }
-        .card.drawer .bd { padding-top: 1em; display: flex; flex-direction: column; }
-        .card.margin .acts, .card.drawer .acts {
-          position: sticky;
-          bottom: -0.93em;
-          margin: 0.79em -1.14em -0.93em;
-          padding: 0.5em 1.14em 0.7em;
-          background: var(--surface);
-          border-top: 1px solid var(--hair);
-        }
-        /* В панели кнопки прижаты к низу окна. */
-        .card.drawer .acts { margin-top: auto; }
-        .card.margin .grip, .card.drawer .grip { display: none; }
-
-        .card.reference { --accent: #c56a00; border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
-        .card.reference[data-scheme="dark"] { --accent: #ff9f0a; }
-
-        .hd {
-          display: flex;
-          align-items: center;
-          flex: none;
-          padding: 0.79em 0.71em 0 1.14em;
-        }
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5em;
-          font-size: 0.86em;
-          font-weight: 600;
-          color: var(--sec);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .badge::before {
-          content: "";
-          width: 0.5em;
-          height: 0.5em;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #64d2ff, #8f5bff);
-          flex: none;
-        }
-        .card.reference .badge { color: var(--accent); }
-        .card.multilingual .badge { color: var(--accent); }
-        .card.reference .badge::before { background: linear-gradient(135deg, #ffd60a, #ff7a00); }
-        .sp { flex: 1; }
-
-        .bd {
-          flex: 1;
-          padding: 0.43em 1.14em 0.93em;
-          max-height: var(--bd-max, 340px);
-          overflow-y: auto;
-          animation: fade 0.22s ease;
-        }
-        .bd::-webkit-scrollbar { width: 6px; }
-        .bd::-webkit-scrollbar-thumb { background: var(--fill-hover); border-radius: 3px; }
-        @keyframes fade {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-
-        .tr {
-          font-family: var(--tr-font, inherit);
-          font-size: calc(var(--tr-size, 15px) * var(--ui-scale, 1));
-          line-height: 1.55;
-          letter-spacing: -0.003em;
-          white-space: pre-wrap;
-          overflow-wrap: break-word;
-          user-select: text;
-          -webkit-user-select: text;
-          cursor: text;
-        }
-        .card.reference .tr {
-          font-size: calc(var(--tr-size, 15px) * 1.08 * var(--ui-scale, 1));
-          font-weight: 650;
-        }
-
-        .term-kind {
-          display: inline-flex;
-          width: fit-content;
-          margin-bottom: 0.5em;
-          padding: 0.24em 0.62em;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--accent) 14%, transparent);
-          color: var(--accent);
-          font-size: 0.72em;
-          font-weight: 700;
-          letter-spacing: 0.07em;
-          text-transform: uppercase;
-        }
-        /* display: inline-flex выше перебивает атрибут hidden — без этой строки
-           пустой бейджик категории виден в каждой обычной карточке. */
-        .term-kind[hidden] { display: none; }
-        .reference-note {
-          margin-top: 0.3em;
-          color: var(--sec);
-          font-size: 0.82em;
-        }
-
-        .segments {
-          display: grid;
-          gap: 0.86em;
-        }
-        .segment + .segment {
-          padding-top: 0.79em;
-          border-top: 1px solid var(--hair);
-        }
-        .segment-lang {
-          display: inline-flex;
-          width: fit-content;
-          margin-bottom: 0.36em;
-          padding: 0.22em 0.58em;
-          border-radius: 999px;
-          background: color-mix(in srgb, var(--accent) 12%, transparent);
-          color: var(--accent);
-          font-size: 0.7em;
-          font-weight: 700;
-          letter-spacing: 0.055em;
-          text-transform: uppercase;
-        }
-        .segment-lang.kept {
-          background: var(--fill);
-          color: var(--sec);
-        }
-        .segment-text {
-          font-family: var(--tr-font, inherit);
-          font-size: calc(var(--tr-size, 15px) * var(--ui-scale, 1));
-          line-height: 1.55;
-          white-space: pre-wrap;
-          overflow-wrap: break-word;
-          user-select: text;
-          -webkit-user-select: text;
-        }
-
-        .alt {
-          margin-top: 0.79em;
-          padding-top: 0.71em;
-          border-top: 1px solid var(--hair);
-        }
-        .cap {
-          font-size: 0.75em;
-          font-weight: 600;
-          letter-spacing: 0.07em;
-          text-transform: uppercase;
-          color: var(--sec);
-          margin-bottom: 0.21em;
-        }
-        .alt-t {
-          font-family: var(--tr-font, inherit);
-          font-size: 0.93em;
-          color: var(--sec);
-          overflow-wrap: break-word;
-        }
-
-        .acts {
-          display: flex;
-          align-items: center;
-          gap: 0.29em;
-          margin-top: 0.64em;
-          transition: opacity 0.25s ease;
-        }
-        .acts.pending { opacity: 0; pointer-events: none; }
-
-        .caret {
-          display: inline-block;
-          width: 2px;
-          height: 1.05em;
-          margin-left: 1px;
-          vertical-align: -0.18em;
-          border-radius: 1px;
-          background: var(--accent);
-          animation: blink 1s steps(2) infinite;
-        }
-        @keyframes blink { 50% { opacity: 0; } }
-
-        .icon-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 2.14em;
-          height: 2.14em;
-          border: none;
-          border-radius: 0.57em;
-          background: var(--fill);
-          color: var(--sec);
-          cursor: pointer;
-          transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
-        }
-        .icon-btn:hover { background: var(--fill-hover); color: var(--text); }
-        .icon-btn:active { transform: scale(0.92); }
-        .icon-btn svg { width: 1em; height: 1em; }
-        .icon-btn.ok { color: var(--ok); }
-        .icon-btn.xs { width: 1.86em; height: 1.86em; border-radius: 0.5em; background: transparent; }
-        .icon-btn.xs:hover { background: var(--fill); }
-        .icon-btn.xs svg { width: 0.86em; height: 0.86em; }
-
-        .chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.21em;
-          border: none;
-          border-radius: 999px;
-          padding: 0.43em 0.86em;
-          font: 600 0.86em/1 -apple-system, BlinkMacSystemFont, sans-serif;
-          background: var(--fill);
-          color: var(--sec);
-          cursor: pointer;
-          transition: background 0.15s ease, color 0.15s ease;
-        }
-        .chip:hover { background: var(--fill-hover); color: var(--text); }
-        .chip.accent { color: var(--accent); }
-        .chip.accent:hover { color: var(--accent); }
-        .icon-btn.open { background: var(--fill-hover); color: var(--text); }
-        .icon-btn[hidden], .auto-menu[hidden], .auto-note[hidden] { display: none; }
-
-        .auto-menu {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: flex-end;
-          gap: 0.29em;
-          margin-top: 0.43em;
-        }
-        .auto-note {
-          margin-top: 0.57em;
-          color: var(--sec);
-          font-size: 0.82em;
-          line-height: 1.45;
-        }
-
-        .err {
-          display: flex;
-          gap: 9px;
-          align-items: flex-start;
-        }
-        .err svg { width: 1.14em; height: 1.14em; flex: none; margin-top: 0.14em; color: var(--warn); }
-        .err-t { font-size: 0.96em; color: var(--text); overflow-wrap: break-word; }
-
-        /* Уголок для изменения размера — свой, чтобы не тащить системный resize. */
-        .grip {
-          position: absolute;
-          right: 0;
-          bottom: 0;
-          width: 18px;
-          height: 18px;
-          cursor: nwse-resize;
-          opacity: 0;
-          transition: opacity 0.2s ease;
-          touch-action: none;
-        }
-        .card:hover .grip, .grip.active { opacity: 0.55; }
-        .grip:hover { opacity: 0.9 !important; }
-        .grip::after {
-          content: "";
-          position: absolute;
-          right: 5px;
-          bottom: 5px;
-          width: 7px;
-          height: 7px;
-          border-right: 1.5px solid var(--sec);
-          border-bottom: 1.5px solid var(--sec);
-          border-bottom-right-radius: 3px;
-        }
-
-        /* Процент масштаба показываем вместо заголовка, пока крутят колесо. */
-        .zoom {
-          font-size: 0.79em;
-          font-weight: 600;
-          letter-spacing: 0.06em;
-          color: var(--accent);
-          font-variant-numeric: tabular-nums;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .card.in, .card.drawer.in, .bd { animation: none; }
-          .card.in { transition: none; }
-          .caret { animation: none; }
-        }
-        @media (prefers-contrast: more) {
-          .card { border-color: var(--text); }
-          .badge, .cap, .reference-note, .auto-note { color: var(--text); }
-        }
-      </style>
+    shadow.innerHTML = `${CARD_STYLE}
       <div class="bracket" hidden></div>
       <div class="card anchor" role="dialog" aria-label="Перевод">
         <div class="hd">
@@ -1406,7 +608,7 @@
     (event) => {
       if (host && event.composedPath?.().includes(host)) return; // прокрутка внутри карточки
       if (card) placeNow({ decide: false });
-      if (statusEl) placeStatus();
+      pill.place();
     },
     { passive: true, capture: true }
   );
@@ -1419,7 +621,7 @@
         );
         place();
       }
-      if (statusEl) placeStatus();
+      pill.place();
     },
     { passive: true }
   );
@@ -1545,7 +747,7 @@
   // Карточка привязывается к выделению, берёт его оформление и место.
   function attachCard(info, cardLayout) {
     ensureHost();
-    hideStatus({ animate: false });
+    pill.hide({ animate: false });
     anchorInfo = info;
     anchorOffset = null;
     lastRect = info.rect;
@@ -1873,48 +1075,25 @@
 
     if (layout.kind === "margin") {
       card.style.maxHeight = `${vh - 32}px`;
-      const box = card.getBoundingClientRect();
-      // Пока выделение на экране, заметка держится рядом с ним, но не уходит
-      // ниже его конца.
-      const top = Math.max(rect.top, Math.min(16, rect.bottom - box.height));
-      const left = rect.right + 28;
-      card.style.left = `${left + sx}px`;
-      card.style.top = `${top + sy}px`;
-      bracket.style.left = `${rect.right + 10 + sx}px`;
-      bracket.style.top = `${rect.top + sy}px`;
-      bracket.style.height = `${Math.max(16, rect.height)}px`;
-      reveal({ left, top });
+      const note = Placement.marginPlacement({ rect, box: card.getBoundingClientRect() });
+      card.style.left = `${note.left + sx}px`;
+      card.style.top = `${note.top + sy}px`;
+      bracket.style.left = `${note.bracket.left + sx}px`;
+      bracket.style.top = `${note.bracket.top + sy}px`;
+      bracket.style.height = `${note.bracket.height}px`;
+      reveal(note);
       return;
     }
 
     const box = card.getBoundingClientRect();
     if (decide || !anchorOffset) {
-      const gap = 12;
-      const margin = 10;
-      let top;
-      let side;
-      if (rect.bottom + gap + box.height <= vh - margin) {
-        side = "below";
-        top = rect.bottom + gap;
-      } else if (rect.top - gap - box.height >= margin) {
-        side = "above";
-        top = rect.top - gap - box.height;
-      } else {
-        side = "free"; // не влезает ни снизу, ни сверху — внутри экрана, без носика
-        top = Math.max(margin, Math.min(rect.bottom + gap, vh - box.height - margin));
-      }
-      const wide = rect.width > box.width;
-      const pointX = wide ? rect.left + 28 : rect.left + rect.width / 2;
-      let left = wide ? rect.left - 6 : pointX - box.width / 2;
-      left = Math.max(margin, Math.min(left, vw - box.width - margin));
-      card.classList.toggle("above", side === "above");
-      card.classList.toggle("free", side === "free");
-      card.style.setProperty("--notch-x", `${Math.max(18, Math.min(pointX - left, box.width - 18))}px`);
-      anchorOffset = { x: left - rect.left, y: side === "above" ? top + box.height - rect.top : top - rect.bottom, side };
+      const spot = Placement.anchorPlacement({ rect, box, viewport: { width: vw, height: vh } });
+      card.classList.toggle("above", spot.side === "above");
+      card.classList.toggle("free", spot.side === "free");
+      card.style.setProperty("--notch-x", `${spot.notchX}px`);
+      anchorOffset = spot.offset;
     }
-    const left = rect.left + anchorOffset.x;
-    const top =
-      anchorOffset.side === "above" ? rect.top + anchorOffset.y - box.height : rect.bottom + anchorOffset.y;
+    const { left, top } = Placement.followAnchor({ rect, box, offset: anchorOffset });
     card.style.left = `${left + sx}px`;
     card.style.top = `${top + sy}px`;
     reveal({ left, top });
@@ -1923,10 +1102,10 @@
   // Первое появление: карточка раскрывается из того места, где был кружок.
   function reveal(point) {
     if (card.classList.contains("in")) return;
-    if (point && lastStatusPoint && !lastStatusPoint.fixed) {
-      card.style.transformOrigin = `${lastStatusPoint.x - point.left}px ${lastStatusPoint.y - point.top}px`;
+    const origin = pill.takeOrigin();
+    if (point && origin && !origin.fixed) {
+      card.style.transformOrigin = `${origin.x - point.left}px ${origin.y - point.top}px`;
     }
-    lastStatusPoint = null;
     card.classList.add("in");
   }
 
@@ -1934,12 +1113,12 @@
     if (!host) {
       if (cancelRequest) {
         // Пилюля ещё ждёт ответа — Esc и клик мимо отменяют и её.
-        if (statusHost) {
+        if (pill.visible) {
           requestId++;
           currentPort?.disconnect();
           currentPort = null;
         }
-        hideStatus({ animate });
+        pill.hide({ animate });
       }
       return;
     }
@@ -1953,7 +1132,7 @@
     streamState = null;
 
     document.removeEventListener("mousedown", onOutsideClick, true);
-    if (cancelRequest) hideStatus({ animate: false });
+    if (cancelRequest) pill.hide({ animate: false });
 
     const dying = host;
     if (animate) {
