@@ -1,26 +1,26 @@
 #!/usr/bin/env node
-// Собирает «набор для Safari»: dist/sensemark-safari-vX.Y.Z.zip.
+// Builds the Safari kit: dist/sensemark-safari-vX.Y.Z.zip.
 //
-// Внутри:
-//   extension/  — то же расширение, что для Chrome, но с манифестом для Safari;
-//   native/     — Swift-файлы приложения Sensemark (переводчик Apple, окно языков);
-//   install.sh  — на Mac создаёт Xcode-проект и подставляет эти файлы;
-//   README.md   — пошаговая инструкция.
+// Contents:
+//   extension/  the same extension as for Chrome, with a Safari manifest;
+//   native/     Swift files of the Sensemark app (Apple translator, language window);
+//   install.sh  creates the Xcode project on a Mac and drops these files in;
+//   README.md   the step-by-step guide (in Russian).
 //
-// Chrome-сборка не меняется: разрешение nativeMessaging добавляется только
-// в Safari-манифест.
+// The Chrome build is unchanged: the nativeMessaging permission is added only
+// to the Safari manifest.
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = path.resolve(__dirname, "..");
 
-// Манифест Chrome → манифест Safari.
+// Chrome manifest → Safari manifest.
 function safariManifest(chromeManifest) {
   const manifest = JSON.parse(JSON.stringify(chromeManifest));
-  // Мост к приложению Sensemark (переводчик Apple, определение языка).
+  // Bridge to the Sensemark app (Apple translator, language detection).
   manifest.permissions = [...new Set([...(manifest.permissions || []), "nativeMessaging"])];
-  // Ключ только для Chrome; Safari его не знает.
+  // Chrome-only key; Safari does not know it.
   delete manifest.minimum_chrome_version;
   return manifest;
 }
@@ -30,7 +30,7 @@ function build() {
   const version = chromeManifest.version;
   const archive = path.join(ROOT, "dist", `sensemark-v${version}.zip`);
   if (!fs.existsSync(archive)) {
-    throw new Error(`Сначала соберите расширение: bash scripts/package-extension.sh (нет ${archive})`);
+    throw new Error(`Build the extension first: npm run package (missing ${archive})`);
   }
 
   const kitName = `sensemark-safari-v${version}`;

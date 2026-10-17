@@ -34,14 +34,14 @@ const testBtn = document.getElementById("test");
 const testStatus = document.getElementById("testStatus");
 const toastEl = document.getElementById("toast");
 
-// Горячая клавиша — под текущую платформу.
+// The keyboard shortcut for the current platform.
 const isMac = /Mac/i.test(navigator.platform);
 document.getElementById("kbd").innerHTML = isMac
   ? "<kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd>"
   : "<kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Y</kbd>";
 
-// Страница, открытая как обычный файл (file://), не имеет доступа к chrome.*
-// Без этой проверки скрипт молча падал бы и элементы просто ничего не делали.
+// A page opened as a plain file (file://) has no access to chrome.*.
+// Without this check the script would fail silently and the controls would do nothing.
 const inExtension = typeof chrome !== "undefined" && chrome.storage?.local;
 
 if (!inExtension) {
@@ -51,15 +51,15 @@ if (!inExtension) {
   init();
 }
 
-// Поле не должно быть шире того, что в нём написано.
+// The field must not be wider than its content.
 const fitKey = () => {
-  // Скрытый ключ рисуется точками — они уже букв, держим компактно.
+  // A hidden key is drawn as dots, which are narrower than letters; keep it compact.
   const len = Math.max(8, Math.min([...fields.apiKey.value].length + 1, 26));
   fields.apiKey.style.width = `calc(${len}ch + 44px)`;
 };
 
-// В Safari бесплатный режим — это переводчик Apple, а не Chrome: меняем
-// только подписи, вёрстка та же.
+// In Safari free mode is Apple's translator, not Chrome's: only the labels
+// change, the layout stays the same.
 function adaptForSafari() {
   let safari;
   try {
@@ -82,7 +82,7 @@ function adaptForSafari() {
 function init() {
   adaptForSafari();
   chrome.storage.local.get(DEFAULTS).then((settings) => {
-    // Старые модели OpenAI отключаются — показываем и сохраняем актуальную.
+    // Old OpenAI models are being retired: show and save the current one.
     if (![...fields.model.options].some((o) => o.value === settings.model)) {
       settings.model = DEFAULT_MODEL;
       chrome.storage.local.set({ model: DEFAULT_MODEL }).catch(() => {});
@@ -99,7 +99,7 @@ function init() {
     fitKey();
   });
 
-  // Автосохранение: как в System Settings — без кнопки «Сохранить».
+  // Autosave, as in System Settings: no "Save" button.
   let saveTimer = null;
   const scheduleSave = () => {
     clearTimeout(saveTimer);
@@ -146,7 +146,7 @@ function currentProvider() {
   return providerInputs.find((input) => input.checked)?.value === "openai" ? "openai" : "builtin";
 }
 
-// Настройки OpenAI (ключ, модель, согласие) видны только в режиме OpenAI.
+// OpenAI settings (key, model, consent) are visible only in OpenAI mode.
 function setProvider(provider) {
   for (const input of providerInputs) input.checked = input.value === provider;
   openaiSettings.hidden = provider !== "openai";
@@ -161,7 +161,7 @@ function checkedValue(inputs, fallback) {
   return inputs.find((input) => input.checked)?.value || fallback;
 }
 
-// Предпросмотр карточки: «Под страницу» показываем на обычной белой странице.
+// Card preview: "match the page" is shown on a plain white page.
 function updatePreview() {
   const theme = checkedValue(themeInputs, "auto");
   preview.classList.toggle("dark", theme === "dark");
@@ -174,7 +174,7 @@ function collect() {
     provider: currentProvider(),
     apiKey: fields.apiKey.value.trim(),
     model: fields.model.value.trim() || DEFAULTS.model,
-    // Язык зафиксирован — поля ввода нет, чтобы в промпт не попал произвольный текст.
+    // The language is fixed: there is no input, so no arbitrary text reaches the prompt.
     targetLang: DEFAULTS.targetLang,
     autoTranslate: fields.autoTranslate.checked,
     privacyConsentVersion: fields.dataConsent.checked ? PRIVACY_CONSENT_VERSION : 0,
@@ -219,7 +219,7 @@ async function runTest() {
 
   testBtn.disabled = true;
   setTestStatus("Проверяю…", "busy");
-  // Сохраняем перед проверкой, чтобы background видел те же настройки.
+  // Save before checking so the background sees the same settings.
   await chrome.storage.local.set(settings);
 
   let response;
@@ -231,7 +231,7 @@ async function runTest() {
   testBtn.disabled = false;
 
   if (response?.ok) {
-    // Служебные метки ответа ([[text]] и т. п.) пользователю не показываем.
+    // Internal answer markers ([[text]] and so on) are never shown to the user.
     const shown = String(response.text || "")
       .replace(/^\s*\[\[[^\]]+\]\]\s*/, "")
       .replace(/\s+/g, " ")

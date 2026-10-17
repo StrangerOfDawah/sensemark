@@ -7,11 +7,11 @@
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const DIRECTIONAL_CONTROL = /[؜‎‏‪-‮⁦-⁩]/gu;
-  // Мягкий перенос, zero-width space и BOM не видны и смысла не несут.
-  // ZWJ/ZWNJ (‌, ‍) не трогаем: они нужны персидскому, хинди и эмодзи.
+  // Soft hyphen, zero-width space and BOM are invisible and carry no meaning.
+  // ZWJ/ZWNJ (U+200D, U+200C) are kept: Persian, Hindi and emoji need them.
   const INVISIBLE_CHARS = /[\u00AD\u200B\uFEFF]/gu;
-  // Private Use Area — символы иконочных шрифтов (стрелки, «поделиться» и т. п.).
-  // Настоящий текст на любом языке в эти диапазоны не попадает.
+  // Private Use Area: icon-font glyphs (arrows, "share" and so on).
+  // Real text in any language never falls into these ranges.
   const PRIVATE_USE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/gu;
 
   function stripInvisible(value) {
@@ -21,7 +21,7 @@
       .replace(PRIVATE_USE, "");
   }
 
-  // Пробелы внутри строки схлопываются, переводы строк (абзацы) сохраняются.
+  // Spaces inside a line collapse; line breaks (paragraphs) are kept.
   function normalizeSelectionText(value) {
     return stripInvisible(value)
       .replace(/[^\S\n]+/gu, " ")
@@ -33,14 +33,14 @@
   function partText(part) {
     if (part?.lineBreak) return "\n";
     const text = stripInvisible(part?.text);
-    // В обычной вёрстке перенос строки в исходнике HTML — это просто пробел.
-    // Только в preformatted-блоках (код, стихи) он настоящий.
+    // In normal layout a line break in the HTML source is just a space.
+    // Only in preformatted blocks (code, poetry) is it real.
     return part?.preserveLines ? text.replace(/[^\S\n]+/gu, " ") : text.replace(/\s+/gu, " ");
   }
 
-  // parts — фрагменты выделения по порядку: { text, noise, block, lineBreak, preserveLines }.
-  // Фрагменты одного блока (абзаца) склеиваются как есть, между блоками — перенос строки.
-  // Без block (старый формат) фрагменты разделяются пробелом.
+  // parts: selection fragments in order: { text, noise, block, lineBreak, preserveLines }.
+  // Fragments of one block (paragraph) are joined as is; blocks are separated by a line break.
+  // Without block (the old format) fragments are separated by a space.
   function joinSelectionParts(parts) {
     const normalized = (Array.isArray(parts) ? parts : []).map((part) => ({
       text: partText(part),
@@ -51,7 +51,7 @@
 
     const meaningful = normalized.filter((part) => !part.lineBreak && part.text.trim());
     if (!meaningful.length) return "";
-    // Если выделен только элемент интерфейса (например, одна кнопка), переводим его.
+    // If only a UI element is selected (for example a single button), translate it.
     const keepNoise = meaningful.every((part) => part.noise);
     const kept = normalized.filter((part) => keepNoise || !part.noise);
 

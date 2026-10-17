@@ -17,7 +17,7 @@ test("the Safari manifest adds nativeMessaging and drops Chrome-only keys", () =
   assert.equal("minimum_chrome_version" in safari, false);
   assert.equal(safari.version, manifest.version);
   assert.deepEqual(safari.content_scripts, manifest.content_scripts);
-  // Исходный манифест не испорчен.
+  // The source manifest is untouched.
   assert.equal(manifest.permissions.includes("nativeMessaging"), false);
 });
 
@@ -34,7 +34,7 @@ test("Safari kit ships the native Swift sources, the installer and the guide", (
     path.join(ROOT, "platforms/safari/native/SafariWebExtensionHandler.swift"),
     "utf8"
   );
-  // Swift отвечает на те же операции, что посылает createAppleBridge.
+  // Swift answers the same operations that createAppleBridge sends.
   for (const op of ["detect", "availability", "translate", "openApp"]) {
     assert.match(handler, new RegExp(`case "${op}"`), op);
   }
@@ -49,8 +49,8 @@ test("Safari kit ships the native Swift sources, the installer and the guide", (
 
 test("install.sh survives macOS bash 3.2: every variable is written as ${NAME}", () => {
   const script = fs.readFileSync(path.join(ROOT, "platforms/safari/install.sh"), "utf8");
-  // bash 3.2 считает байты русских букв частью имени переменной:
-  // "$PROJECT_DIR…" превращалось в несуществующую "PROJECT_DIR?".
+  // bash 3.2 counts the bytes of Cyrillic letters as part of a variable name:
+  // "$PROJECT_DIR…" turned into a non-existent "PROJECT_DIR?".
   const code = script
     .split("\n")
     .filter((line) => !line.trimStart().startsWith("#"))

@@ -3,7 +3,7 @@ const test = require("node:test");
 const Builtin = require("../../src/builtin-translator.js");
 const language = require("../../src/language-detection.js");
 
-// Подделка встроенного переводчика Chrome (Translator API).
+// A fake of Chrome's built-in translator (Translator API).
 function fakeTranslator({ unsupported = [], needsGesture = [], streaming = true } = {}) {
   const state = { created: [], gesture: false, signals: [] };
   const api = {
@@ -40,7 +40,7 @@ function fakeTranslator({ unsupported = [], needsGesture = [], streaming = true 
   return api;
 }
 
-// Подделка chrome.i18n.detectLanguage: по письменности.
+// A fake chrome.i18n.detectLanguage: decides by script.
 async function detectLanguage(text) {
   const code = /[А-Яа-яЁё]/u.test(text)
     ? "ru"
@@ -84,7 +84,7 @@ test("a word gets its sentence translated too, because the built-in translator i
     wordMode: true,
     sourceScripts: ["Latin"]
   });
-  // Язык определён по предложению (немецкий), а не по одному слову.
+  // The language comes from the sentence (German), not from the single word.
   assert.equal(
     result,
     "[[translation]]\nRU[de] Bank\nв предложении: RU[de] Ich war gestern bei der Bank, um Geld für die Miete abzuheben."
@@ -134,7 +134,7 @@ test("a missing language pack needs one click, then translation works", async ()
     (error) => error.code === "needs-download" && error.language === "ja" && /с японского/.test(error.message)
   );
 
-  Translator.state.gesture = true; // пользователь нажал «Скачать»
+  Translator.state.gesture = true; // the user pressed «Скачать»
   const progress = [];
   const create = Translator.create;
   Translator.create = async (options) => {
@@ -239,7 +239,7 @@ test("downloading a language pack shows progress and gives up after a timeout", 
     },
     create({ monitor }) {
       monitor({ addEventListener: (name, listener) => listener({ loaded: 0.4 }) });
-      return new Promise(() => {}); // сеть зависла
+      return new Promise(() => {}); // the network hangs
     }
   };
   await assert.rejects(
@@ -251,7 +251,7 @@ test("downloading a language pack shows progress and gives up after a timeout", 
   );
   assert.match(statuses[0], /Скачиваю языковой пакет для перевода с английского — это нужно один раз…$/);
   assert.match(statuses[1], /… 40%$/);
-  // Данные для кружка прогресса: язык и доля скачанного.
+  // Data for the progress ring: the language and the downloaded share.
   assert.deepEqual(metas[0], { kind: "download", language: "en", progress: null });
   assert.deepEqual(metas[1], { kind: "download", language: "en", progress: 0.4 });
 });

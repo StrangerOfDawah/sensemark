@@ -3,8 +3,8 @@ const test = require("node:test");
 const Builtin = require("../../src/builtin-translator.js");
 const language = require("../../src/language-detection.js");
 
-// Подделка нативной части Safari (SafariWebExtensionHandler.swift):
-// отвечает на те же операции, что и настоящий Swift-код.
+// A fake of Safari's native part (SafariWebExtensionHandler.swift):
+// it answers the same operations as the real Swift code.
 function fakeNative({ installed = ["en"], supported = ["en", "ja", "de"], detected = "en" } = {}) {
   const state = { calls: [], installed: new Set(installed), openedFor: [] };
   const send = async (payload) => {
@@ -123,7 +123,7 @@ test("Safari: «Скачать» opens the Sensemark app and waits until the lan
   const engine = engineFor(native, {
     sleep: async () => {
       polls += 1;
-      if (polls === 3) native.state.installed.add("ja"); // человек скачал язык в приложении
+      if (polls === 3) native.state.installed.add("ja"); // the user downloaded the language in the app
     }
   });
   await engine.prepare("ja");

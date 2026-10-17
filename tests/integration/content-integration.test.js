@@ -74,12 +74,12 @@ async function setupContent(markup, options = {}) {
   window.chrome = {
     i18n: {
       async detectLanguage(text) {
-        // Как настоящий CLD: одно слово «bank» он путает с себуано.
+        // Like the real CLD: it mistakes the single word "bank" for Cebuano.
         if (text.trim() === "bank") {
           return { isReliable: false, languages: [{ language: "ceb", percentage: 100 }] };
         }
         return {
-          // Настоящий CLD считает «ненадёжным» и верный ответ на короткой фразе.
+          // The real CLD calls even a correct answer on a short phrase "unreliable".
           isReliable: text.length > 60,
           languages: [
             {
@@ -102,14 +102,14 @@ async function setupContent(markup, options = {}) {
         if (message?.type === "native" && options.native) return options.native(message.payload);
         return { ok: false, faces: [] };
       },
-      // Safari отдаёт адреса safari-web-extension:// — так расширение
-      // узнаёт, что работает в Safari.
+      // Safari serves safari-web-extension:// URLs; that is how the extension
+      // knows it runs in Safari.
       ...(options.runtimeURL ? { getURL: (file = "") => `${options.runtimeURL}${file}` } : {})
     },
     storage: {
       local: {
         async get(defaults) {
-          // freshInstall — в хранилище ещё ничего нет, работают значения по умолчанию.
+          // freshInstall: storage is empty, the defaults apply.
           if (options.freshInstall) return { ...defaults, provider: "openai", ...options.settings };
           return { ...defaults, autoTranslate: false, provider: "openai", ...options.settings };
         },
@@ -353,7 +353,7 @@ test("free mode: a missing language pack is downloaded by one click on the card"
   const button = host.shadowRoot.querySelector("[data-act=options]");
   assert.equal(button.textContent, "Скачать");
 
-  Translator.state.gesture = true; // клик — это жест пользователя
+  Translator.state.gesture = true; // a click is a user gesture
   button.click();
   await new Promise((resolve) => setTimeout(resolve, 30));
   const card = context.document.getElementById("__gpt_translate_popup_host__");
@@ -363,7 +363,7 @@ test("free mode: a missing language pack is downloaded by one click on the card"
   );
 });
 
-// ---------- «Хамелеон»: пилюля статуса, место и цвет карточки ----------
+// ---------- chameleon: status pill, card placement and colour ----------
 
 test("while waiting: a small pill, then a circle, and no empty card", async () => {
   const context = await setupContent('<p id="x">Paris is the capital and largest city of France.</p>');
@@ -485,10 +485,10 @@ test("several paragraphs go to the margin on the right, with a bracket along the
   assert.equal(card.style.width, "400px");
   assert.equal(root.querySelector(".bracket").hidden, false);
   assert.equal(root.querySelector(".badge").textContent, "Перевод · 3 абзаца с английского");
-  // Абзацы перевода разделены пустой строкой, чтобы не слипаться.
+  // Translated paragraphs are separated by a blank line so they do not merge.
   assert.equal(root.querySelector(".tr .live").textContent, "Париж.\n\nПекарня.\n\nТуристы.");
   await wait(40);
-  // Заметка справа от выделения (правый край 260 px + отступ под скобку).
+  // The note sits right of the selection (right edge 260 px + room for the bracket).
   assert.equal(card.style.left, "288px");
 });
 
@@ -574,7 +574,7 @@ test("auto-translate stays off for someone who turned it off", async () => {
   assert.equal(context.ports.length, 0);
 });
 
-// ---------- Safari: бесплатный режим через переводчик Apple ----------
+// ---------- Safari: free mode through Apple's translator ----------
 
 function fakeAppleNative({ installed = ["en"] } = {}) {
   const calls = [];
@@ -592,7 +592,7 @@ function fakeAppleNative({ installed = ["en"] } = {}) {
     }
     if (payload.op === "translate") return { ok: true, text: `APPLE ${payload.text}` };
     if (payload.op === "openApp") {
-      // Человек скачивает язык в приложении Sensemark.
+      // The user downloads the language in the Sensemark app.
       setTimeout(() => installed.push(payload.source), 50);
       return { ok: true };
     }
@@ -645,7 +645,7 @@ test("Safari free mode: a missing language offers «Скачать», which open
   assert.match(pill.querySelector(".lbl").textContent, /приложении Sensemark/);
   assert.equal(pill.classList.contains("determinate"), false, "без выдуманного процента");
 
-  // Язык скачан — карточка сама продолжает перевод (опрос раз в 2 секунды).
+  // The language is downloaded; the card resumes by itself (polling every 2 seconds).
   await wait(2300);
   const card = context.document.getElementById(CARD_HOST).shadowRoot;
   assert.match(card.querySelector(".live").textContent, /^APPLE /);

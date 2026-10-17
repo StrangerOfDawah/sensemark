@@ -1,7 +1,7 @@
 /* global cache, ping, onMenuClicked -- service-worker globals used inside worker.evaluate() */
-// E2E: настоящий Chromium с загруженным расширением, настоящие страницы и
-// выделения. OpenAI подменяется заглушкой — ключ и деньги не нужны.
-// Запуск: npm run test:e2e   Скриншоты для ручного просмотра: dist/e2e-screenshots/
+// E2E: real Chromium with the extension loaded, real pages and real
+// selections. OpenAI is replaced by a stub: no key and no money needed.
+// Run: npm run test:e2e   Screenshots for a manual look: dist/e2e-screenshots/
 process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
 
 const assert = require("node:assert/strict");
@@ -11,7 +11,7 @@ const { test, before, after, beforeEach } = require("node:test");
 const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..", "..");
-// SENSEMARK_EXTENSION_DIR — проверить распакованный архив релиза вместо исходников.
+// SENSEMARK_EXTENSION_DIR: test an unpacked release zip instead of src/.
 const EXTENSION = process.env.SENSEMARK_EXTENSION_DIR
   ? path.resolve(process.env.SENSEMARK_EXTENSION_DIR)
   : path.join(ROOT, "src");
@@ -27,7 +27,7 @@ const pages = {};
 const api = { calls: [], reply: null, delayMs: 0 };
 const STATUS = "#__sensemark_status_host__ .status";
 
-// ---------- заглушка OpenAI ----------
+// ---------- OpenAI stub ----------
 
 function sse(chunks) {
   return (
@@ -59,7 +59,7 @@ before(async () => {
     const body = JSON.parse(route.request().postData() || "{}");
     api.calls.push(body);
     const answer = api.reply ? api.reply(body) : { status: 500, error: "no reply configured" };
-    // Медленный ответ — чтобы увидеть пилюлю статуса и кружок.
+    // A slow answer, to see the status pill and the circle.
     if (api.delayMs) await new Promise((resolve) => setTimeout(resolve, api.delayMs));
     if (answer.status && answer.status !== 200) {
       await route.fulfill({
@@ -83,7 +83,7 @@ before(async () => {
     const page = pages[name] || "";
     await route.fulfill({
       contentType: "text/html; charset=utf-8",
-      // Полный документ отдаём как есть — для страниц со своим оформлением.
+      // A full document is served as is, for pages with their own styling.
       body: page.startsWith("<!doctype")
         ? page
         : `<!doctype html><html><head><meta charset="utf-8"></head>
@@ -99,8 +99,8 @@ before(async () => {
     });
   });
 
-  // При установке расширение открывает настройки (с небольшой задержкой) —
-  // дожидаемся этой вкладки и закрываем, чтобы она не мешала первому тесту.
+  // On install the extension opens settings (after a short delay):
+  // wait for that tab and close it so it does not disturb the first test.
   const isOptions = (page) => page.url().startsWith("chrome-extension://");
   if (!context.pages().some(isOptions)) {
     await context.waitForEvent("page", { predicate: isOptions, timeout: 5000 }).catch(() => {});
@@ -118,7 +118,7 @@ beforeEach(async () => {
   api.calls = [];
   api.reply = null;
   api.delayMs = 0;
-  // Свежий service worker без кэша переводов между тестами.
+  // A fresh service worker without the translation cache between tests.
   await worker.evaluate(() => {
     cache.clear();
     return chrome.storage.local.clear();
@@ -126,7 +126,7 @@ beforeEach(async () => {
   await setSettings({});
 });
 
-// ---------- помощники ----------
+// ---------- helpers ----------
 
 async function setSettings(overrides) {
   await worker.evaluate((settings) => chrome.storage.local.set(settings), {
@@ -143,13 +143,13 @@ async function openPage(name, html, { colorScheme = "light" } = {}) {
   const page = await context.newPage();
   await page.emulateMedia({ colorScheme });
   await page.goto(`${SITE}/${name}`);
-  // content script стартует на document_idle и читает настройки асинхронно
+  // the content script starts at document_idle and reads settings asynchronously
   await page.waitForFunction(() => document.readyState === "complete");
   await page.waitForTimeout(150);
   return page;
 }
 
-// Выделить содержимое элемента и отпустить мышь — как пользователь.
+// Select an element's content and release the mouse, like a user.
 async function selectAndRelease(page, selector) {
   await page.evaluate((sel) => {
     const element = document.querySelector(sel);
@@ -172,13 +172,13 @@ async function expectNoCard(page) {
 }
 
 async function shot(page, name) {
-  await page.waitForTimeout(500); // дождаться конца анимации появления
+  await page.waitForTimeout(500); // wait for the reveal animation to finish
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 }
 
-// ---------- сценарии ----------
+// ---------- scenarios ----------
 
-test("настоящее выделение мышью: ссылка остаётся в тексте, перевод появляется в карточке", async () => {
+test("a real mouse selection: the link stays in the text and the translation appears in the card", async () => {
   replyWith("[[text]]\nПариж — столица Франции и её крупнейший город.");
   const page = await openPage(
     "drag",
@@ -205,7 +205,7 @@ test("настоящее выделение мышью: ссылка остаё�
   await page.close();
 });
 
-test("русский текст: ни карточки, ни запроса", async () => {
+test("Russian text: no card and no request", async () => {
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("russian", '<p id="p">Этот текст уже на русском языке.</p>');
   await selectAndRelease(page, "#p");
@@ -214,7 +214,7 @@ test("русский текст: ни карточки, ни запроса", as
   await page.close();
 });
 
-test("выделение всей «шумной» страницы: в модель уходит только статья", async () => {
+test("selecting a whole noisy page: only the article reaches the model", async () => {
   replyWith("[[text]]\nГорсовет одобрил новый парк.");
   const page = await openPage(
     "noisy",
@@ -242,7 +242,7 @@ test("выделение всей «шумной» страницы: в моде
   await page.close();
 });
 
-test("одно слово переводится с учётом предложения и показывает другие значения", async () => {
+test("a single word is translated in context and shows other meanings", async () => {
   replyWith("[[translation]]\nбанк\nдругие значения: берег, вал");
   const page = await openPage(
     "word",
@@ -259,7 +259,7 @@ test("одно слово переводится с учётом предлож�
   await page.close();
 });
 
-test("имя или название показывается янтарной карточкой «Объяснение»", async () => {
+test("a name or title is shown as an amber explanation card", async () => {
   replyWith("[[reference]]\nбренд\nНазвание расширения для перевода.");
   const page = await openPage(
     "reference",
@@ -274,7 +274,7 @@ test("имя или название показывается янтарной �
   await page.close();
 });
 
-test("смешанный текст разбивается на секции по языкам, русская часть не переводится", async () => {
+test("mixed text is split into sections by language; the Russian part is not translated", async () => {
   replyWith(
     "[[multilingual]]\n" +
       "[[script:Cyrillic|lang:русский]]\nПривет!\n" +
@@ -293,7 +293,7 @@ test("смешанный текст разбивается на секции п�
   await page.close();
 });
 
-test("повторное выделение того же текста берётся из кэша без нового запроса", async () => {
+test("selecting the same text again is served from the cache without a new request", async () => {
   replyWith("[[text]]\nХорошая погода сегодня.");
   const page = await openPage("cache", '<p id="p">The weather is nice today.</p>');
   await selectAndRelease(page, "#p");
@@ -308,7 +308,7 @@ test("повторное выделение того же текста берё�
   await page.close();
 });
 
-test("Esc и клик мимо закрывают карточку", async () => {
+test("Esc and an outside click close the card", async () => {
   replyWith("[[text]]\nПривет, мир.");
   const page = await openPage("close", '<p id="p">Hello, world.</p><p id="other">x</p>');
   await selectAndRelease(page, "#p");
@@ -328,14 +328,14 @@ test("Esc и клик мимо закрывают карточку", async () =>
   await page.close();
 });
 
-test("путь горячей клавиши / контекстного меню: перевод по команде без автоперевода", async () => {
+test("shortcut / context menu path: translation on command with auto-translate off", async () => {
   await setSettings({ autoTranslate: false });
   replyWith("[[text]]\nДоброе утро, коллеги. Начинаем встречу.");
   const page = await openPage("command", '<p id="p">Good morning, everyone. Let us start the meeting.</p>');
   await selectAndRelease(page, "#p");
-  await expectNoCard(page); // автоперевод выключен — по одному выделению ничего не происходит
+  await expectNoCard(page); // auto-translate is off, so a selection alone does nothing
 
-  // То же, что делает background при Ctrl/⌘+Shift+Y или пункте меню.
+  // What the background does on Ctrl/⌘+Shift+Y or the menu item.
   await worker.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     await ping(tab.id);
@@ -350,7 +350,7 @@ test("путь горячей клавиши / контекстного меню
   await page.close();
 });
 
-test("неправильный ответ модели: один повторный запрос, затем понятная ошибка", async () => {
+test("an invalid model answer: one retry, then a clear error", async () => {
   replyWith("[[text]]\nThis is not Russian at all.");
   const page = await openPage("bad-model", '<p id="p">The report is ready for review today.</p>');
   await selectAndRelease(page, "#p");
@@ -360,7 +360,7 @@ test("неправильный ответ модели: один повторн�
   await page.close();
 });
 
-test("неверный ключ: понятная ошибка вместо перевода", async () => {
+test("a wrong key: a clear error instead of a translation", async () => {
   api.reply = () => ({ status: 401, error: "Incorrect API key" });
   const page = await openPage("error", '<p id="p">Something went wrong here.</p>');
   await selectAndRelease(page, "#p");
@@ -370,7 +370,7 @@ test("неверный ключ: понятная ошибка вместо пе
   await page.close();
 });
 
-test("без согласия на отправку текста запрос в OpenAI не уходит", async () => {
+test("without consent to send text, no request goes to OpenAI", async () => {
   await setSettings({ privacyConsentVersion: 0 });
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("consent", '<p id="p">Please translate this text.</p>');
@@ -381,7 +381,7 @@ test("без согласия на отправку текста запрос в
   await page.close();
 });
 
-test("тёмная тема страницы: карточка в тёмном оформлении", async () => {
+test("dark page theme: the card uses the dark look", async () => {
   replyWith("[[text]]\nПариж — столица Франции.");
   const page = await openPage("dark", '<p id="p">Paris is the capital of France.</p>', {
     colorScheme: "dark"
@@ -393,7 +393,7 @@ test("тёмная тема страницы: карточка в тёмном �
   await page.close();
 });
 
-test("окно ручного перевода: вставка текста запускает перевод автоматически", async () => {
+test("manual translation popup: pasting text starts translating automatically", async () => {
   replyWith("[[text]]\nНовая версия уже доступна.");
   const page = await context.newPage();
   await page.setViewportSize({ width: 420, height: 520 });
@@ -405,14 +405,14 @@ test("окно ручного перевода: вставка текста за
   assert.equal(api.calls.length, 1);
   await shot(page, "07-popup-light");
 
-  // Русский текст в окне ручного перевода тоже не уходит в API.
+  // Russian text in the manual popup does not reach the API either.
   await page.locator("#sourceText").fill("Это уже русский текст.");
   await page.waitForTimeout(1200);
   assert.equal(api.calls.length, 1);
   await page.close();
 });
 
-// ---------- случайные выделения и управление автопереводом ----------
+// ---------- accidental selections and auto-translate controls ----------
 
 const AUTO_BUTTON = "#__gpt_translate_popup_host__ [data-act=auto]";
 
@@ -420,7 +420,7 @@ async function settings() {
   return worker.evaluate(() => chrome.storage.local.get(null));
 }
 
-test("выделил и сразу нажал Ctrl/⌘+C: перевод не запускается", async () => {
+test("select and immediately press Ctrl/⌘+C: no translation starts", async () => {
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("copy", '<p id="p">Copy this sentence to the clipboard please.</p>');
   await selectAndRelease(page, "#p");
@@ -428,7 +428,7 @@ test("выделил и сразу нажал Ctrl/⌘+C: перевод не з
   await expectNoCard(page);
   assert.equal(api.calls.length, 0);
 
-  // То же на Mac.
+  // The same on a Mac.
   await selectAndRelease(page, "#p");
   await page.keyboard.press("Meta+KeyC");
   await expectNoCard(page);
@@ -436,7 +436,7 @@ test("выделил и сразу нажал Ctrl/⌘+C: перевод не з
   await page.close();
 });
 
-test("выделил и нажал правую кнопку: перевод не запускается, меню Chrome свободно", async () => {
+test("select and right-click: no translation starts, Chrome's menu is free", async () => {
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("rightclick", '<p id="p">Right click on this sentence to open the menu.</p>');
   await selectAndRelease(page, "#p");
@@ -446,7 +446,7 @@ test("выделил и нажал правую кнопку: перевод н�
   await page.close();
 });
 
-test("выделение внутри поля ввода не переводится автоматически", async () => {
+test("a selection inside an input is not translated automatically", async () => {
   replyWith("[[text]]\nне должно быть");
   const page = await openPage(
     "editable",
@@ -462,7 +462,7 @@ test("выделение внутри поля ввода не переводи�
   await page.close();
 });
 
-test("пункт «Перевести на русский» есть в контекстном меню и запускает перевод", async () => {
+test("the «Перевести на русский» context menu item exists and starts a translation", async () => {
   const exists = await worker.evaluate(
     () =>
       new Promise((resolve) =>
@@ -478,7 +478,7 @@ test("пункт «Перевести на русский» есть в конт
   const page = await openPage("ctxmenu", '<p id="p">This is a translation through the context menu.</p>');
   await selectAndRelease(page, "#p");
   await expectNoCard(page);
-  // То, что Chrome вызывает при клике по пункту меню.
+  // What Chrome calls when the menu item is clicked.
   await worker.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     await onMenuClicked({ menuItemId: "translate-selection", frameId: 0 }, tab);
@@ -488,7 +488,7 @@ test("пункт «Перевести на русский» есть в конт
   await page.close();
 });
 
-test("пауза на 5 минут из карточки: автоперевод молчит, ручной перевод работает", async () => {
+test("5-minute pause from the card: auto-translate is silent, manual translation works", async () => {
   replyWith("[[text]]\nПервый перевод.");
   const page = await openPage(
     "pause",
@@ -525,7 +525,7 @@ test("пауза на 5 минут из карточки: автоперевод
   await page.close();
 });
 
-test("пауза заканчивается сама", async () => {
+test("the pause ends by itself", async () => {
   await setSettings({ autoPausedUntil: Date.now() + 1500 });
   replyWith("[[text]]\nПосле паузы.");
   const page = await openPage("pause-end", '<p id="p">This sentence comes after the pause ends.</p>');
@@ -538,7 +538,7 @@ test("пауза заканчивается сама", async () => {
   await page.close();
 });
 
-test("выключить автоперевод из карточки и включить обратно с иконки расширения", async () => {
+test("turn auto-translate off from the card and back on from the extension icon", async () => {
   replyWith("[[text]]\nПеревод.");
   const page = await openPage(
     "off",
@@ -556,7 +556,7 @@ test("выключить автоперевод из карточки и вкл�
   await selectAndRelease(page, "#q");
   await expectNoCard(page);
 
-  // Правый клик по значку Sensemark → «Включить автоперевод».
+  // Right click on the Sensemark icon → "Включить автоперевод".
   await worker.evaluate(() => onMenuClicked({ menuItemId: "toggle-auto-translate" }, null));
   assert.equal((await settings()).autoTranslate, true);
   await page.waitForTimeout(100);
@@ -566,7 +566,7 @@ test("выключить автоперевод из карточки и вкл�
   await page.close();
 });
 
-test("тёмная тема: меню автоперевода", async () => {
+test("dark theme: the auto-translate menu", async () => {
   replyWith("[[text]]\nПариж — столица Франции.");
   const page = await openPage("dark-menu", '<p id="p">Paris is the capital of France.</p>', {
     colorScheme: "dark"
@@ -580,18 +580,18 @@ test("тёмная тема: меню автоперевода", async () => {
   await page.close();
 });
 
-// ---------- бесплатный режим: встроенный переводчик Chrome ----------
-// Языковые модели Chrome в облачной машине скачать нельзя (нет доступа к
-// серверам Google). Здесь проверяется связка с настоящим API Chrome: после
-// выделения мышью Chrome начинает скачивать пакет, и карточка честно это
-// показывает, а не молчит. Сам перевод проверяется unit-тестами и вручную.
+// ---------- free mode: Chrome's built-in translator ----------
+// Chrome's language models cannot be downloaded on a cloud machine (no access
+// to Google's servers). This checks the wiring with the real Chrome API: after
+// a mouse selection Chrome starts downloading the pack, and the card honestly
+// shows that instead of staying silent. Translation itself is unit-tested and checked by hand.
 
-test("бесплатный режим: в OpenAI ничего не уходит, карточка показывает загрузку языкового пакета", async () => {
+test("free mode: nothing goes to OpenAI, the card shows the language pack download", async () => {
   await setSettings({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 });
   replyWith("[[text]]\nне должно быть");
   const page = await openPage("free", '<p id="p">The weather is nice today, let us go for a walk.</p>');
   await selectAndRelease(page, "#p");
-  // Пока Chrome скачивает пакет, видна пилюля с языком, а не пустая карточка.
+  // While Chrome downloads the pack, the pill with the language is visible, not an empty card.
   await page.locator(STATUS).waitFor();
   assert.match(await page.locator(`${STATUS} .lbl`).innerText(), /^Скачиваю английский/);
   assert.match(
@@ -604,7 +604,7 @@ test("бесплатный режим: в OpenAI ничего не уходит,
   await page.close();
 });
 
-test("бесплатный режим на странице без https: понятное объяснение, без запросов", async () => {
+test("free mode on a non-https page: a clear explanation, no requests", async () => {
   await setSettings({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 });
   pages["plain"] = '<p id="p">The weather is nice today, let us go for a walk.</p>';
   const page = await context.newPage();
@@ -617,7 +617,7 @@ test("бесплатный режим на странице без https: пон
   await page.close();
 });
 
-test("настройки: бесплатный режим скрывает всё про OpenAI, выбор OpenAI показывает ключ", async () => {
+test("settings: free mode hides everything about OpenAI, choosing OpenAI shows the key", async () => {
   await setSettings({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 });
   const page = await context.newPage();
   await page.setViewportSize({ width: 760, height: 1100 });
@@ -634,7 +634,7 @@ test("настройки: бесплатный режим скрывает вс�
   await page.close();
 });
 
-// ---------- «Хамелеон»: статус, цвет под страницу, длинный текст ----------
+// ---------- chameleon: status, page-matched colour, long text ----------
 
 function article({
   background = "#ffffff",
@@ -652,7 +652,7 @@ function article({
 const PARIS =
   "Paris is the capital and largest city of France, and on Sunday mornings its streets feel surprisingly quiet.";
 
-test("статус: пилюля «Перевожу с английского…» сжимается в кружок, затем раскрывается карточка", async () => {
+test("status: the «Перевожу с английского…» pill shrinks into a circle, then the card opens", async () => {
   replyWith(
     "[[text]]\nПариж — столица и крупнейший город Франции, и по воскресным утрам его улицы удивительно тихие."
   );
@@ -677,7 +677,7 @@ test("статус: пилюля «Перевожу с английского…
   await page.close();
 });
 
-test("тёмная страница: пилюля и карточка тёмные, в цвет сайта", async () => {
+test("dark page: the pill and the card are dark, matching the site", async () => {
   replyWith("[[text]]\nОбновление ускоряет запуск и исправляет сбой при импорте больших файлов.");
   api.delayMs = 1800;
   const page = await openPage(
@@ -708,7 +708,7 @@ test("тёмная страница: пилюля и карточка тёмны
   await page.close();
 });
 
-test("сепия: тёплая карточка и перевод размером как на странице", async () => {
+test("sepia: a warm card and translation text sized as on the page", async () => {
   replyWith("[[text]]\nБыл уже поздний вечер, когда письмо наконец пришло.");
   const page = await openPage(
     "sepia",
@@ -749,7 +749,7 @@ const LONG_REPLY =
   "Вечером река наполняется лодками, музыкой и людьми, сидящими вдоль берегов.\n" +
   "К полудню кафе заполнены, и тихий город, который я видел на рассвете, исчезает до следующего воскресенья.";
 
-test("длинный текст: заметка на полях справа, не закрывает текст и едет при прокрутке", async () => {
+test("long text: a margin note on the right that keeps the text visible and moves on scroll", async () => {
   replyWith(LONG_REPLY, 40);
   const page = await openPage("long", article({ body: LONG_BODY }));
   await page.setViewportSize({ width: 1200, height: 720 });
@@ -773,7 +773,7 @@ test("длинный текст: заметка на полях справа, н
   await page.close();
 });
 
-test("длинный текст на всю ширину: панель у правого края окна", async () => {
+test("full-width long text: a panel at the right window edge", async () => {
   replyWith(LONG_REPLY, 40);
   const page = await openPage(
     "drawer",
@@ -796,7 +796,7 @@ test("длинный текст на всю ширину: панель у пра
   await page.close();
 });
 
-test("шрифт Golos Text из настроек подключается из расширения, без интернета", async () => {
+test("the Golos Text font from settings is loaded from the extension, offline", async () => {
   await setSettings({ cardFont: "golos" });
   replyWith("[[text]]\nПариж — столица и крупнейший город Франции.");
   const page = await openPage("font", article({ body: `<p id="p">${PARIS}</p>` }));
@@ -811,7 +811,7 @@ test("шрифт Golos Text из настроек подключается из 
   await page.close();
 });
 
-test("настройки «Оформление»: тема, шрифт и размер сохраняются", async () => {
+test("«Оформление» settings: theme, font and size are saved", async () => {
   const page = await context.newPage();
   await page.setViewportSize({ width: 760, height: 1000 });
   await page.goto(`chrome-extension://${extensionId}/options.html`);

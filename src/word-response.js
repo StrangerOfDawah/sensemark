@@ -21,7 +21,7 @@
     const main = (lines[0] || "").replace(/^перевод\s*:\s*/i, "");
     const secondary = lines.slice(1).join(" ");
     const meanings = secondary.match(/^друг\S*\s+значения\s*:\s*(.+)$/i);
-    // Бесплатный режим: перевод всего предложения вместо списка значений.
+    // Free mode: the whole sentence's translation instead of a list of meanings.
     const sentence = secondary.match(/^в\s+предложении\s*:\s*(.+)$/i);
 
     return {
@@ -72,7 +72,7 @@
     if (first === TRANSLATION_MARKER) return parseTranslation(lines.slice(1));
     if (first === REFERENCE_MARKER) return parseReference(lines.slice(1));
 
-    // Поддержка ответа старого формата во время обновления расширения.
+    // Support the old answer format while the extension updates.
     if (/такого\s+(?:общеупотребительного\s+)?слова\s+не\s+существует/i.test(lines[0])) {
       return parseReference(["неизвестный термин", ...lines.slice(1)]);
     }

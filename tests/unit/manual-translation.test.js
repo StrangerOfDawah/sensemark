@@ -21,7 +21,7 @@ test("manual translation validates setup before a request", () => {
     settingsIssue({ ...openai, apiKey: "key", privacyConsentVersion: PRIVACY_CONSENT_VERSION }),
     null
   );
-  // Бесплатный переводчик Chrome не требует ни ключа, ни согласия.
+  // Chrome's free translator needs neither a key nor consent.
   assert.equal(settingsIssue({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 }), null);
 });
 

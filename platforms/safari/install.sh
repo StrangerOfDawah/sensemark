@@ -1,22 +1,22 @@
 #!/bin/bash
-# Собирает Xcode-проект Sensemark для Safari из этой папки.
+# Builds the Sensemark Xcode project for Safari from this folder.
 #
-# Первый запуск: создаёт проект в ~/Sensemark-Safari шаблоном Apple
-# (safari-web-extension-converter) и подставляет в него наши файлы.
-# Следующие запуски (обновление): только обновляют файлы расширения
-# и Swift-код — выбранная в Xcode команда подписи сохраняется.
+# First run: creates the project in ~/Sensemark-Safari from Apple's template
+# (safari-web-extension-converter) and drops our files into it.
+# Later runs (updates): only refresh the extension files and the Swift
+# code; the signing team chosen in Xcode is kept.
 #
-# Важно: macOS запускает этот скрипт старым bash 3.2. Он считает байты
-# русских букв частью имени переменной, поэтому переменные здесь всегда
-# пишутся в фигурных скобках: ${NAME}.
+# Important: macOS runs this script with the old bash 3.2, which counts the
+# bytes of Cyrillic letters as part of a variable name, so variables here are
+# always written in braces: ${NAME}.
 set -euo pipefail
 
 KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${SENSEMARK_PROJECT_DIR:-${HOME}/Sensemark-Safari}"
 BUNDLE_ID="${SENSEMARK_BUNDLE_ID:-com.sensemark.safari}"
 
-# Файлы, полученные по AirDrop или из браузера, macOS помечает как
-# скачанные — снимаем метку, чтобы Xcode и codesign их не отвергали.
+# macOS marks files received via AirDrop or a browser as downloaded;
+# remove the mark so Xcode and codesign do not reject them.
 xattr -dr com.apple.quarantine "${KIT}" 2>/dev/null || true
 xattr -dr com.apple.provenance "${KIT}" 2>/dev/null || true
 
@@ -50,9 +50,9 @@ if [ -z "${HANDLER}" ] || [ -z "${VIEW_CONTROLLER}" ] || [ -z "${MANIFEST}" ] ||
   exit 1
 fi
 
-# Шаблон Apple может выставить старую минимальную macOS, а Swift-код
-# использует Translation и Logger — поднимаем её до macOS 15 (выше не нужно:
-# перевод без окна сам проверяет 26.4 во время работы).
+# Apple's template may set an old minimum macOS, while the Swift code
+# uses Translation and Logger: raise it to macOS 15 (no higher, since
+# windowless translation checks for 26.4 at runtime).
 PBXPROJ="${XCODEPROJ}/project.pbxproj"
 if [ -f "${PBXPROJ}" ]; then
   sed -i '' -E 's/MACOSX_DEPLOYMENT_TARGET = [0-9.]+;/MACOSX_DEPLOYMENT_TARGET = 15.0;/g' "${PBXPROJ}"

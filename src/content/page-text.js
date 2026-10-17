@@ -12,7 +12,7 @@
     root.SensemarkPageText = api;
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
-  // Выделение внутри поля ввода или редактора — это правка, а не чтение.
+  // A selection inside an input or editor is editing, not reading.
   function isEditableSelection() {
     const active = document.activeElement;
     if (active && (/^(?:INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) {
@@ -23,8 +23,8 @@
     return Boolean(element?.isContentEditable);
   }
 
-  // Цвет фона и текста там, где человек читает, — по ним карточка
-  // подстраивается под страницу. Прозрачные слои пропускаем до первого фона.
+  // Background and text colour where the user is reading: the card
+  // adapts to the page from them. Transparent layers are skipped to the first background.
   function samplePage(range) {
     const node = range.startContainer;
     const start = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) || document.body;
@@ -37,8 +37,8 @@
       }
     }
     if (!background) {
-      // У страницы нет своего фона: Chrome рисует белый, а тёмный — только
-      // если сайт сам объявил тёмную схему.
+      // The page has no background of its own: Chrome paints white, and dark only
+      // if the site itself declares a dark colour scheme.
       const scheme = getComputedStyle(document.documentElement).colorScheme || "";
       const dark = /dark/.test(scheme) && !/light/.test(scheme);
       background = dark ? { r: 18, g: 18, b: 18, a: 1 } : { r: 255, g: 255, b: 255, a: 1 };
@@ -54,8 +54,8 @@
   function extractVisibleRangeText(range) {
     const root = range.commonAncestorContainer;
     const nodes = [];
-    // Кэши на одно выделение: при выделении всей страницы иначе getComputedStyle
-    // вызывается заново для каждого предка каждого текстового узла.
+    // Per-selection caches: when the whole page is selected, getComputedStyle would
+    // otherwise run again for every ancestor of every text node.
     const cache = { visible: new Map(), block: new Map(), noise: new Map() };
 
     if (root.nodeType === Node.TEXT_NODE) {
@@ -104,13 +104,13 @@
           preserveLines: /^(?:pre|break-spaces)/.test(getComputedStyle(element).whiteSpace || "")
         });
       } catch {
-        // Некоторые сложные Range на динамических страницах нельзя пересечь.
+        // Some complex Ranges on dynamic pages cannot be intersected.
       }
     }
     return globalThis.SensemarkSelectionText.joinSelectionParts(parts);
   }
 
-  // Ближайший блочный предок: текст внутри одного блока — один абзац.
+  // Nearest block ancestor: text inside one block is one paragraph.
   function blockOf(element, cache) {
     if (cache.has(element)) return cache.get(element);
     let current = element;
@@ -124,9 +124,9 @@
     return block;
   }
 
-  // Мусор интерфейса, общий для любого сайта: элементы управления, меню и
-  // навигация, шапка/подвал/боковая панель сайта, сноски-ссылки.
-  // Ссылки внутри текста — это содержимое, их не трогаем.
+  // UI noise common to every site: controls, menus and
+  // navigation, the site header/footer/sidebar, footnote links.
+  // Links inside text are content and are left alone.
   const CONTROL_SELECTOR =
     "button, input, select, textarea, option, summary, nav, menu, " +
     '[role="button"], [role="menuitem"], [role="menu"], [role="menubar"], ' +
@@ -142,12 +142,12 @@
     if (cache.has(element)) return cache.get(element);
     let noise = Boolean(element.closest(CONTROL_SELECTOR));
     if (!noise) {
-      // Шапка статьи с заголовком — содержимое; шапка всего сайта — нет.
+      // An article header with its title is content; the site-wide header is not.
       const chrome = element.closest(SITE_CHROME_SELECTOR);
       noise = Boolean(chrome && !chrome.closest(CONTENT_SELECTOR));
     }
     if (!noise) {
-      // Сноска вида [1] — ссылка в верхнем индексе. Обычный x² остаётся.
+      // A footnote like [1] is a superscript link. A plain x² stays.
       const sup = element.closest("sup");
       noise = Boolean(sup && (sup.querySelector("a") || sup.closest("a")));
     }
@@ -208,7 +208,7 @@
     return text.length <= 40 && text.split(/\s+/).length <= 3;
   }
 
-  // Ближайший блочный предок — за его границы предложение не выходит.
+  // Nearest block ancestor: the sentence never crosses its boundaries.
   function nearestBlock(node) {
     let element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
     while (element && element !== document.body) {
@@ -237,7 +237,7 @@
       before.setEnd(range.startContainer, range.startOffset);
       offset = before.toString().length;
     } catch {
-      return null; // выделение через границы узлов, с которыми Range не справился
+      return null; // a selection across nodes that Range could not handle
     }
 
     if (!full || offset < 0 || offset > full.length) return null;
@@ -255,11 +255,11 @@
     while (end < full.length && end - from < LOOKAROUND && !BOUNDARY.test(full[end])) {
       end++;
     }
-    if (end < full.length) end++; // забираем сам знак конца предложения
+    if (end < full.length) end++; // take the sentence-ending mark itself
 
     const sentence = full.slice(start, end).replace(/\s+/g, " ").trim();
 
-    // Контекст полезен, только если он реально шире выделения и содержит его.
+    // Context helps only if it is really wider than the selection and contains it.
     if (sentence.length <= selectedText.length + 5) return null;
     if (!sentence.includes(selectedText)) return null;
 

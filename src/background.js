@@ -3,9 +3,9 @@ const AUTO_MENU_ID = "toggle-auto-translate";
 const API_URL = "https://api.openai.com/v1/chat/completions";
 const PRIVACY_CONSENT_VERSION = 1;
 
-// Самая дешёвая актуальная модель OpenAI (октябрь 2026): $0.10 / $0.50 за 1M токенов.
+// The cheapest current OpenAI model (October 2026): $0.10 / $0.50 per 1M tokens.
 const DEFAULT_MODEL = "gpt-6-luna";
-// Модели, которые OpenAI отключает до января 2027 — переводим на DEFAULT_MODEL.
+// Models OpenAI retires before January 2027 are migrated to DEFAULT_MODEL.
 const RETIRED_MODELS = new Set([
   "gpt-4o-mini",
   "gpt-4o",
@@ -20,15 +20,15 @@ const DEFAULTS = {
   apiKey: "",
   model: DEFAULT_MODEL,
   targetLang: "русский",
-  // Автоперевод по умолчанию включён: выделил — получил перевод.
+  // Auto-translate is on by default: select text, get a translation.
   autoTranslate: true,
   privacyConsentVersion: 0
 };
 
-// Кэш повторных переводов, чтобы тот же кусок не стоил денег дважды.
-// Service worker Chrome засыпает через ~30 с простоя и теряет память, поэтому
-// копия лежит в chrome.storage.session: она живёт до закрытия браузера и
-// никогда не пишется на диск.
+// Cache of repeat translations, so the same piece never costs money twice.
+// Chrome's service worker sleeps after ~30 s idle and loses its memory, so a
+// copy lives in chrome.storage.session: it lasts until the browser closes and
+// is never written to disk.
 const cache = new Map();
 const CACHE_LIMIT = 200;
 const CACHE_STORAGE_KEY = "translationCache";
@@ -43,7 +43,7 @@ function loadCache() {
           if (!cache.has(key)) cache.set(key, value);
         }
       } catch {
-        // Без session storage работаем только с памятью.
+        // Without session storage, work from memory only.
       }
     })();
   }
@@ -64,9 +64,9 @@ function cacheSet(key, value) {
   chrome.storage.session?.set({ [CACHE_STORAGE_KEY]: [...cache] }).catch(() => {});
 }
 
-// Параметры запроса под модель. Новые модели OpenAI «размышляют» перед
-// ответом: это медленнее и оплачивается как выходные токены, а temperature
-// они отклоняют. Для перевода размышления не нужны.
+// Request parameters per model. Newer OpenAI models "reason" before
+// answering: that is slower and billed as output tokens, and they reject
+// temperature. Translation needs no reasoning.
 function modelParams(model, maxOutputTokens) {
   const name = String(model || "");
   if (/^(?:gpt-6|gpt-5\.\d)/.test(name)) {
@@ -81,8 +81,8 @@ function modelParams(model, maxOutputTokens) {
   return { temperature: 0.2, max_tokens: maxOutputTokens };
 }
 
-// Потолок длины ответа: перевод не бывает намного длиннее оригинала, а
-// случайно «разговорившаяся» модель не должна стоить лишних денег.
+// Answer length cap: a translation is never much longer than the original, and
+// a model that gets chatty by accident must not cost extra money.
 function maxOutputTokens(text, wordMode) {
   if (wordMode) return 300;
   return Math.min(4096, 300 + Math.ceil(String(text || "").length * 0.8));
@@ -104,8 +104,8 @@ chrome.runtime.onInstalled.addListener((details) => {
       title: "Перевести на русский",
       contexts: ["selection"]
     });
-    // Правый клик по значку Sensemark в панели Chrome. Safari такого меню
-    // у значка не поддерживает — там автоперевод включается в настройках.
+    // Right click on the Sensemark icon in Chrome's toolbar. Safari does not
+    // support this menu on the icon, so auto-translate is toggled in settings there.
     try {
       chrome.contextMenus.create(
         { id: AUTO_MENU_ID, title: "Включить автоперевод", contexts: ["action"] },
@@ -113,18 +113,18 @@ chrome.runtime.onInstalled.addListener((details) => {
       );
       refreshAutoMenuTitle();
     } catch {
-      // Контекст "action" недоступен в этом браузере.
+      // The "action" context is not available in this browser.
     }
   });
 
-  // Режим перевода: у тех, кто уже ввёл ключ OpenAI, ничего не меняется;
-  // остальные начинают с бесплатного встроенного переводчика Chrome.
+  // Translation mode: users who already entered an OpenAI key keep it;
+  // everyone else starts with Chrome's free built-in translator.
   chrome.storage.local.get({ provider: "", apiKey: "", privacyConsentVersion: 0 }).then((settings) => {
     const provider = settings.provider || (settings.apiKey ? "openai" : "builtin");
     if (!settings.provider) chrome.storage.local.set({ provider });
 
-    // При установке показываем выбор режима. При обновлении настройки
-    // открываются, только если режиму OpenAI не хватает согласия.
+    // On install, show the mode choice. On update, settings open only
+    // when OpenAI mode is missing consent.
     if (details.reason === "install") {
       chrome.runtime.openOptionsPage();
     } else if (
@@ -146,7 +146,7 @@ async function onMenuClicked(info, tab) {
       autoPausedUntil: 0
     });
     const paused = autoTranslate && Date.now() < autoPausedUntil;
-    // На паузе пункт снимает паузу, иначе — переключает автоперевод.
+    // While paused, the item lifts the pause; otherwise it toggles auto-translate.
     await chrome.storage.local.set(
       paused ? { autoPausedUntil: 0 } : { autoTranslate: !autoTranslate, autoPausedUntil: 0 }
     );
@@ -156,7 +156,7 @@ async function onMenuClicked(info, tab) {
   await ping(tab.id, info.frameId);
 }
 
-// Заголовок пункта на значке отражает текущее состояние автоперевода.
+// The icon menu title reflects the current auto-translate state.
 async function refreshAutoMenuTitle() {
   const { autoTranslate, autoPausedUntil } = await chrome.storage.local.get({
     autoTranslate: DEFAULTS.autoTranslate,
@@ -176,17 +176,17 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Пауза кончается сама — обновляем заголовок, когда меню открывают.
+// The pause ends by itself, so refresh the title when the menu opens.
 chrome.runtime.onStartup?.addListener(refreshAutoMenuTitle);
 
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command !== MENU_ID || !tab?.id) return;
-  // Без frameId сообщение уходит во все фреймы — ответит тот, где есть выделение.
+  // Without frameId the message goes to every frame; the one with the selection answers.
   ping(tab.id);
 });
 
-// На вкладках, открытых до установки расширения, content script ещё не внедрён.
-// Пробуем достучаться, а при неудаче внедряем его и повторяем.
+// Tabs opened before the extension was installed have no content script yet.
+// Try to reach it, and on failure inject it and retry.
 async function ping(tabId, frameId) {
   const options = frameId === undefined ? {} : { frameId };
   const message = { type: "translate-selection" };
@@ -214,7 +214,7 @@ async function ping(tabId, frameId) {
       });
       await chrome.tabs.sendMessage(tabId, message, options);
     } catch {
-      // Служебные страницы (chrome://, Web Store) скриптам недоступны — молчим.
+      // Internal pages (chrome://, Web Store) are closed to scripts; stay quiet.
     }
   }
 }
@@ -224,15 +224,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     translate(message.text, message.context, message.wordMode)
       .then((text) => sendResponse({ ok: true, text }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
-    return true; // держим канал открытым для асинхронного ответа
+    return true; // keep the channel open for the async response
   }
 
   if (message?.type === "open-options") {
     chrome.runtime.openOptionsPage();
   }
 
-  // Safari: перевод и определение языка системой Apple через приложение
-  // Sensemark (SafariWebExtensionHandler.swift). В Chrome нативной части нет.
+  // Safari: translation and language detection by Apple's system through the
+  // Sensemark app (SafariWebExtensionHandler.swift). Chrome has no native part.
   if (message?.type === "native") {
     const runtime = globalThis.browser?.runtime || chrome.runtime;
     if (typeof runtime.sendNativeMessage !== "function") {
@@ -254,10 +254,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-// Шрифты перевода вшиты в расширение (лицензия OFL, папка fonts/). Страница
-// не может сама прочитать файлы расширения, поэтому content script получает
-// их отсюда — без web_accessible_resources, по которым сайт мог бы узнать о
-// расширении, и без загрузки из интернета.
+// Translation fonts ship inside the extension (OFL licence, fonts/). A page
+// cannot read extension files itself, so the content script gets them from
+// here: no web_accessible_resources a site could use to detect the
+// extension, and nothing downloaded from the web.
 const FONT_FILES = {
   golos: ["golos-text-latin-400.woff2", "golos-text-cyrillic-400.woff2"],
   literata: ["literata-latin-400.woff2", "literata-cyrillic-400.woff2"]
@@ -288,7 +288,7 @@ async function loadFont(font) {
   );
 }
 
-// Разовый перевод без стриминга — используется кнопкой «Проверить ключ».
+// One-off translation without streaming, used by the "Check key" button.
 async function translate(rawText, context, wordMode = false) {
   const { settings, cacheKey, messages } = await prepareRequest(rawText, context, wordMode);
 
@@ -316,7 +316,7 @@ async function translate(rawText, context, wordMode = false) {
   return result;
 }
 
-// Общая подготовка запроса для обоих режимов — обычного и стримингового.
+// Shared request preparation for both modes: regular and streaming.
 async function prepareRequest(rawText, context, wordMode = false, rawSourceScripts = []) {
   const text = (rawText || "").trim();
   if (!text) throw new Error("Ничего не выделено.");
@@ -341,8 +341,8 @@ async function prepareRequest(rawText, context, wordMode = false, rawSourceScrip
   return { settings, cacheKey, messages, sourceScripts };
 }
 
-// Стриминг: перевод уходит в content script по мере генерации,
-// первые слова видны через долю секунды вместо ожидания всего ответа.
+// Streaming: the translation reaches the content script as it is generated,
+// so the first words show in a fraction of a second instead of after the full answer.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "translate") return;
   port.onMessage.addListener((message) => {
@@ -357,7 +357,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
   let disconnected = false;
   port.onDisconnect.addListener(() => {
     disconnected = true;
-    abort.abort(); // пользователь закрыл карточку — не жжём токены впустую
+    abort.abort(); // the user closed the card, do not burn tokens
   });
   const send = (message) => {
     if (disconnected) return;
@@ -425,7 +425,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // хвост неполной строки ждёт следующего чанка
+      buffer = lines.pop(); // the tail of an incomplete line waits for the next chunk
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -439,7 +439,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
             send({ type: "chunk", text: full });
           }
         } catch {
-          // повреждённое SSE-событие — пропускаем
+          // broken SSE event, skip it
         }
       }
     }
@@ -475,9 +475,9 @@ function normalizeSourceScripts(scripts) {
   return [...new Set(scripts.filter((script) => /^[A-Za-z]+$/.test(script)))];
 }
 
-// Короткие заголовки часто продублированы на двух языках:
-// "Japanese Daycares – 日本の保育園". Для них естественнее один перевод,
-// а не две визуально одинаковые секции. Длинные абзацы сюда не попадают.
+// Short titles are often duplicated in two languages:
+// "Japanese Daycares – 日本の保育園". One translation reads better for them
+// than two sections that look the same. Long paragraphs never qualify.
 function isParallelTitleCandidate(text, rawSourceScripts = []) {
   const value = String(text || "").trim();
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
@@ -522,9 +522,9 @@ function translatedBodies(value) {
 const FOREIGN_SCRIPT_LETTER =
   /[\p{Script=Arabic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Hebrew}\p{Script=Greek}\p{Script=Devanagari}]/u;
 
-// Проверка нарочно мягкая: каждый повторный запрос удваивает цену перевода.
-// Ловим только явно сломанный ответ, а не допустимые оставленные имена,
-// бренды и термины («GitHub Copilot», «API», «東京»).
+// Validation is lenient on purpose: every retry doubles the price of a translation.
+// Catch only a clearly broken answer, not legitimately kept names,
+// brands and terms ("GitHub Copilot", "API", "東京").
 function contentIssue(value) {
   const payload = responsePayload(value);
   if (
@@ -664,9 +664,9 @@ async function repairResponse(
   return repaired;
 }
 
-// Инструкции написаны по-английски: тот же смысл стоит примерно вдвое меньше
-// токенов, чем по-русски, а платим мы за них в каждом запросе. Ответ модели
-// по-прежнему русский.
+// Instructions are in English: the same meaning costs roughly half the tokens
+// of Russian, and we pay for them on every request. The model still answers
+// in Russian.
 const COMMON_RULES =
   "Translate directly from the source language into Russian; do not go through English and do not paraphrase. " +
   "Skip leftover page UI (menu items, buttons, counters, labels like “Share” or “Read more”) without mentioning it. " +
@@ -702,8 +702,8 @@ function buildTextMessages(text, lang, rawSourceScripts = []) {
   ];
 }
 
-// Короткий фрагмент переводим с оглядкой на предложение: у слова значений много,
-// а нужно то единственное, в котором оно употреблено здесь.
+// A short fragment is translated with its sentence in mind: a word has many
+// meanings, and we need the one used here.
 function buildWordMessages(text, context, lang, rawSourceScripts = []) {
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
   const scriptHint = sourceScripts.length ? ` Script: ${sourceScripts.join(", ")}.` : "";
@@ -735,7 +735,7 @@ async function describeError(response) {
     const body = await response.json();
     detail = body?.error?.message || "";
   } catch {
-    // тело не JSON — не страшно
+    // the body is not JSON, that is fine
   }
 
   switch (response.status) {

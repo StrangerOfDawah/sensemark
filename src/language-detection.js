@@ -44,9 +44,9 @@
     return [...scripts];
   }
 
-  // Письменности, которых в тексте заметная доля. Одно «π» или «東京» в
-  // английском абзаце не делает его многоязычным: иначе модель обязана
-  // отвечать секциями, а лишний формат — частая причина повторного запроса.
+  // Scripts with a noticeable share of the text. A single "π" or "東京" in an
+  // English paragraph does not make it multilingual: otherwise the model must
+  // answer in sections, and the extra format is a common cause of a retry.
   function detectSignificantScripts(text, { minLetters = 3, minShare = 0.15 } = {}) {
     const counts = new Map();
     let total = 0;
@@ -56,7 +56,7 @@
       counts.set(script, (counts.get(script) || 0) + 1);
       total++;
     }
-    // Японский: иероглифы и кана — одна письменность, как в detectScripts.
+    // Japanese: kanji and kana are one script, as in detectScripts.
     const merged = new Map();
     for (const script of detectScripts(text)) merged.set(script, 0);
     for (const [script, count] of counts) {
@@ -69,7 +69,7 @@
       if (merged.has(target)) merged.set(target, merged.get(target) + count);
     }
     const top = [...merged].sort((left, right) => right[1] - left[1])[0]?.[0];
-    // Порядок — как в тексте; самая крупная письменность остаётся всегда.
+    // Keep text order; the dominant script always stays.
     return [...merged]
       .filter(([script, count]) => script === top || (count >= minLetters && count / total >= minShare))
       .map(([script]) => script);
@@ -88,9 +88,9 @@
     const latinCount = letters.filter((char) => LATIN_LETTER.test(char)).length;
     if (!russianCount || letters.length !== russianCount + latinCount) return false;
 
-    // Для короткого русского текста CLD часто не уверен, поэтому алфавит служит
-    // запасным сигналом. Надёжное определение другого языка имеет приоритет —
-    // так болгарский или сербский текст не будет ошибочно проигнорирован.
+    // CLD is often unsure about short Russian text, so the alphabet is a
+    // fallback signal. A confident detection of another language wins, so
+    // Bulgarian or Serbian text is never ignored by mistake.
     const detected = detection?.languages?.find(
       (item) => item.language && item.language !== "und" && item.percentage >= 20
     );
@@ -98,10 +98,10 @@
       return !(detection?.isReliable && detected && detected.language !== "ru");
     }
 
-    // В русскоязычных интерфейсах внутри фразы часто встречаются технические
-    // вставки: dev-секрет, APP_ENV, URL или ChatGPT. Они не превращают весь
-    // выделенный фрагмент в многоязычный и не должны запускать перевод.
-    // Настоящую английскую фразу и заметную долю латиницы по-прежнему переводим.
+    // Russian interfaces often carry technical inserts inside a phrase:
+    // dev-секрет, APP_ENV, a URL or ChatGPT. They do not make the whole
+    // selection multilingual and must not trigger a translation.
+    // A real English phrase or a noticeable share of Latin is still translated.
     const latinWords = [...value.matchAll(/[A-Za-z][A-Za-z0-9_./:@=+#]*/g)].map((match) => {
       const token = match[0];
       const start = match.index;
@@ -126,8 +126,8 @@
     });
     if (hasLatinPhrase || russianCount < naturalLatinCount * 2) return false;
 
-    // CLD может назвать такой смешанный фрагмент английским из-за identifier-ов.
-    // Но надёжный результат другого кириллического языка всё ещё имеет приоритет.
+    // CLD may call such a mixed fragment English because of the identifiers.
+    // A confident result for another Cyrillic language still wins.
     if (detection?.isReliable && detected && CYRILLIC_LANGUAGE_CODES.has(detected.language.toLowerCase())) {
       return false;
     }

@@ -40,7 +40,7 @@ function loadBackground(overrides = {}) {
     storageWrites: []
   };
   let sendMessage = overrides.sendMessage || (async () => ({}));
-  // Общая «сессия» браузера: переживает перезапуск service worker в тестах.
+  // A shared browser "session": survives a service worker restart in tests.
   const sessionStore = overrides.sessionStore || {};
 
   const context = {
@@ -58,7 +58,7 @@ function loadBackground(overrides = {}) {
         openOptionsPage() {
           state.optionsOpened++;
         },
-        // Только в Safari: мост к приложению Sensemark.
+        // Safari only: the bridge to the Sensemark app.
         ...(overrides.sendNativeMessage ? { sendNativeMessage: overrides.sendNativeMessage } : {})
       },
       contextMenus: {

@@ -75,7 +75,7 @@
       };
     }
 
-    // Совместимость с ответами до появления служебных меток.
+    // Compatibility with answers from before the service markers existed.
     return { mode: "text", text: value, sections: [] };
   }
 

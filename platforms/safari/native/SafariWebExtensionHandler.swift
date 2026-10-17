@@ -1,12 +1,12 @@
-// Нативная часть расширения Sensemark для Safari.
+// Native part of the Sensemark extension for Safari.
 //
-// background.js присылает сюда сообщения вида {op: ..., ...}:
-//   detect       — определить язык текста (NaturalLanguage);
-//   availability — скачан ли язык для перевода на русский (Translation);
-//   translate    — перевести текст системным переводчиком Apple, на устройстве;
-//   openApp      — открыть приложение Sensemark, где скачиваются языки.
-// Ответ всегда словарь с ключом "ok"; формат совпадает с тем, что ждёт
-// createAppleBridge в builtin-translator.js.
+// background.js sends messages of the form {op: ..., ...}:
+//   detect       detect the text's language (NaturalLanguage);
+//   availability is the language downloaded for translating into Russian (Translation);
+//   translate    translate text with Apple's on-device system translator;
+//   openApp      open the Sensemark app, where languages are downloaded.
+// The reply is always a dictionary with an "ok" key; the format matches what
+// createAppleBridge in builtin-translator.js expects.
 
 import AppKit
 import NaturalLanguage
@@ -30,7 +30,7 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     }
 }
 
-/// NSExtensionContext не помечен как Sendable — переносим его в задачу явно.
+/// NSExtensionContext is not marked Sendable, so it is moved into the task explicitly.
 private final class ContextBox: @unchecked Sendable {
     let context: NSExtensionContext
     init(_ context: NSExtensionContext) { self.context = context }
@@ -69,9 +69,9 @@ enum NativeBridge {
         }
     }
 
-    // MARK: - Определение языка
+    // MARK: - Language detection
 
-    /// Тот же формат, что у chrome.i18n.detectLanguage:
+    /// Same format as chrome.i18n.detectLanguage:
     /// {isReliable, languages: [{language, percentage}]}.
     static func detect(_ text: String) -> [String: Any] {
         let recognizer = NLLanguageRecognizer()
@@ -80,14 +80,14 @@ enum NativeBridge {
         let languages: [[String: Any]] = hypotheses.map { hypothesis in
             ["language": hypothesis.key.rawValue, "percentage": Int((hypothesis.value * 100).rounded())]
         }
-        // На одном-двух словах любой определитель ошибается — помечаем
-        // такой ответ как ненадёжный, как это делает Chrome.
+        // Any detector fails on one or two words, so such an answer is
+        // marked unreliable, as Chrome does.
         let top = hypotheses.first?.value ?? 0
         let reliable = top >= 0.8 && text.count >= 20
         return ["ok": true, "isReliable": reliable, "languages": languages]
     }
 
-    // MARK: - Наличие языка
+    // MARK: - Language availability
 
     static func availability(source: String, target: String) async -> [String: Any] {
         guard #available(macOS 15.0, *) else {
@@ -109,10 +109,10 @@ enum NativeBridge {
         }
     }
 
-    // MARK: - Перевод
+    // MARK: - Translation
 
     static func translate(_ request: NativeRequest) async -> [String: Any] {
-        // Переводить без окна (из расширения) macOS умеет с версии 26.4.
+        // macOS can translate without a window (from an extension) since 26.4.
         guard #available(macOS 26.4, *) else {
             return ["ok": false, "code": "unavailable"]
         }
@@ -126,7 +126,7 @@ enum NativeBridge {
             return ["ok": true, "text": response.targetText]
         } catch {
             logger.error("translate failed: \(String(describing: error), privacy: .public)")
-            // Язык могли удалить в Системных настройках — тогда предлагаем скачать.
+            // The language may have been removed in System Settings; offer to download it.
             let check = await availability(source: request.source, target: request.target)
             if check["status"] as? String == "supported" {
                 return ["ok": false, "code": "needs-download"]
@@ -135,9 +135,9 @@ enum NativeBridge {
         }
     }
 
-    // MARK: - Приложение Sensemark
+    // MARK: - The Sensemark app
 
-    /// Расширение лежит внутри приложения:
+    /// The extension lives inside the app:
     /// Sensemark.app/Contents/PlugIns/Sensemark Extension.appex
     @MainActor
     static func openApp() async -> Bool {

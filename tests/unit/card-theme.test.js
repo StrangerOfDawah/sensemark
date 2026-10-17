@@ -91,7 +91,7 @@ test("layout: short text under the selection, long text on the margin or in a dr
     kind: "margin",
     width: 400
   });
-  // Текст на всю ширину — справа места нет.
+  // Full-width text: no room on the right.
   assert.deepEqual(
     Theme.chooseLayout({ text: long, rect: { ...column, right: 1164 }, viewportWidth: 1200 }),
     {
@@ -99,11 +99,11 @@ test("layout: short text under the selection, long text on the margin or in a dr
       width: 420
     }
   );
-  // На узком экране панель закрыла бы почти весь текст — оставляем карточку.
+  // On a narrow screen a panel would cover most of the text, so keep the card.
   assert.deepEqual(Theme.chooseLayout({ text: long, rect: { ...column, right: 560 }, viewportWidth: 600 }), {
     kind: "anchor"
   });
-  // Немного места: заметка уже, но не меньше 300 px.
+  // A little room: the note is narrower, but not below 300 px.
   assert.deepEqual(Theme.chooseLayout({ text: long, rect: { ...column, right: 850 }, viewportWidth: 1200 }), {
     kind: "margin",
     width: 306

@@ -1,8 +1,8 @@
-// Бесплатный режим: встроенный в Chrome переводчик (Translator API, Chrome 138+),
-// а в Safari — системный переводчик Apple через нативную часть приложения.
-// Работает на устройстве: без ключа, без денег, текст никуда не отправляется.
-// Результат отдаётся в том же формате, что и ответ OpenAI ([[text]],
-// [[translation]], [[multilingual]]), поэтому карточка и popup не меняются.
+// Free mode: Chrome's built-in translator (Translator API, Chrome 138+),
+// and in Safari Apple's system translator through the app's native part.
+// Runs on the device: no key, no cost, the text goes nowhere.
+// Results use the same format as the OpenAI answer ([[text]],
+// [[translation]], [[multilingual]]), so the card and the popup do not change.
 (function exposeBuiltinTranslator(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) {
@@ -12,7 +12,7 @@
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const TARGET = "ru";
-  // Если определитель языка не уверен, письменность подсказывает язык.
+  // When the language detector is unsure, the script hints at the language.
   const SCRIPT_LANGUAGE = {
     Japanese: "ja",
     Korean: "ko",
@@ -41,7 +41,7 @@
     }
   }
 
-  // «японский» → «японского», для фраз вида «перевод с японского».
+  // "японский" → "японского", for phrases like "перевод с японского".
   function languageGenitive(code) {
     return languageName(code).replace(/(?:ий|ый|ой)$/u, "ого");
   }
@@ -56,7 +56,7 @@
     return LANGUAGE_ALIASES[base] || base;
   }
 
-  // Предложения и строки — единицы, по которым определяется язык смешанного текста.
+  // Sentences and lines: the units used to detect the language of mixed text.
   function splitUnits(text) {
     const units = [];
     for (const line of String(text || "").split("\n")) {
@@ -70,7 +70,7 @@
 
   const DOWNLOAD_TIMEOUT_MS = 60_000;
 
-  // Тексты, которые зависят от того, чей переводчик работает.
+  // Texts that depend on whose translator is running.
   const CHROME_LABELS = {
     engine: "Встроенный переводчик Chrome",
     unavailable:
@@ -123,20 +123,20 @@
         const top = result?.languages?.find((item) => normalizeLanguage(item.language));
         language = normalizeLanguage(top?.language);
       } catch {
-        // Определитель может не справиться с очень коротким текстом.
+        // The detector may fail on very short text.
       }
       const script = sourceScripts.find((item) => SCRIPT_LANGUAGE[item]);
-      // Для нелатинских письменностей письменность надёжнее определителя на коротком тексте.
+      // For non-Latin scripts the script beats the detector on short text.
       if (script && (!language || language === "en")) return SCRIPT_LANGUAGE[script];
       return language || "en";
     }
 
-    // Создаёт переводчик. Если языкового пакета ещё нет, Chrome скачивает его
-    // (один раз): показываем прогресс и не ждём бесконечно.
+    // Creates a translator. If the language pack is missing, Chrome downloads it
+    // (once): show progress and do not wait forever.
     function createWithDownload(language, availability, onStatus) {
       const options = { sourceLanguage: language, targetLanguage: TARGET };
       const downloading = availability === "downloadable" || availability === "downloading";
-      // Вторым аргументом — данные для кружка прогресса на странице.
+      // The second argument feeds the progress ring on the page.
       const status = (percent) =>
         onStatus?.(
           `Скачиваю языковой пакет для перевода с ${languageGenitive(language)} — это нужно один раз` +
@@ -177,8 +177,8 @@
               language
             );
           }
-          // Переводчик Apple скачивает языки только в приложении Sensemark —
-          // сразу предлагаем кнопку «Скачать», без ожидания.
+          // Apple's translator downloads languages only in the Sensemark app,
+          // so offer the "Download" button right away instead of waiting.
           if (availability !== "available" && Translator.install) {
             throw new BuiltinError("needs-download", labels.needsDownload(language), language);
           }
@@ -198,8 +198,8 @@
     }
 
     async function translateText(translator, text, signal, onPartial) {
-      // Встроенный переводчик склеивает строки в одну, поэтому многострочный
-      // текст переводим построчно — заголовки и абзацы остаются на месте.
+      // The built-in translator joins lines into one, so multi-line text is
+      // translated line by line and headings and paragraphs stay in place.
       const lines = String(text).split("\n");
       if (lines.length > 1) {
         const done = [];
@@ -216,7 +216,7 @@
       if (onPartial && translator.translateStreaming) {
         let result = "";
         for await (const chunk of translator.translateStreaming(text, { signal })) {
-          // Chrome отдаёт либо добавку, либо весь текст целиком — поддерживаем оба.
+          // Chrome yields either a delta or the whole text so far; support both.
           result = chunk.startsWith(result) ? chunk : result + chunk;
           onPartial(result);
         }
@@ -225,7 +225,7 @@
       return String(await translator.translate(text, { signal })).trim();
     }
 
-    // Делит смешанный текст на куски одного языка; русские куски не переводятся.
+    // Splits mixed text into single-language pieces; Russian pieces are not translated.
     async function segments(text, sourceScripts) {
       const units = splitUnits(text);
       const groups = [];
@@ -256,8 +256,8 @@
         const translator = await translatorFor(language);
         const word = await translateText(translator, text, signal);
         let result = `[[translation]]\n${word}`;
-        // Встроенный переводчик не выбирает значение по контексту, поэтому
-        // показываем ещё и перевод всего предложения — смысл виден сразу.
+        // The built-in translator cannot pick a meaning from context, so the whole
+        // sentence is translated too and the meaning is clear at once.
         if (context && context.trim() !== text.trim()) {
           const sentence = await translateText(translator, context, signal);
           if (sentence) result += `\nв предложении: ${sentence.replace(/\s+/g, " ")}`;
@@ -294,8 +294,8 @@
       return result;
     }
 
-    // Скачать языковой пакет по клику пользователя (Chrome требует жест).
-    // onProgress(0…1) — для кружка прогресса на странице.
+    // Download a language pack on a user click (Chrome requires a gesture).
+    // onProgress(0…1) feeds the progress ring on the page.
     async function prepare(language, onProgress) {
       ensureAvailable();
       translators.delete(language);
@@ -317,8 +317,8 @@
     return { run, prepare, detect, labels };
   }
 
-  // Канал с тем же интерфейсом, что chrome.runtime.Port: content.js и popup.js
-  // работают с ним так же, как с запросом к OpenAI через background.
+  // A channel with the chrome.runtime.Port interface: content.js and popup.js
+  // use it exactly like an OpenAI request through the background.
   function openLocalPort(engine) {
     const messageListeners = [];
     const disconnectListeners = [];
@@ -359,11 +359,11 @@
     };
   }
 
-  // ---------- Safari: переводчик Apple через нативную часть приложения ----------
-  // В Safari нет Translator API Chrome. Вместо него расширение просит
-  // приложение-контейнер Sensemark (Swift) перевести текст системным
-  // переводчиком macOS. Мост повторяет интерфейс Translator API, поэтому
-  // движок выше работает с ним так же, как с Chrome.
+  // ---------- Safari: Apple's translator through the app's native part ----------
+  // Safari has no Chrome Translator API. Instead the extension asks the
+  // Sensemark container app (Swift) to translate with the macOS system
+  // translator. The bridge mirrors the Translator API interface, so the
+  // engine above works with it exactly as with Chrome.
   const NATIVE_STATUS = { installed: "available", supported: "downloadable", unsupported: "unavailable" };
 
   function isSafariExtension(runtime) {
@@ -392,8 +392,8 @@
         if (reply?.code === "needs-download") {
           throw new BuiltinError("needs-download", APPLE_LABELS.needsDownload(source), source);
         }
-        // Нет ответа — приложение Sensemark не установлено; "unavailable" —
-        // macOS старше 26.4.
+        // No answer: the Sensemark app is not installed; "unavailable":
+        // macOS is older than 26.4.
         if (!reply || reply.code === "unavailable") {
           throw new BuiltinError("unavailable", APPLE_LABELS.unavailable, source);
         }
@@ -428,13 +428,13 @@
           }
         };
       },
-      // Открывает приложение Sensemark (там скачиваются языки) и ждёт,
-      // пока нужный язык появится на Mac.
+      // Opens the Sensemark app (languages are downloaded there) and waits
+      // until the language appears on the Mac.
       async install(language) {
         try {
           await call({ op: "openApp", source: language });
         } catch {
-          // Не открылось само — человек откроет Sensemark вручную, ждём так же.
+          // If it did not open by itself, the user opens Sensemark manually; wait the same way.
         }
         const deadline = Date.now() + installTimeoutMs;
         while (Date.now() < deadline) {
@@ -445,7 +445,7 @@
       }
     };
 
-    // Тот же формат, что у chrome.i18n.detectLanguage.
+    // Same format as chrome.i18n.detectLanguage.
     async function detectLanguage(text) {
       const reply = await call({ op: "detect", text });
       return {
@@ -457,7 +457,7 @@
     return { Translator, detectLanguage };
   }
 
-  // Что использовать для бесплатного режима в этом браузере.
+  // What to use for free mode in this browser.
   function platformDeps(api = globalThis.chrome, scope = globalThis) {
     if (isSafariExtension(api?.runtime) && !scope.Translator) {
       const runtime = scope.browser?.runtime || api.runtime;

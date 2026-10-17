@@ -1,11 +1,11 @@
-// Окно приложения Sensemark для Safari.
+// Window of the Sensemark app for Safari.
 //
-// Здесь скачиваются языки для бесплатного перевода: macOS разрешает скачивать
-// их только из окна приложения (.translationTask), а не из расширения.
-// Ещё окно подсказывает, включено ли расширение в Safari.
+// Languages for free translation are downloaded here: macOS allows downloads
+// only from an app window (.translationTask), not from the extension.
+// The window also shows whether the extension is enabled in Safari.
 //
-// Файл заменяет ViewController.swift из шаблона Apple. Окно по-прежнему
-// создаёт Main.storyboard, а содержимое рисует SwiftUI.
+// This file replaces ViewController.swift from Apple's template. The window is
+// still created by Main.storyboard; SwiftUI draws the content.
 
 import Cocoa
 import SafariServices
@@ -14,7 +14,7 @@ import Translation
 import WebKit
 
 class ViewController: NSViewController {
-    // Остался от шаблона Apple (связь в Main.storyboard), не используется.
+    // Left over from Apple's template (wired in Main.storyboard), unused.
     @IBOutlet var webView: WKWebView?
 
     override func loadView() {
@@ -35,7 +35,7 @@ class ViewController: NSViewController {
 }
 
 struct LanguageRow: Identifiable, Hashable {
-    let id: String // код языка, например "en" или "ja"
+    let id: String // language code, for example "en" or "ja"
     let name: String
     var installed: Bool
 }
@@ -111,11 +111,11 @@ struct LanguagesView: View {
             await refreshExtensionState()
         }
         .translationTask(configuration) { session in
-            // macOS сама показывает окно с предложением скачать язык.
+            // macOS shows its own sheet offering to download the language.
             do {
                 try await session.prepareTranslation()
             } catch {
-                // Человек отменил скачивание — просто обновим список.
+                // The user cancelled the download; just refresh the list.
             }
             await finishDownload()
         }
@@ -148,7 +148,7 @@ struct LanguagesView: View {
             source: Locale.Language(identifier: row.id),
             target: Self.target
         )
-        // Повторное нажатие для той же пары должно запускать задачу заново.
+        // Pressing again for the same pair must restart the task.
         if configuration?.source == next.source {
             configuration?.invalidate()
         } else {

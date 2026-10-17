@@ -31,12 +31,12 @@
     const autoTranslateDelayMs = environment.autoTranslateDelayMs ?? 850;
     const pasteTranslateDelayMs = environment.pasteTranslateDelayMs ?? 60;
     const scheduleTimeout = window.setTimeout?.bind(window) || setTimeout;
-    // Бесплатный режим — встроенный переводчик Chrome прямо в окне popup;
-    // режим OpenAI — запрос через background, как на странице.
+    // Free mode: Chrome's built-in translator right inside the popup;
+    // OpenAI mode: a request through the background, as on the page.
     const builtin = environment.builtin || root.SensemarkBuiltin;
     let builtinEngine = null;
-    // Определение языка: в Chrome — chrome.i18n, в Safari — система Apple
-    // через приложение Sensemark.
+    // Language detection: chrome.i18n in Chrome, Apple's system in Safari
+    // through the Sensemark app.
     function detectLanguage(text) {
       const platform = builtin?.platformDeps?.(chrome, window);
       if (platform?.platform === "safari") return platform.detectLanguage(text);
@@ -168,7 +168,7 @@
         try {
           port.disconnect();
         } catch {
-          // Канал уже закрыт.
+          // The channel is already closed.
         }
       }
       if (announce) {
@@ -288,7 +288,7 @@
             try {
               port.disconnect();
             } catch {
-              // Канал уже закрыт.
+              // The channel is already closed.
             }
           }
         } else if (message?.type === "status") {
@@ -299,7 +299,7 @@
           try {
             port.disconnect();
           } catch {
-            // Канал уже закрыт.
+            // The channel is already closed.
           }
         }
       });
@@ -338,7 +338,7 @@
       try {
         detection = await detectLanguage(elements.source.value);
       } catch {
-        // Для короткого текста локальный определитель может не вернуть язык.
+        // The local detector may return no language for short text.
       }
       if (id !== requestId) return;
 

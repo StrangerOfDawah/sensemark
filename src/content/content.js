@@ -1,5 +1,5 @@
 (() => {
-  // Скрипт может быть внедрён повторно из background — второй раз не выполняемся.
+  // The background may inject this script again; the second run does nothing.
   if (window.__gptTranslateLoaded) return;
 
   const parseWordResponse = globalThis.SensemarkWordResponse?.parse;
@@ -56,30 +56,30 @@
   let currentPort = null;
   let streamState = null;
   let bracket = null;
-  // Где стоит карточка: anchor — у выделения, margin — на полях справа,
-  // drawer — панель у края окна. anchorInfo — выделение, к которому она
-  // привязана: при прокрутке карточка едет вместе с текстом.
+  // Where the card sits: anchor (at the selection), margin (in the right margin),
+  // drawer (a panel at the window edge). anchorInfo is the selection it is
+  // tied to: on scroll the card moves with the text.
   let layout = { kind: "anchor" };
   let anchorInfo = null;
   let anchorOffset = null;
 
-  // Размеры карточки живут в storage, чтобы держаться на всех страницах.
+  // Card size lives in storage so it carries across all pages.
   const VIEW_DEFAULTS = { uiScale: 1, cardWidth: 0, cardHeight: 0 };
-  const WIDTH_MIN = 230; // совпадает с min-width карточки в CSS
+  const WIDTH_MIN = 230; // matches the card's min-width in CSS
   const HEIGHT_MIN = 120;
 
-  // Держим флаги локально, чтобы не будить service worker на каждое выделение.
+  // Keep flags locally so the service worker is not woken on every selection.
   let autoTranslate = false;
-  let autoPausedUntil = 0; // пауза автоперевода (общая для всех вкладок), мс
-  // Режим перевода: "builtin" — бесплатный переводчик Chrome на устройстве,
-  // "openai" — свой ключ OpenAI через background.
+  let autoPausedUntil = 0; // auto-translate pause (shared by all tabs), ms
+  // Translation mode: "builtin" is Chrome's free on-device translator,
+  // "openai" is the user's own OpenAI key through the background.
   let provider = "builtin";
-  // Оформление: тема (под страницу / светлая / тёмная), шрифт перевода и
-  // размер текста как на странице.
+  // Appearance: theme (match the page / light / dark), translation font and
+  // text size as on the page.
   const APPEARANCE_DEFAULTS = { cardTheme: "auto", cardFont: "system", matchPageSize: true };
   let appearance = { ...APPEARANCE_DEFAULTS };
-  // Chrome — встроенный Translator API; Safari — переводчик Apple через
-  // приложение Sensemark (см. builtin-translator.js → platformDeps).
+  // Chrome: the built-in Translator API; Safari: Apple's translator through the
+  // Sensemark app (see builtin-translator.js → platformDeps).
   const platform = Builtin.platformDeps(chrome);
   const builtinEngine = Builtin.createBuiltinTranslator({
     Translator: platform.Translator,
@@ -97,8 +97,8 @@
   let view = { ...VIEW_DEFAULTS };
   const scaleController = createScaleController();
 
-  // Автоперевод по умолчанию включён; до чтения настроек флаг выше — false,
-  // чтобы не перевести лишнего у тех, кто его выключил.
+  // Auto-translate is on by default; until settings are read the flag above is false
+  // so nothing is translated for someone who turned it off.
   const STORED_DEFAULTS = {
     autoTranslate: true,
     autoPausedUntil: 0,
@@ -123,7 +123,7 @@
     for (const key of Object.keys(APPEARANCE_DEFAULTS)) {
       if (changes[key]) appearance[key] = changes[key].newValue ?? APPEARANCE_DEFAULTS[key];
     }
-    // Изменения из соседней вкладки применяем на лету.
+    // Apply changes from another tab on the fly.
     let touched = false;
     for (const key of Object.keys(VIEW_DEFAULTS)) {
       if (changes[key]) {
@@ -146,7 +146,7 @@
     if (!card) return;
     card.style.setProperty("--ui-scale", view.uiScale);
 
-    // На полях и в панели ширину задаёт место на экране, а не сохранённый размер.
+    // In the margin and the drawer the width comes from the screen, not the saved size.
     if (layout.kind !== "anchor") {
       card.style.width = `${layout.width}px`;
       card.style.maxWidth = "none";
@@ -166,7 +166,7 @@
 
     if (view.cardHeight) {
       card.style.height = `${view.cardHeight}px`;
-      // Тело растягивается на всю карточку, свой лимит уступает.
+      // The body stretches to the whole card; its own limit gives way.
       card.style.setProperty("--bd-max", "none");
     } else {
       card.style.height = "";
@@ -176,18 +176,18 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "translate-selection") {
-      sendResponse({ received: true }); // подтверждаем, что скрипт жив
+      sendResponse({ received: true }); // confirm the script is alive
       handleSelection();
     }
   });
 
-  // Автоперевод ждёт немного после выделения: если за это время человек
-  // копирует (⌘/Ctrl+C) или открывает контекстное меню, значит, он выделял
-  // не для перевода — запрос отменяется, пока карточка ещё не появилась.
+  // Auto-translate waits a moment after a selection: if the user copies
+  // (⌘/Ctrl+C) or opens the context menu in that time, the selection was
+  // not for translation, and the request is cancelled before any card appears.
   const AUTO_DELAY = 500;
   const PAUSE_MINUTES = 5;
   let autoTimer = null;
-  let autoPendingId = 0; // id автозапроса, карточка которого ещё не показана
+  let autoPendingId = 0; // id of the auto request whose card is not shown yet
 
   function isAutoEnabled() {
     return Boolean(autoTranslate) && Date.now() >= autoPausedUntil;
@@ -198,7 +198,7 @@
     autoTimer = null;
     if (autoPendingId && autoPendingId === requestId) {
       requestId++;
-      currentPort?.disconnect(); // background оборвёт запрос
+      currentPort?.disconnect(); // the background aborts the request
       currentPort = null;
       pill.hide();
     }
@@ -206,7 +206,7 @@
   }
 
   document.addEventListener("mouseup", (event) => {
-    if (event.button !== 0) return; // правая/средняя кнопка — не выделение для чтения
+    if (event.button !== 0) return; // right/middle button: not a reading selection
     if (!isAutoEnabled()) return;
     if (host && event.composedPath().includes(host)) return;
     if (isEditableSelection()) return;
@@ -217,7 +217,7 @@
   document.addEventListener(
     "keydown",
     (event) => {
-      // event.code, а не key: на русской раскладке клавиша C даёт «с».
+      // event.code, not key: on a Russian layout the C key types "с".
       if ((event.metaKey || event.ctrlKey) && event.code === "KeyC") cancelPendingAuto();
     },
     true
@@ -243,9 +243,9 @@
     if (!rect || (rect.width === 0 && rect.height === 0)) return null;
     const anchor = { range: range.cloneRange(), page: samplePage(range) };
 
-    // OCR не запускаем автоматически: это дорого и ненадёжно для декоративных
-    // шрифтов. Изображение без иностранного текстового слоя объясняем локально,
-    // не отправляя пустые данные и русские подписи в API.
+    // OCR never runs automatically: it is expensive and unreliable for decorative
+    // fonts. An image without a foreign text layer is explained locally,
+    // without sending empty data or Russian captions to the API.
     const imageTextUnsupported = selectedImages.length > 0 && (text.length < 2 || isRussianOnly(text));
     if (imageTextUnsupported) {
       return {
@@ -260,15 +260,15 @@
     }
     if (text.length < 2) return null;
 
-    // Для коротких фрагментов подтягиваем предложение вокруг — без него
-    // многозначные слова переводятся наугад.
+    // For short fragments, pull in the surrounding sentence: without it
+    // ambiguous words are translated at random.
     const wordMode = isShort(text) && !hasMultipleScripts(text);
     const context = wordMode && text === rawText ? extractContext(range, text) : null;
 
     return { ...anchor, text, rect, context, wordMode, sourceScripts: detectSignificantScripts(text) };
   }
 
-  // Палитра, шрифт и размер для карточки и пилюли этого выделения.
+  // Palette, font and size for this selection's card and pill.
   function lookFor(info) {
     const prefersDark = Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches);
     const palette = CardTheme.buildPalette({
@@ -291,8 +291,8 @@
     for (const [name, value] of Object.entries(look.vars)) element.style.setProperty(name, value);
   }
 
-  // Шрифты Golos Text и Literata лежат в расширении; на страницу добавляются
-  // один раз и только если их выбрали в настройках.
+  // Golos Text and Literata ship with the extension; they are added to the page
+  // once, and only when chosen in settings.
   const loadedFonts = new Map();
   function ensureFont(font) {
     if (font !== "golos" && font !== "literata") return Promise.resolve();
@@ -314,18 +314,18 @@
     return loading;
   }
 
-  // Русский ли это текст и с какого языка переводим — для подписи
-  // «Перевожу с английского…». Определяет сам Chrome, локально и бесплатно.
-  // На одном слове определитель часто ошибается («bank» → себуано), поэтому
-  // язык для подписи берём по предложению вокруг, а ненадёжный ответ не
-  // показываем вовсе — лучше просто «Перевод», чем неверный язык.
+  // Is the text Russian, and which language are we translating from, for the
+  // "Перевожу с английского…" label. Chrome decides locally and for free.
+  // The detector often fails on a single word ("bank" → Cebuano), so the
+  // label's language comes from the surrounding sentence, and an unreliable
+  // answer is not shown at all: plain "Перевод" beats a wrong language.
   async function detectSource(text, labelText = text) {
     const detection = await detectLanguageSafe(text);
     const labelDetection = labelText === text ? detection : await detectLanguageSafe(labelText);
     const top = labelDetection?.languages?.[0];
     const code = Builtin.normalizeLanguage(top?.language);
-    // isReliable у Chrome бывает false даже на верном ответе для короткого
-    // предложения, поэтому от 20 символов верим и «ненадёжному» ответу.
+    // Chrome's isReliable can be false even for a correct answer on a short
+    // sentence, so from 20 characters on an "unreliable" answer is trusted.
     const trusted = labelDetection?.isReliable !== false || labelText.trim().length >= 20;
     const known = code && code !== "ru" && trusted && (top?.percentage ?? 100) >= 60;
     return {
@@ -338,14 +338,14 @@
     try {
       return await platform.detectLanguage(text);
     } catch {
-      return null; // локальный CLD может не дать результат для очень короткого текста
+      return null; // the local CLD may give no result for very short text
     }
   }
 
   async function handleSelection({ auto = false } = {}) {
     autoTimer = null;
     const info = getSelectionInfo();
-    if (!info) return; // в этом фрейме выделения нет — молчим
+    if (!info) return; // no selection in this frame, stay quiet
 
     if (info.imageTextUnsupported) {
       ++requestId;
@@ -374,8 +374,8 @@
     currentPort?.disconnect();
     currentPort = null;
 
-    // Русский текст уже является результатом перевода: не показываем карточку
-    // и не отправляем лишний запрос в OpenAI.
+    // Russian text already is the translation result: show no card
+    // and send no extra request to OpenAI.
     const source = await detectSource(info.text, info.context || info.text);
     if (source.ignore) {
       if (id !== requestId) return;
@@ -383,21 +383,21 @@
       return;
     }
     if (id !== requestId) return;
-    // Смешанный текст получает свою подпись «Несколько языков».
+    // Mixed text gets its own "Несколько языков" label.
     info.language = info.sourceScripts.length > 1 ? "" : source.language;
 
     startTranslation(info, id);
   }
 
   function startTranslation(info, id) {
-    // Старый результат убираем сразу, но пустую карточку для нового запроса не
-    // создаём. Она появится только вместе с первым содержательным фрагментом,
-    // а пока ждём — только маленькая пилюля «Перевожу с английского…».
+    // Remove the old result at once, but do not create an empty card for the new
+    // request. It appears only with the first meaningful fragment; while waiting
+    // there is only the small "Перевожу с английского…" pill.
     if (host) close({ cancelRequest: false, animate: false });
     pill.hide({ animate: false });
     prepareCardFor(info);
 
-    // Стриминг: перевод печатается по мере генерации, не дожидаясь всего ответа.
+    // Streaming: the translation is printed as it is generated, without waiting for the full answer.
     let port;
     try {
       port = openTranslationPort();
@@ -414,7 +414,7 @@
       if (autoPendingId === id) autoPendingId = 0;
       if (currentPort === port) currentPort = null;
     };
-    // Бесплатный режим отвечает за ~30 мс — тогда пилюля не мелькает зря.
+    // Free mode answers in ~30 ms; then the pill does not flash for nothing.
     pill.schedule(info, id, {
       label: info.language ? `Перевожу с ${info.language}…` : "Перевожу…"
     });
@@ -435,7 +435,7 @@
           return;
         }
         if (!started) {
-          if (autoPendingId === id) autoPendingId = 0; // карточка показана — больше не отменяем
+          if (autoPendingId === id) autoPendingId = 0; // the card is shown, no more cancelling
           pill.hide();
           beginStreamCard(info);
           started = true;
@@ -448,13 +448,13 @@
           port.disconnect();
         }
       } else if (message.type === "status") {
-        // Например, скачивание языкового пакета — кольцо заполняется по-настоящему.
+        // For example a language pack download: the ring fills for real.
         if (!started) pill.show(info, id, statusFromMessage(message));
       } else if (message.type === "error") {
         release();
         port.disconnect();
         if (message.code === "needs-download") {
-          // Chrome скачивает языковой пакет только по клику пользователя.
+          // Chrome downloads a language pack only on a user click.
           render(info, {
             state: "error",
             message: `${message.error} Это займёт несколько секунд.`,
@@ -464,8 +464,8 @@
                 const downloadId = ++requestId;
                 close({ cancelRequest: false, animate: false });
                 const name = Builtin.languageName(message.language);
-                // Chrome сообщает настоящий процент; переводчик Apple скачивает
-                // язык в приложении Sensemark — там кольцо просто крутится.
+                // Chrome reports a real percentage; Apple's translator downloads
+                // the language in the Sensemark app, where the ring just spins.
                 const labels = builtinEngine.labels;
                 pill.show(info, downloadId, {
                   label: labels.downloading(name),
@@ -500,7 +500,7 @@
       }
     });
 
-    // Service worker умер посреди ответа — молчать нельзя.
+    // The service worker died mid-answer; silence is not an option.
     port.onDisconnect.addListener(() => {
       if (id !== requestId || finished) return;
       release();
@@ -516,8 +516,8 @@
     });
   }
 
-  // Оформление и место карточки решаются до ответа, чтобы пилюля стояла
-  // там же, где потом раскроется карточка, и была того же цвета.
+  // Look and placement are decided before the answer, so the pill stands
+  // where the card will open later and has the same colour.
   function prepareCardFor(info) {
     ensureFont(appearance.cardFont);
     info.look = lookFor(info);
@@ -557,8 +557,8 @@
 
     host = document.createElement("div");
     host.id = HOST_ID;
-    // Стили самого хоста задаём инлайном, чтобы CSS страницы не мог их перебить.
-    // position: absolute — координаты страницы: карточка едет вместе с текстом.
+    // Host styles are inline so the page's CSS cannot override them.
+    // position: absolute uses page coordinates: the card moves with the text.
     host.style.cssText = "all: initial; position: absolute; z-index: 2147483647; top: 0; left: 0;";
     shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = `${CARD_STYLE}
@@ -592,12 +592,12 @@
     if (host && !event.composedPath().includes(host)) close();
   }
 
-  // Прокрутка больше не закрывает карточку: она привязана к тексту и едет
-  // вместе с ним, в том числе внутри прокручиваемых блоков страницы.
+  // Scrolling no longer closes the card: it is tied to the text and moves
+  // with it, including inside scrollable blocks of the page.
   window.addEventListener(
     "scroll",
     (event) => {
-      if (host && event.composedPath?.().includes(host)) return; // прокрутка внутри карточки
+      if (host && event.composedPath?.().includes(host)) return; // scrolling inside the card
       if (card) placeNow({ decide: false });
       pill.place();
     },
@@ -621,8 +621,8 @@
     { passive: true }
   );
 
-  // Cmd/Ctrl + колесо — масштаб карточки. preventDefault обязателен,
-  // иначе браузер зумит всю страницу.
+  // Cmd/Ctrl + wheel scales the card. preventDefault is required,
+  // otherwise the browser zooms the whole page.
   let scalePositionTimer = null;
   function setupZoom() {
     scaleController.reset();
@@ -633,9 +633,9 @@
         event.preventDefault();
         if (!event.deltaY) return;
 
-        // Трекпад отправляет десятки wheel-событий за одно движение. Раньше
-        // каждое из них меняло масштаб сразу на 8%, поэтому карточка улетала.
-        // Принимаем не чаще одного небольшого шага за интервал.
+        // A trackpad sends dozens of wheel events per gesture. Previously each
+        // of them changed the scale by 8% at once, so the card flew away.
+        // Accept at most one small step per interval.
         const change = scaleController.next(view.uiScale, event.deltaY, performance.now());
         if (!change.changed) return;
 
@@ -644,8 +644,8 @@
         showZoom();
         saveView();
 
-        // Во время жеста сохраняем верхний левый угол стабильным. После паузы
-        // мягко возвращаем карточку к выделению и внутрь границ экрана.
+        // During the gesture keep the top-left corner stable. After a pause
+        // gently bring the card back to the selection and inside the screen.
         clearTimeout(scalePositionTimer);
         scalePositionTimer = setTimeout(() => {
           scalePositionTimer = null;
@@ -705,7 +705,7 @@
       grip.addEventListener("pointerup", onUp);
     });
 
-    // Двойной клик по уголку возвращает размер и масштаб по умолчанию.
+    // Double-clicking the corner restores the default size and scale.
     grip.addEventListener("dblclick", (event) => {
       event.stopPropagation();
       view = { ...VIEW_DEFAULTS };
@@ -739,7 +739,7 @@
     }
   }
 
-  // Карточка привязывается к выделению, берёт его оформление и место.
+  // The card is tied to the selection and takes its look and placement.
   function attachCard(info, cardLayout) {
     ensureHost();
     pill.hide({ animate: false });
@@ -760,7 +760,7 @@
     applyView();
   }
 
-  // Ошибки и подсказки короткие — всегда карточкой у выделения.
+  // Errors and hints are short, so they always use the card at the selection.
   function render(info, payload) {
     attachCard(info, { kind: "anchor" });
     setCardPresentation("translation");
@@ -783,7 +783,7 @@
       }
     }
 
-    // Перезапускаем появление контента.
+    // Restart the content reveal animation.
     bodyEl.style.animation = "none";
     void bodyEl.offsetWidth;
     bodyEl.style.animation = "";
@@ -791,10 +791,10 @@
     place();
   }
 
-  // Каркас карточки для стриминга: текст пишется в .live, действия скрыты до конца.
-  // wordMode — только для коротких фрагментов: там модель отдаёт перевод первой
-  // строкой, а ниже — другие значения или объяснение несловарного фрагмента.
-  // У обычного текста переносы строк — это просто абзацы, и разбирать их нельзя.
+  // Card scaffold for streaming: text goes into .live, actions stay hidden until the end.
+  // wordMode is only for short fragments: the model puts the translation on the
+  // first line, followed by other meanings or an explanation of a non-dictionary fragment.
+  // In ordinary text, line breaks are just paragraphs and must not be parsed.
   function beginStreamCard(info) {
     const source = info.text;
     const wordMode = info.wordMode;
@@ -849,8 +849,8 @@
     });
   }
 
-  // Кнопка «пауза» в карточке: пауза на 5 минут или полное выключение
-  // автоперевода. Ручной перевод (правый клик, горячая клавиша) работает всегда.
+  // The card's pause button: pause for 5 minutes or turn auto-translate off
+  // completely. Manual translation (right click, shortcut) always works.
   function setupAutoControls() {
     const toggle = bodyEl.querySelector("[data-act=auto]");
     const menu = bodyEl.querySelector(".auto-menu");
@@ -918,8 +918,8 @@
     if (!streamState.wordMode) {
       const parsed = parseTextResponse(text);
       if (parsed.mode === "pending") return;
-      // [[skip]] — ошибочный ответ модели: background автоматически запросит
-      // исправление. Метку пользователю не показываем.
+      // [[skip]] is an invalid model answer: the background requests a fix
+      // automatically. The marker is never shown to the user.
       if (parsed.mode === "skip") return;
 
       if (parsed.mode === "multilingual") {
@@ -930,14 +930,14 @@
         return;
       }
 
-      // Обычный перевод показываем как есть — переносы строк это абзацы.
+      // An ordinary translation is shown as is: line breaks are paragraphs.
       setCardPresentation("translation");
       streamState.mainEl.hidden = false;
       streamState.segments.hidden = true;
       streamState.main = parsed.text;
       streamState.copyText = parsed.text;
-      // В длинном переводе (поля, панель) абзацы разделяем пустой строкой,
-      // иначе они сливаются в сплошной текст. Копируется перевод как есть.
+      // In a long translation (margin, drawer) paragraphs get a blank line between them,
+      // otherwise they merge into a wall of text. Copying keeps the translation as is.
       streamState.live.textContent =
         layout.kind === "anchor" ? parsed.text : parsed.text.replace(/\n+/g, "\n\n");
       streamState.live.after(streamState.caret);
@@ -1036,14 +1036,14 @@
     }
   }
 
-  // Текущее место выделения на экране. Range живой: после прокрутки или
-  // перестройки страницы он даёт новые координаты.
+  // The selection's current position on screen. The Range is live: after scrolling
+  // or a page re-layout it returns new coordinates.
   function liveRect(info) {
     try {
       const rect = info?.range?.getBoundingClientRect();
       if (rect && (rect.width || rect.height)) return rect;
     } catch {
-      // Узлы выделения убраны со страницы — остаёмся на последнем месте.
+      // The selection's nodes were removed from the page; stay at the last position.
     }
     return info?.rect || lastRect;
   }
@@ -1052,8 +1052,8 @@
     requestAnimationFrame(() => placeNow({ decide: true }));
   }
 
-  // decide — заново выбрать сторону (снизу/сверху) и сдвиг. При прокрутке
-  // сторона не меняется, карточка просто едет вместе с текстом.
+  // decide: choose the side (below/above) and offset again. On scroll
+  // the side does not change, the card just moves with the text.
   function placeNow({ decide }) {
     if (!card || !anchorInfo) return;
     const rect = liveRect(anchorInfo);
@@ -1098,7 +1098,7 @@
     reveal({ left, top });
   }
 
-  // Первое появление: карточка раскрывается из того места, где был кружок.
+  // First appearance: the card unfolds from where the circle was.
   function reveal(point) {
     if (card.classList.contains("in")) return;
     const origin = pill.takeOrigin();
@@ -1111,7 +1111,7 @@
   function close({ cancelRequest = true, animate = true } = {}) {
     if (!host) {
       if (cancelRequest) {
-        // Пилюля ещё ждёт ответа — Esc и клик мимо отменяют и её.
+        // The pill is still waiting for an answer; Esc and an outside click cancel it too.
         if (pill.visible) {
           requestId++;
           currentPort?.disconnect();
@@ -1124,8 +1124,8 @@
     clearTimeout(scalePositionTimer);
     scalePositionTimer = null;
     if (cancelRequest) {
-      requestId++; // отменяем ответ на текущий запрос
-      currentPort?.disconnect(); // background оборвёт fetch и не будет жечь токены
+      requestId++; // cancel the answer to the current request
+      currentPort?.disconnect(); // the background aborts the fetch and burns no tokens
       currentPort = null;
     }
     streamState = null;

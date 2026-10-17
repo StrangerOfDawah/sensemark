@@ -343,7 +343,7 @@ test("translation cache survives a service worker restart", async () => {
   );
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  // Chrome усыпил service worker: память пропала, сессия браузера осталась.
+  // Chrome put the service worker to sleep: memory is gone, the browser session stays.
   const restarted = loadBackground({ fetch, sessionStore });
   assert.equal(
     await restarted.translate("Hello, my dear friends.", null, false),
@@ -376,7 +376,7 @@ test("an update never touches a saved OpenAI key, consent or retired model's key
   }
 });
 
-// ---------- Safari: мост к приложению Sensemark ----------
+// ---------- Safari: the bridge to the Sensemark app ----------
 
 function askBackground(background, message) {
   return new Promise((resolve) => {

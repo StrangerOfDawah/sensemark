@@ -28,7 +28,7 @@ test("multiscript prompt requires a section for every detected script", () => {
 
 test("instructions are short: English costs about half the tokens of the old Russian prompt", () => {
   const { buildTextMessages, buildWordMessages } = loadBackground();
-  // Старые русские инструкции занимали ~2300–2700 символов (430–550 токенов).
+  // The old Russian instructions took ~2300–2700 characters (430–550 tokens).
   assert.ok(buildTextMessages("Hello there my friend", "русский", ["Latin"])[0].content.length < 1300);
   assert.ok(buildWordMessages("bank", "I went to the bank.", "русский", ["Latin"])[0].content.length < 1500);
 });
@@ -148,7 +148,7 @@ test("response validation rejects copied instructions, labels and untranslated o
 
 test("validation accepts kept names, brands and short terms (no wasted repair request)", () => {
   const { responseIssue } = loadBackground();
-  // Раньше каждый из этих правильных ответов вызывал повторный платный запрос.
+  // Each of these correct answers used to trigger a paid retry.
   assert.equal(
     responseIssue(
       "[[text]]\nGitHub Copilot. ИИ-напарник, который помогает писать код.",

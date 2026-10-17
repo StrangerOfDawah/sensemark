@@ -44,8 +44,8 @@
   }
 
   function settingsIssue(settings = {}) {
-    // Бесплатный переводчик Chrome работает на устройстве: ни ключа, ни
-    // согласия на отправку текста ему не нужно.
+    // Chrome's free translator runs on the device: it needs neither a key nor
+    // consent to send text.
     if (settings.provider !== "openai") return null;
     if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
       return {

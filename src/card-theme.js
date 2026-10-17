@@ -1,6 +1,6 @@
-// Оформление карточки «Хамелеон»: цвета под страницу и выбор места на экране.
-// Чистые функции без DOM — их проверяют unit-тесты, а content.js только
-// собирает с страницы цвет фона, цвет текста и размеры выделения.
+// "Chameleon" card styling: page-matched colours and where the card goes on screen.
+// Pure DOM-free functions covered by unit tests; content.js only measures
+// the page's background colour, text colour and the selection size.
 (function exposeCardTheme(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) {
@@ -12,7 +12,7 @@
   const WHITE = { r: 255, g: 255, b: 255 };
   const BLACK = { r: 0, g: 0, b: 0 };
 
-  // Готовые палитры для ручного выбора «Светлая» / «Тёмная».
+  // Ready-made palettes for the manual "Light" / "Dark" choice.
   const LIGHT = {
     surface: "#ffffff",
     border: "#e3e3e8",
@@ -44,9 +44,9 @@
     literata: '"Sensemark Literata", Georgia, "Times New Roman", serif'
   };
 
-  // Порог «длинного» выделения: от 300 символов, или от двух абзацев,
-  // если в них вместе хотя бы 120 символов. Короткий абзац (и пара коротких
-  // строк вроде «Hello / World») остаётся карточкой под текстом.
+  // "Long" selection threshold: 300+ characters, or two or more paragraphs
+  // with at least 120 characters together. A short paragraph (or a couple of short
+  // lines like "Hello / World") stays a card under the text.
   const LONG_CHARS = 300;
   const LONG_PARAGRAPHS_CHARS = 120;
   const NOTE = { min: 300, max: 400, gap: 28, edge: 16 };
@@ -79,7 +79,7 @@
     return (hi + 0.05) / (lo + 0.05);
   }
 
-  // Доля share цвета b в смеси с a.
+  // Mix colour b into a by the given share.
   function mix(a, b, share) {
     return {
       r: Math.round(a.r + (b.r - a.r) * share),
@@ -102,8 +102,8 @@
     return max === 0 ? 0 : (max - min) / max;
   }
 
-  // Палитра под страницу: на тёмном сайте карточка на ступень светлее фона,
-  // на тёплом (сепия) — того же оттенка, на обычном белом — белая.
+  // Page-matched palette: on a dark site the card is one step lighter than the background,
+  // on a warm (sepia) page it takes the same tint, on a plain white page it is white.
   function adaptivePalette(background, pageText) {
     const bg = background;
     if (luminance(bg) < 0.3) {
@@ -148,8 +148,8 @@
     };
   }
 
-  // mode: "auto" (под страницу), "light" или "dark".
-  // background/text — цвета страницы (rgb), если удалось их определить.
+  // mode: "auto" (match the page), "light" or "dark".
+  // background/text: the page colours (rgb), when they could be read.
   function buildPalette({ mode = "auto", background = null, text = null, prefersDark = false } = {}) {
     if (mode === "light") return { ...LIGHT };
     if (mode === "dark") return { ...DARK };
@@ -157,7 +157,7 @@
     return adaptivePalette(background, text);
   }
 
-  // CSS-переменные для карточки и пилюли.
+  // CSS custom properties for the card and the pill.
   function cssVariables(palette, { font = "system", fontSize = null } = {}) {
     const vars = {
       "--surface": palette.surface,
@@ -176,7 +176,7 @@
     return vars;
   }
 
-  // Размер текста перевода «как на странице», но в разумных пределах.
+  // Translation text size "as on the page", within sensible bounds.
   function readableSize(pagePx, matchPage = true) {
     if (!matchPage) return 15;
     const value = Number.parseFloat(pagePx);
@@ -196,10 +196,10 @@
     return countParagraphs(text) >= 2 && length >= LONG_PARAGRAPHS_CHARS;
   }
 
-  // Где показать перевод:
-  //  anchor — карточка под (или над) выделением, для слов и коротких фраз;
-  //  margin — заметка на полях справа от длинного выделения, текст не закрыт;
-  //  drawer — панель у правого края окна, если справа от текста нет места.
+  // Where to show the translation:
+  //  anchor: a card under (or above) the selection, for words and short phrases;
+  //  margin: a note in the right margin of a long selection, the text stays visible;
+  //  drawer: a panel at the right window edge when there is no room beside the text.
   function chooseLayout({ text, rect, viewportWidth }) {
     if (!isLongSelection(text) || viewportWidth < NARROW_VIEWPORT) return { kind: "anchor" };
     const space = viewportWidth - rect.right - NOTE.gap - NOTE.edge;
@@ -220,7 +220,7 @@
     return `${count} ${word}`;
   }
 
-  // «Перевод · с английского», «Перевод · 3 абзаца с английского».
+  // "Перевод · с английского", "Перевод · 3 абзаца с английского".
   function headerLabel({ language = "", paragraphs = 1, long = false } = {}) {
     const parts = [];
     if (long && paragraphs > 1) parts.push(paragraphsLabel(paragraphs));
