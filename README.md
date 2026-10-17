@@ -10,6 +10,10 @@
 
 [**Скачать последнюю версию**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · бесплатно или OpenAI · [Конфиденциальность](PRIVACY.md)
 
+[![CI](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml/badge.svg)](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml)
+[![Release](https://img.shields.io/github/v/release/StrangerOfDawah/sensemark)](https://github.com/StrangerOfDawah/sensemark/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 </div>
 
 > Sensemark переводит **на русский с автоматически определяемого исходного языка** — выбирать язык вручную не нужно.
@@ -84,7 +88,7 @@
 
 ## Safari
 
-Есть версия для Safari на Mac (macOS 26.4+). Бесплатный режим там переводит системным переводчиком Apple, режим OpenAI работает так же, как в Chrome. Публикации в App Store нет: расширение собирается в Xcode с обычным Apple ID. Пошагово — в [platforms/safari/README.md](platforms/safari/README.md).
+Есть версия для Safari на Mac (macOS 26.4+). Бесплатный режим там переводит системным переводчиком Apple, режим OpenAI работает так же, как в Chrome. Публикации в App Store нет: расширение собирается в Xcode с обычным Apple ID. Набор `sensemark-safari-vX.Y.Z.zip` лежит в [Releases](https://github.com/StrangerOfDawah/sensemark/releases/latest) рядом с версией для Chrome, пошагово — в [platforms/safari/README.md](platforms/safari/README.md).
 
 <br>
 
@@ -113,9 +117,15 @@
 
 ## Разработка и AI-агенты
 
-Перед изменением проекта прочитайте [инструкции для AI-агентов](AGENTS.md), [архитектуру](docs/ARCHITECTURE.md), [принятые решения](docs/DECISIONS.md) и [направление продукта](docs/PRODUCT_DIRECTION.md). Каждая новая функция и каждое исправление бага обязаны включать автоматический тест, а связанные Markdown-файлы должны актуализироваться в том же PR.
+```bash
+npm ci --ignore-scripts
+npm run verify      # линтер, форматирование, структура, тесты с покрытием
+npm run test:e2e    # настоящий Chromium с расширением
+```
 
-История версий находится в [CHANGELOG.md](CHANGELOG.md), порядок публикации — в [docs/RELEASING.md](docs/RELEASING.md).
+Документация для разработчиков на английском: [инструкции для AI-агентов](AGENTS.md), [как внести вклад](CONTRIBUTING.md), [архитектура](docs/architecture.md), [принятые решения](docs/adr/README.md) и [направление продукта](docs/product-direction.md). Каждая новая функция и каждое исправление бага обязаны включать автоматический тест, а связанные Markdown-файлы должны актуализироваться в том же PR.
+
+История версий находится в [CHANGELOG.md](CHANGELOG.md), порядок публикации — в [docs/releasing.md](docs/releasing.md).
 
 <br>
 
@@ -162,23 +172,21 @@
 
 ## Устройство
 
-| Файл | Назначение |
+| Папка или файл | Назначение |
 | --- | --- |
-| `manifest.json` | Манифест, разрешения, горячая клавиша |
-| `background.js` | Service worker: контекстное меню, стриминг из OpenAI, кэш переводов |
-| `builtin-translator.js` | Бесплатный режим: встроенный переводчик Chrome на устройстве |
-| `language-detection.js` | Локальная проверка: нужно ли переводить выделенный текст |
-| `selection-text.js` | Очистка выделения от мусора страницы и управляющих символов |
-| `word-response.js` | Разбор ответа для слова: обычный перевод или объяснение имени/названия |
-| `text-response.js` | Разбор обычного и многоязычного перевода по секциям |
-| `manual-translation.js` | Подготовка и разбор ручного перевода без дублирования API-логики |
-| `popup.html` · `popup.css` · `popup.js` | Компактное окно ручного потокового перевода |
-| `ui-scale.js` | Ограничение скорости и шага масштабирования карточки |
-| `card-theme.js` | Цвета карточки под страницу, шрифты и выбор места: под текстом, на полях или панелью |
-| `fonts/` | Шрифты перевода Golos Text и Literata (лицензия OFL) |
-| `content.js` | Карточка на странице, пилюля статуса, разбор контекста, масштаб и размер |
-| `options.html` · `options.js` | Страница настроек |
-| `icons/` | Иконки 16–128 |
+| `src/manifest.json` | Манифест, разрешения, горячая клавиша |
+| `src/background.js` | Service worker: контекстное меню, стриминг из OpenAI, кэш переводов |
+| `src/builtin-translator.js` | Бесплатный режим: встроенный переводчик Chrome или переводчик Apple в Safari |
+| `src/language-detection.js` · `selection-text.js` | Локально: нужно ли переводить и очистка выделения |
+| `src/word-response.js` · `text-response.js` | Разбор ответа: слово, имя/название, обычный и многоязычный текст |
+| `src/card-theme.js` · `ui-scale.js` | Цвета под страницу, шрифты, выбор места карточки, масштаб |
+| `src/content/` | Всё на странице: карточка, пилюля статуса, разбор контекста, расчёт положения, стили |
+| `src/popup.*` · `manual-translation.js` | Окно ручного перевода по клику на иконку |
+| `src/options.*` | Страница настроек |
+| `src/fonts/` · `src/icons/` | Шрифты Golos Text и Literata (лицензия OFL) и иконки |
+| `platforms/safari/` | Версия для Safari: Swift-часть и установщик |
+
+Подробно — в [архитектуре](docs/architecture.md).
 
 В бесплатном режиме текст переводится на компьютере и никуда не отправляется. В режиме OpenAI ключ хранится в `chrome.storage.local`, а выделенный или вручную введённый текст и, для короткого выделения, окружающее предложение отправляются напрямую в OpenAI. У расширения нет сервера разработчика и аналитики; подробности — в [политике конфиденциальности](PRIVACY.md).
 
@@ -192,7 +200,7 @@
 
 - Работает только там, где Chrome разрешает расширениям выполнять скрипты: на `chrome://`, в Chrome Web Store и на страницах других расширений карточка не появится
 - Текст внутри PNG, фотографии или canvas нельзя перевести обычным выделением; расширение не отправляет такие изображения в OpenAI и предлагает выбрать доступную текстовую подпись
-- Язык перевода зафиксирован русским — значение подставляется в системный промпт, поэтому свободного ввода нет намеренно. Меняется в `DEFAULTS` в `background.js` и `options.js`
+- Язык перевода зафиксирован русским — значение подставляется в системный промпт, поэтому свободного ввода нет намеренно. Меняется в `DEFAULTS` в `src/background.js` и `src/options.js`
 - После правок кода нужно нажать «Обновить» на карточке расширения в `chrome://extensions` и перезагрузить открытые вкладки
 
 <br>

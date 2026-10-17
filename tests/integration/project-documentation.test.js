@@ -5,15 +5,29 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+const adrDir = path.join(root, "docs", "adr");
+const adrFiles = fs
+  .readdirSync(adrDir)
+  .filter((name) => /^\d{4}-[a-z0-9-]+\.md$/.test(name))
+  .sort();
 const requiredDocs = [
   "AGENTS.md",
+  "CLAUDE.md",
   "CHANGELOG.md",
-  "docs/ARCHITECTURE.md",
-  "docs/DECISIONS.md",
-  "docs/PRODUCT_DIRECTION.md",
-  "docs/RELEASING.md",
-  ".github/pull_request_template.md"
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "PRIVACY.md",
+  "PRIVACY.en.md",
+  "docs/architecture.md",
+  "docs/adr/README.md",
+  "docs/product-direction.md",
+  "docs/releasing.md",
+  "platforms/safari/README.md",
+  "store/chrome-web-store.md",
+  ".github/pull_request_template.md",
+  ".github/copilot-instructions.md"
 ];
+const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 test("canonical project guidance exists and is discoverable", () => {
   for (const file of requiredDocs) {
@@ -22,31 +36,55 @@ test("canonical project guidance exists and is discoverable", () => {
 
   const agents = read("AGENTS.md");
   for (const file of [
-    "docs/ARCHITECTURE.md",
-    "docs/DECISIONS.md",
-    "docs/PRODUCT_DIRECTION.md",
-    "docs/RELEASING.md",
+    "docs/architecture.md",
+    "docs/adr/",
+    "docs/product-direction.md",
+    "docs/releasing.md",
     "CHANGELOG.md"
   ]) {
-    assert.match(agents, new RegExp(file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(agents, new RegExp(escape(file)));
   }
+
+  // Claude Code reads CLAUDE.md; it must import the shared agent guidance.
+  assert.match(read("CLAUDE.md"), /^@AGENTS\.md$/m);
+  assert.match(read(".github/copilot-instructions.md"), /\(\.\.\/AGENTS\.md\)/);
 
   for (const readme of ["README.md", "README.en.md"]) {
     assert.match(read(readme), /\(AGENTS\.md\)/);
     assert.match(read(readme), /\(CHANGELOG\.md\)/);
+    assert.match(read(readme), /\(docs\/architecture\.md\)/);
   }
+});
+
+test("every decision record is listed in the ADR index and follows the template", () => {
+  assert.ok(adrFiles.length >= 18, "ADR files are missing");
+  const index = read("docs/adr/README.md");
+  adrFiles.forEach((name, position) => {
+    assert.equal(
+      name.slice(0, 4),
+      String(position + 1).padStart(4, "0"),
+      `ADR numbering has a gap at ${name}`
+    );
+    assert.match(index, new RegExp(`\\(${escape(name)}\\)`), `${name} is not in docs/adr/README.md`);
+    const record = read(`docs/adr/${name}`);
+    for (const heading of ["## Context", "## Decision", "## Consequences"]) {
+      assert.match(record, new RegExp(`^${heading}$`, "m"), `${name} has no "${heading}"`);
+    }
+    assert.match(record, /^- Status: /m, `${name} has no status`);
+  });
 });
 
 test("agent policy requires regression tests and documentation updates", () => {
   const agents = read("AGENTS.md");
   const template = read(".github/pull_request_template.md");
 
-  assert.match(agents, /Каждая новая функция и каждое исправление бага \*\*обязаны\*\*/);
-  assert.match(agents, /регрессионный тест/);
-  assert.match(agents, /актуализируйте их в том же commit\/PR/);
-  assert.match(agents, /npm run test:coverage/);
+  assert.match(agents, /Every new feature and every bug fix \*\*must\*\*/);
+  assert.match(agents, /regression test/);
+  assert.match(agents, /update them in the same commit\/PR/);
+  assert.match(agents, /npm run verify/);
   assert.match(agents, /height: 100%/);
-  assert.match(agents, /один API-запрос/);
+  assert.match(agents, /One user translation means one API request/);
+  assert.match(agents, /npm run design:approve/);
 
   assert.match(template, /New behaviour has an automated test/);
   assert.match(template, /every fixed bug has a regression test/);
@@ -69,7 +107,12 @@ test("changelog contains the package version and documented release history", ()
 });
 
 test("local Markdown links in project guidance resolve to existing files", () => {
-  const markdownFiles = [...requiredDocs, "README.md", "README.en.md"];
+  const markdownFiles = [
+    ...requiredDocs,
+    "README.md",
+    "README.en.md",
+    ...adrFiles.map((name) => `docs/adr/${name}`)
+  ];
 
   for (const file of markdownFiles) {
     const source = read(file);

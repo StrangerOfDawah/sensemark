@@ -10,9 +10,13 @@
 
 [**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free or OpenAI · [Privacy](PRIVACY.en.md)
 
+[![CI](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml/badge.svg)](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml)
+[![Release](https://img.shields.io/github/v/release/StrangerOfDawah/sensemark)](https://github.com/StrangerOfDawah/sensemark/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 </div>
 
-> The interface is in Russian and the extension translates **into** Russian — the source language is detected automatically. To target another language, change `targetLang` in `DEFAULTS` inside `background.js` and `options.js`.
+> The interface is in Russian and the extension translates **into** Russian — the source language is detected automatically. To target another language, change `targetLang` in `DEFAULTS` inside `src/background.js` and `src/options.js`.
 
 A Russian selection is ignored without opening the card or calling the API, including small technical insertions such as `dev-секрет`, `APP_ENV`, a URL, or the ChatGPT name. When a selection contains genuinely separate Russian and foreign-language sentences, Russian fragments stay unchanged while the remaining fragments are translated and displayed in separate source-language sections.
 
@@ -84,7 +88,7 @@ The free mode works right after installation — nothing to configure. In the se
 
 ## Safari
 
-There is a Safari build for macOS 26.4+. Its free mode uses Apple's on-device translator; the OpenAI mode works as in Chrome. It is not on the App Store: you build it in Xcode with a regular Apple ID. Step-by-step guide (in Russian): [platforms/safari/README.md](platforms/safari/README.md).
+There is a Safari build for macOS 26.4+. Its free mode uses Apple's on-device translator; the OpenAI mode works as in Chrome. It is not on the App Store: you build it in Xcode with a regular Apple ID. The kit, `sensemark-safari-vX.Y.Z.zip`, is attached to every [release](https://github.com/StrangerOfDawah/sensemark/releases/latest) next to the Chrome build; the step-by-step guide (in Russian) is in [platforms/safari/README.md](platforms/safari/README.md).
 
 <br>
 
@@ -113,9 +117,15 @@ The artifact is retained for 14 days and contains no API keys or user settings. 
 
 ## Development and AI agents
 
-Before changing the project, read the [AI agent instructions](AGENTS.md), [architecture](docs/ARCHITECTURE.md), [recorded decisions](docs/DECISIONS.md), and [product direction](docs/PRODUCT_DIRECTION.md). Every feature and bug fix must include an automated test, and affected Markdown files must be updated in the same PR.
+```bash
+npm ci --ignore-scripts
+npm run verify      # lint, formatting, structure, tests with coverage
+npm run test:e2e    # real Chromium with the extension loaded
+```
 
-Release history is in [CHANGELOG.md](CHANGELOG.md); the publication checklist is in [docs/RELEASING.md](docs/RELEASING.md).
+Start with the [AI agent instructions](AGENTS.md), [contributing guide](CONTRIBUTING.md), [architecture](docs/architecture.md), [decision records](docs/adr/README.md) and [product direction](docs/product-direction.md). Every feature and bug fix must include an automated test, and affected Markdown files must be updated in the same PR.
+
+Release history is in [CHANGELOG.md](CHANGELOG.md); the publication checklist is in [docs/releasing.md](docs/releasing.md).
 
 <br>
 
@@ -150,21 +160,21 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 
 ## How it works
 
-| File | Purpose |
+| Folder or file | Purpose |
 | --- | --- |
-| `manifest.json` | Manifest, permissions, keyboard shortcut |
-| `background.js` | Service worker: context menu, OpenAI streaming, translation cache |
-| `builtin-translator.js` | Free mode: Chrome's built-in on-device translator |
-| `language-detection.js` | Local check for whether the selected text needs translation |
-| `selection-text.js` | Selection cleanup: page noise and control characters |
-| `word-response.js` | Word-response parser: regular translation or name/title explanation |
-| `text-response.js` | Parser for regular and sectioned multilingual translations |
-| `manual-translation.js` | Manual-request planning and response parsing without duplicating API logic |
-| `popup.html` · `popup.css` · `popup.js` | Compact manual streaming-translation popup |
-| `ui-scale.js` | Card scaling step and trackpad rate limiting |
-| `content.js` | On-page card, context extraction, scale and size |
-| `options.html` · `options.js` | Settings page |
-| `icons/` | Icons, 16–128 |
+| `src/manifest.json` | Manifest, permissions, keyboard shortcut |
+| `src/background.js` | Service worker: context menu, OpenAI streaming, translation cache |
+| `src/builtin-translator.js` | Free mode: Chrome's built-in translator, or Apple's translator in Safari |
+| `src/language-detection.js` · `selection-text.js` | Local checks: does the text need translating, selection cleanup |
+| `src/word-response.js` · `text-response.js` | Response parsing: word, name/title, regular and multilingual text |
+| `src/card-theme.js` · `ui-scale.js` | Page-matched colours, fonts, card placement choice, scaling |
+| `src/content/` | Everything on the page: card, status pill, context extraction, placement, styles |
+| `src/popup.*` · `manual-translation.js` | Manual translation popup from the toolbar icon |
+| `src/options.*` | Settings page |
+| `src/fonts/` · `src/icons/` | Golos Text and Literata fonts (OFL licence) and icons |
+| `platforms/safari/` | Safari version: the Swift part and the installer |
+
+Details are in the [architecture overview](docs/architecture.md).
 
 In free mode the text is translated on the device and is not sent anywhere. In OpenAI mode the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.en.md) for details.
 
