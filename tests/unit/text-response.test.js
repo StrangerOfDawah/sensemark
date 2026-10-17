@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { parse } = require("../text-response.js");
+const { parse } = require("../../src/text-response.js");
 
 test("parses a regular translated text", () => {
   assert.deepEqual(parse("[[text]]\nПереведённый абзац."), {

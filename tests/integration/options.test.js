@@ -5,8 +5,8 @@ const test = require("node:test");
 const { JSDOM } = require("jsdom");
 
 async function setupOptions(overrides = {}) {
-  const html = fs.readFileSync(path.join(__dirname, "..", "options.html"), "utf8");
-  const source = fs.readFileSync(path.join(__dirname, "..", "options.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.html"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.js"), "utf8");
   const dom = new JSDOM(html, {
     runScripts: "outside-only",
     url: "https://extension.test/options.html"
@@ -124,7 +124,7 @@ test("a retired model is replaced by the current cheapest one", async () => {
 });
 
 test("the OpenAI option explains the benefit and the approximate cost", () => {
-  const html = fs.readFileSync(path.join(__dirname, "..", "options.html"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.html"), "utf8");
   assert.match(html, /Бесплатно/);
   assert.match(html, /\$1 в год/);
   assert.match(html, /\$5 хватает на несколько лет/);

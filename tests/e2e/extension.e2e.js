@@ -13,7 +13,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 // SENSEMARK_EXTENSION_DIR — проверить распакованный архив релиза вместо исходников.
 const EXTENSION = process.env.SENSEMARK_EXTENSION_DIR
   ? path.resolve(process.env.SENSEMARK_EXTENSION_DIR)
-  : ROOT;
+  : path.join(ROOT, "src");
 const SHOTS = path.join(ROOT, "dist", "e2e-screenshots");
 const SITE = "https://site.test";
 const PLAIN_SITE = "http://plain.test";

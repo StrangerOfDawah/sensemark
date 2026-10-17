@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { eventHub, loadBackground } = require("./helpers/background.js");
+const { eventHub, loadBackground } = require("../helpers/background.js");
 
 function createPort() {
   const onDisconnect = eventHub();

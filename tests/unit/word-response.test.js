@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { parse } = require("../word-response.js");
+const { parse } = require("../../src/word-response.js");
 
 test("parses a marked translation without showing the marker", () => {
   assert.deepEqual(parse("[[translation]]\nпочему\nдругие значения: зачем"), {

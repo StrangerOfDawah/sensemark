@@ -4,7 +4,7 @@
 
 </div>
 
-<img src="docs/hero.png" alt="Sensemark — select text on any page and get a contextual translation">
+<img src="docs/images/hero.png" alt="Sensemark — select text on any page and get a contextual translation">
 
 <div align="center">
 
@@ -24,7 +24,7 @@ Before a request, Sensemark cleans the selection locally: it removes menus, site
 
 The response streams: the card opens together with the first translated characters while the rest is still being written. No empty loading card is shown — if the response is slow, a small "Перевожу с английского…" pill appears next to the selection and shrinks into a circle with a running arc.
 
-<img src="docs/feature-stream.png" alt="The status pill, then the circle, then the card with the translation">
+<img src="docs/images/feature-stream.png" alt="The status pill, then the circle, then the card with the translation">
 
 Close the card mid-translation and the request aborts — unfinished tokens aren't billed.
 
@@ -34,7 +34,7 @@ Close the card mid-translation and the request aborts — unfinished tokens aren
 
 The card takes the colours of the site you are reading: white on a white page, dark on a dark one, warm on a sepia one, and the translation uses the page's text size. In the "Оформление" settings you can pin a light or dark theme, pick the translation font (System, Golos Text or Literata) and turn off "same size as the page".
 
-<img src="docs/feature-chameleon.png" alt="The card on a white, a dark and a sepia page">
+<img src="docs/images/feature-chameleon.png" alt="The card on a white, a dark and a sepia page">
 
 <br>
 
@@ -42,7 +42,7 @@ The card takes the colours of the site you are reading: white on a white page, d
 
 A short fragment is translated in a card under the selection. A long one (about 300+ characters or several paragraphs) appears as a note in the right margin, or as a panel at the window edge when there is no room. The text stays visible, and the card moves with it while you scroll.
 
-<img src="docs/feature-long.png" alt="Three paragraphs translated as a margin note and as a panel at the window edge">
+<img src="docs/images/feature-long.png" alt="Three paragraphs translated as a margin note and as a panel at the window edge">
 
 <br>
 
@@ -60,7 +60,7 @@ Selected a single word? The extension picks up the surrounding sentence and asks
 
 If the selection is not a common word — for example, it is a name, title, username, brand, or typo — Sensemark does not invent a translation. The card switches to a separate amber **Explanation** state, shows the fragment category, and gives a brief, cautious description based on its spelling and context. If there is not enough information, it identifies the fragment as a likely proper name or title.
 
-<img src="docs/feature-context.png" alt="The word bank in two contexts: банк and берег">
+<img src="docs/images/feature-context.png" alt="The word bank in two contexts: банк and берег">
 
 The card lives in a Shadow DOM, so site styles can't break it.
 
@@ -68,7 +68,7 @@ The card lives in a Shadow DOM, so site styles can't break it.
 
 ## Sized for your eyes
 
-<img src="docs/feature-size.png" alt="The card at 100% and 160% scale">
+<img src="docs/images/feature-size.png" alt="The card at 100% and 160% scale">
 
 The whole card scales, not just the font — padding, buttons and icons grow with the text. <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + wheel uses small, smoothly animated steps with a trackpad rate limit. The corner grip resizes it, a double-click resets everything. The setting persists across every page.
 
@@ -76,7 +76,7 @@ The whole card scales, not just the font — padding, buttons and icons grow wit
 
 ## Settings: free or smarter
 
-<img src="docs/feature-options.png" alt="Settings: translation mode and card appearance">
+<img src="docs/images/feature-options.png" alt="Settings: translation mode and card appearance">
 
 The free mode works right after installation — nothing to configure. In the settings you can switch to OpenAI with your own key and choose the card theme, font and size. There is no "Save" button: everything applies immediately.
 
@@ -84,7 +84,7 @@ The free mode works right after installation — nothing to configure. In the se
 
 ## Safari
 
-There is a Safari build for macOS 26.4+. Its free mode uses Apple's on-device translator; the OpenAI mode works as in Chrome. It is not on the App Store: you build it in Xcode with a regular Apple ID. Step-by-step guide (in Russian): [safari/README.md](safari/README.md).
+There is a Safari build for macOS 26.4+. Its free mode uses Apple's on-device translator; the OpenAI mode works as in Chrome. It is not on the App Store: you build it in Xcode with a regular Apple ID. Step-by-step guide (in Russian): [platforms/safari/README.md](platforms/safari/README.md).
 
 <br>
 

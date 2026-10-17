@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { detectScripts, hasMultipleScripts, isRussianOnly } = require("../language-detection.js");
+const { detectScripts, hasMultipleScripts, isRussianOnly } = require("../../src/language-detection.js");
 
 test("recognizes Russian-only selections without requiring reliable CLD output", () => {
   assert.equal(isRussianOnly("Привет, как дела?", { isReliable: false, languages: [] }), true);

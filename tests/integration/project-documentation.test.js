@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const root = path.join(__dirname, "..");
+const root = path.join(__dirname, "..", "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const requiredDocs = [
   "AGENTS.md",
@@ -54,7 +54,7 @@ test("agent policy requires regression tests and documentation updates", () => {
 });
 
 test("changelog contains the package version and documented release history", () => {
-  const manifest = JSON.parse(read("manifest.json"));
+  const manifest = JSON.parse(read("src/manifest.json"));
   const packageJson = JSON.parse(read("package.json"));
   const packageLock = JSON.parse(read("package-lock.json"));
   const changelog = read("CHANGELOG.md");

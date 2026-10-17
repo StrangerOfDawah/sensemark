@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const Builtin = require("../builtin-translator.js");
-const language = require("../language-detection.js");
+const Builtin = require("../../src/builtin-translator.js");
+const language = require("../../src/language-detection.js");
 
 // Подделка нативной части Safari (SafariWebExtensionHandler.swift):
 // отвечает на те же операции, что и настоящий Swift-код.

@@ -4,7 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 const { JSDOM } = require("jsdom");
 
-const { createPopupController } = require("../popup.js");
+const { createPopupController } = require("../../src/popup.js");
 
 function eventHub() {
   const listeners = [];
@@ -41,7 +41,7 @@ function createPort() {
 }
 
 async function setupPopup(overrides = {}) {
-  const html = fs.readFileSync(path.join(__dirname, "..", "popup.html"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "popup.html"), "utf8");
   const dom = new JSDOM(html, { url: "https://extension.test/popup.html" });
   const ports = [];
   const storageChanges = eventHub();
@@ -97,7 +97,7 @@ async function setupPopup(overrides = {}) {
     pasteTranslateDelayMs: overrides.pasteTranslateDelayMs ?? 60_000,
     builtin: overrides.builtin,
     Translator: overrides.Translator,
-    language: require("../language-detection.js")
+    language: require("../../src/language-detection.js")
   });
   await controller.init();
 
@@ -315,7 +315,7 @@ test("popup in free mode translates on the device without a key or an API port",
   const context = await setupPopup({
     settings: { provider: "builtin", apiKey: "", privacyConsentVersion: 0 },
     pasteTranslateDelayMs: 5,
-    builtin: require("../builtin-translator.js"),
+    builtin: require("../../src/builtin-translator.js"),
     Translator: {
       async availability() {
         return "available";

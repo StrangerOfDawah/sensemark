@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const Theme = require("../card-theme.js");
+const Theme = require("../../src/card-theme.js");
 
 const rgb = (value) => Theme.parseColor(value);
 

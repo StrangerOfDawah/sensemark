@@ -25,7 +25,7 @@ const PARTS = {
 
 function read(file) {
   // Убираем различие переносов строк Windows/Unix, чтобы не было ложных срабатываний.
-  return fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/g, "\n");
+  return fs.readFileSync(path.join(root, "src", file), "utf8").replace(/\r\n/g, "\n");
 }
 
 function currentHashes() {

@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { joinSelectionParts, normalizeSelectionText } = require("../selection-text.js");
+const { joinSelectionParts, normalizeSelectionText } = require("../../src/selection-text.js");
 
 test("drops selected interface labels when actual content is present", () => {
   assert.equal(

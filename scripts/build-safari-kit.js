@@ -26,7 +26,7 @@ function safariManifest(chromeManifest) {
 }
 
 function build() {
-  const chromeManifest = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+  const chromeManifest = JSON.parse(fs.readFileSync(path.join(ROOT, "src", "manifest.json"), "utf8"));
   const version = chromeManifest.version;
   const archive = path.join(ROOT, "dist", `sensemark-v${version}.zip`);
   if (!fs.existsSync(archive)) {
@@ -45,12 +45,12 @@ function build() {
   );
 
   fs.mkdirSync(path.join(kit, "native"));
-  for (const file of fs.readdirSync(path.join(ROOT, "safari", "native"))) {
-    fs.copyFileSync(path.join(ROOT, "safari", "native", file), path.join(kit, "native", file));
+  for (const file of fs.readdirSync(path.join(ROOT, "platforms", "safari", "native"))) {
+    fs.copyFileSync(path.join(ROOT, "platforms", "safari", "native", file), path.join(kit, "native", file));
   }
-  fs.copyFileSync(path.join(ROOT, "safari", "install.sh"), path.join(kit, "install.sh"));
+  fs.copyFileSync(path.join(ROOT, "platforms", "safari", "install.sh"), path.join(kit, "install.sh"));
   fs.chmodSync(path.join(kit, "install.sh"), 0o755);
-  fs.copyFileSync(path.join(ROOT, "safari", "README.md"), path.join(kit, "README.md"));
+  fs.copyFileSync(path.join(ROOT, "platforms", "safari", "README.md"), path.join(kit, "README.md"));
 
   const zip = path.join(ROOT, "dist", `${kitName}.zip`);
   fs.rmSync(zip, { force: true });

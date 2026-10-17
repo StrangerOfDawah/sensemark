@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT_DIR/manifest.json" | head -n 1)"
+VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT_DIR/src/manifest.json" | head -n 1)"
 DIST_DIR="$ROOT_DIR/dist"
 ARCHIVE="$DIST_DIR/sensemark-v$VERSION.zip"
 
@@ -15,7 +15,9 @@ fi
 mkdir -p "$DIST_DIR"
 rm -f "$ARCHIVE"
 
-cd "$ROOT_DIR"
+# The extension itself lives in src/; manifest.json must be at the top of the
+# archive for Chrome Web Store and "Load unpacked".
+cd "$ROOT_DIR/src"
 zip -q -r "$ARCHIVE" \
   manifest.json \
   background.js \
@@ -39,7 +41,11 @@ zip -q -r "$ARCHIVE" \
   popup.js \
   options.html \
   options.js \
-  icons \
+  icons
+
+# Legal documents ship with the extension.
+cd "$ROOT_DIR"
+zip -q "$ARCHIVE" \
   LICENSE \
   PRIVACY.md \
   PRIVACY.en.md

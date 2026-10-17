@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { changedParts, currentHashes, lockedHashes, PARTS } = require("../scripts/design-lock.js");
+const { changedParts, currentHashes, lockedHashes, PARTS } = require("../../scripts/design-lock.js");
 
 test("design lock covers every locked part", () => {
   assert.deepEqual(Object.keys(lockedHashes()).sort(), Object.keys(PARTS).sort());

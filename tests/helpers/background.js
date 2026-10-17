@@ -111,7 +111,7 @@ function loadBackground(overrides = {}) {
   };
   context.globalThis = context;
   vm.createContext(context);
-  const source = fs.readFileSync(path.join(__dirname, "..", "..", "background.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "background.js"), "utf8");
   vm.runInContext(source, context, { filename: "background.js" });
   context.__events = events;
   context.__settings = settings;

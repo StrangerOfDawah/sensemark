@@ -8,7 +8,7 @@ const {
   isShortText,
   parseManualResponse,
   settingsIssue
-} = require("../manual-translation.js");
+} = require("../../src/manual-translation.js");
 
 test("manual translation validates setup before a request", () => {
   const openai = { provider: "openai" };

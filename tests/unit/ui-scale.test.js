@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { DEFAULTS, createScaleController } = require("../ui-scale.js");
+const { DEFAULTS, createScaleController } = require("../../src/ui-scale.js");
 
 test("scale controller applies small steps in both directions", () => {
   const controller = createScaleController();

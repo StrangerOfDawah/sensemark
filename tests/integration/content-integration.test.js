@@ -131,7 +131,7 @@ async function setupContent(markup, options = {}) {
     "card-theme.js",
     "content.js"
   ]) {
-    const source = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+    const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", file), "utf8");
     vm.runInContext(source, context, { filename: file });
   }
   await new Promise((resolve) => setTimeout(resolve, 0));

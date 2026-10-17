@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { loadBackground } = require("./helpers/background.js");
+const { loadBackground } = require("../helpers/background.js");
 
 test("text prompt auto-detects the source language", () => {
   const { buildTextMessages } = loadBackground();

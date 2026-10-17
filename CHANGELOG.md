@@ -10,7 +10,7 @@
 - Sensemark для Safari на Mac (для себя, без публикации): бесплатный режим
   переводит системным переводчиком Apple прямо на Mac, режим OpenAI работает
   как в Chrome. Языки скачиваются один раз в приложении Sensemark. Набор
-  собирается командой `npm run safari:kit`, установка — `safari/README.md`.
+  собирается командой `npm run safari:kit`, установка — `platforms/safari/README.md`.
 
 ### Изменено
 
