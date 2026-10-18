@@ -53,6 +53,9 @@ const runtimeFiles = [
   "icons/icon-32.png",
   "icons/icon-48.png",
   "icons/icon-128.png",
+  "icons/providers/openai.svg",
+  "icons/providers/openai-light.svg",
+  "icons/providers/deepseek.svg",
   "LICENSE",
   "PRIVACY.md"
 ];

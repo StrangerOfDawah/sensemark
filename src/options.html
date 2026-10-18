@@ -231,6 +231,11 @@
         letter-spacing: 0;
       }
       .mode-icon svg { width: 17px; height: 17px; }
+      /* Official logos, shown unchanged (OpenAI brand guidelines). */
+      .mode-icon picture { display: contents; }
+      .mode-icon img { display: block; width: 18px; height: 18px; object-fit: contain; }
+      /* The OpenAI file keeps its prescribed clear space, so it fills the tile. */
+      .mode-icon img[src$="openai.svg"] { width: 30px; height: 30px; }
       .mode-title {
         display: flex;
         align-items: center;
@@ -627,7 +632,12 @@
         <div class="row">
           <label class="mode">
             <input type="radio" name="provider" value="openai" />
-            <span class="mode-icon" aria-hidden="true">O</span>
+            <span class="mode-icon" aria-hidden="true">
+              <picture>
+                <source srcset="icons/providers/openai-light.svg" media="(prefers-color-scheme: dark)" />
+                <img src="icons/providers/openai.svg" alt="" />
+              </picture>
+            </span>
             <span class="row-text">
               <span class="mode-title">OpenAI <span class="tag smart"><!--t:tagSmart--></span><span class="tag"><!--t:tagPrice--></span></span>
               <span class="row-cap" style="display:block">
@@ -639,7 +649,7 @@
         <div class="row">
           <label class="mode">
             <input type="radio" name="provider" value="deepseek" />
-            <span class="mode-icon" aria-hidden="true">D</span>
+            <span class="mode-icon" aria-hidden="true"><img src="icons/providers/deepseek.svg" alt="" /></span>
             <span class="row-text">
               <span class="mode-title">DeepSeek <span class="tag smart"><!--t:tagSmart--></span><span class="tag"><!--t:tagPriceDeepseek--></span></span>
               <span class="row-cap" style="display:block">

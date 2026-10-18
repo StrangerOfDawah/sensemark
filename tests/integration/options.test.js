@@ -258,3 +258,25 @@ test("checking a YandexGPT key without a folder explains what is missing", async
   assert.equal(context.document.getElementById("testStatus").textContent, t("setupFolder"));
   assert.equal(context.messages.length, 0, "no request without a folder");
 });
+
+test("provider logos are packaged files, with a light OpenAI mark for the dark theme", async () => {
+  const { document } = await setupOptions();
+  const icons = [...document.querySelectorAll("#modeGroup .mode-icon img, #modeGroup .mode-icon source")];
+  const files = icons.map((node) => node.getAttribute("src") || node.getAttribute("srcset"));
+  assert.deepEqual(files.sort(), [
+    "icons/providers/deepseek.svg",
+    "icons/providers/openai-light.svg",
+    "icons/providers/openai.svg"
+  ]);
+  for (const file of files) {
+    const svg = fs.readFileSync(path.join(__dirname, "..", "..", "src", file), "utf8");
+    assert.match(svg, /^<svg[\s>]/, `${file} is an SVG`);
+    assert.doesNotMatch(
+      svg,
+      /<script|\son\w+=|href="https?:/i,
+      `${file} has no scripts or remote references`
+    );
+  }
+  const dark = document.querySelector('#modeGroup source[srcset="icons/providers/openai-light.svg"]');
+  assert.equal(dark.getAttribute("media"), "(prefers-color-scheme: dark)");
+});

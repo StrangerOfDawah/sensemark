@@ -45,3 +45,8 @@ cards. Both accept the OpenAI Chat Completions format with streaming.
 - Price tags are estimates against the OpenAI one: DeepSeek is about twice,
   YandexGPT Lite about eight times the OpenAI cost at the October 2026 prices.
 - Every new service must be named in `PRIVACY.md` with where it processes data.
+- Provider logos in settings (`src/icons/providers/`) are the companies' own
+  files, unchanged: OpenAI's Blossom from openai.com/brand (black, and white for
+  the dark theme), DeepSeek's mark from its own CDN. OpenAI's guidelines apply:
+  no recolouring or distortion, never larger than Sensemark's own name, no
+  implied endorsement. A service without an official file keeps a letter.
