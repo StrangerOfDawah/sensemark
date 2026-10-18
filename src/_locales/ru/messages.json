@@ -40,12 +40,32 @@
     "description": "Translate was requested without any text."
   },
   "errorConsentRequired": {
-    "message": "Перед переводом подтвердите отправку текста в OpenAI в настройках расширения.",
-    "description": "OpenAI mode without consent to send text."
+    "message": "Перед переводом подтвердите отправку текста в $PROVIDER$ в настройках расширения.",
+    "description": "Paid mode without consent to send text; PROVIDER is the service name.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "errorNoApiKey": {
     "message": "Не задан API-ключ. Откройте настройки расширения.",
     "description": "OpenAI mode without an API key."
+  },
+  "errorNoFolderId": {
+    "message": "Не задан ID каталога Yandex Cloud. Откройте настройки расширения.",
+    "description": "YandexGPT mode without a folder ID."
+  },
+  "errorPermissionRequired": {
+    "message": "Нет доступа к серверу $PROVIDER$. Откройте настройки расширения и выберите режим ещё раз, чтобы разрешить его.",
+    "description": "The browser has not granted the optional host permission for the provider.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "errorEmptyRepair": {
     "message": "Пустой ответ при исправлении перевода.",
@@ -58,6 +78,16 @@
   "errorApi401": {
     "message": "Неверный API-ключ (401). Проверьте его в настройках.",
     "description": "OpenAI HTTP 401."
+  },
+  "errorApi402": {
+    "message": "Закончились деньги на счёте $PROVIDER$ (402). Пополните баланс у провайдера.",
+    "description": "HTTP 402 from the provider (DeepSeek: insufficient balance).",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "errorApi403": {
     "message": "Доступ запрещён (403). Возможно, модель недоступна для вашего аккаунта.",
@@ -74,8 +104,14 @@
     }
   },
   "errorApi429": {
-    "message": "Лимит запросов или закончился баланс (429). Проверьте billing в OpenAI.",
-    "description": "OpenAI HTTP 429."
+    "message": "Лимит запросов или закончился баланс (429). Проверьте счёт в $PROVIDER$.",
+    "description": "HTTP 429 from the provider.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "errorApiStatus": {
     "message": "Ошибка API $STATUS$. $DETAIL$",
@@ -326,12 +362,28 @@
     }
   },
   "setupConsent": {
-    "message": "Подтвердите отправку текста в OpenAI в настройках.",
-    "description": "Popup: OpenAI mode needs consent."
+    "message": "Подтвердите отправку текста в $PROVIDER$ в настройках.",
+    "description": "Popup: a paid mode needs consent; PROVIDER is the service name.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "setupApiKey": {
-    "message": "Добавьте API-ключ OpenAI в настройках.",
-    "description": "Popup: OpenAI mode needs a key."
+    "message": "Добавьте API-ключ $PROVIDER$ в настройках.",
+    "description": "Popup: a paid mode needs a key; PROVIDER is the service name.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
+  },
+  "setupFolder": {
+    "message": "Добавьте ID каталога Yandex Cloud в настройках.",
+    "description": "Popup: YandexGPT mode needs a folder ID."
   },
   "errorEnterText": {
     "message": "Введите текст для перевода.",
@@ -642,8 +694,24 @@
     "description": "Settings: free mode description in Safari."
   },
   "consentRevoked": {
-    "message": "Согласие отозвано — запросы в OpenAI заблокированы",
-    "description": "Settings: consent was unchecked."
+    "message": "Согласие отозвано, запросы в $PROVIDER$ заблокированы",
+    "description": "Settings: consent withdrawn for a paid service.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
+  },
+  "permissionDenied": {
+    "message": "Без разрешения расширение не сможет обращаться к $PROVIDER$. Выберите режим ещё раз и нажмите «Разрешить».",
+    "description": "Settings: the user declined the host permission.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "hideKey": {
     "message": "Скрыть ключ",
@@ -777,41 +845,109 @@
     "message": "≈ $$1 в год",
     "description": "Badge: approximate yearly price."
   },
+  "tagPriceDeepseek": {
+    "message": "≈ $$2 в год",
+    "description": "Approximate yearly cost of DeepSeek mode with daily reading; $$ is a literal dollar sign."
+  },
+  "tagPriceYandex": {
+    "message": "≈ $$8 в год",
+    "description": "Approximate yearly cost of YandexGPT Lite with daily reading; $$ is a literal dollar sign."
+  },
   "modeOpenaiCaption": {
     "message": "Понимает контекст: выбирает нужное значение слова, объясняет имена и названия, сам отбрасывает мусор со страницы и аккуратно разбирает смешанные языки. Нужен свой ключ OpenAI с оплатой по факту — при ежедневном чтении это около $$1 в год, пополнения на $$5 хватает на несколько лет.",
     "description": "OpenAI mode description."
+  },
+  "modeDeepseekCaption": {
+    "message": "Тоже понимает контекст, как OpenAI. Доступен из России, но оплатить его российской картой нельзя. Нужен свой ключ DeepSeek с оплатой по факту.",
+    "description": "Settings: what DeepSeek mode gives and needs."
+  },
+  "modeYandexCaption": {
+    "message": "Понимает контекст и работает в России: оплачивается российской картой. Нужны API-ключ и ID каталога Yandex Cloud; подключиться как частное лицо могут резиденты России и Казахстана.",
+    "description": "Settings: what YandexGPT mode gives and needs."
   },
   "groupPrivacy": {
     "message": "Конфиденциальность",
     "description": "Settings group: privacy."
   },
   "privacyTitle": {
-    "message": "Что отправляется в OpenAI",
-    "description": "Privacy row title."
+    "message": "Что отправляется в $PROVIDER$",
+    "description": "Settings: privacy section title; PROVIDER is the service name.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "privacyText": {
-    "message": "Для перевода расширение отправляет выделенный или вручную введённый текст и, для короткого выделения, предложение вокруг него напрямую в OpenAI. Разработчик не получает и не хранит эти данные.",
-    "description": "What is sent to OpenAI."
+    "message": "Для перевода расширение отправляет выделенный или вручную введённый текст и, для короткого выделения, предложение вокруг него напрямую в $PROVIDER$. Разработчик не получает и не хранит эти данные.",
+    "description": "Settings: what is sent to the paid service.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
+  },
+  "privacyRegionDeepseek": {
+    "message": "По политике конфиденциальности DeepSeek данные хранятся на серверах в Китае.",
+    "description": "Settings: where DeepSeek keeps data."
+  },
+  "privacyRegionYandex": {
+    "message": "Запросы обрабатывает Yandex Cloud в России.",
+    "description": "Settings: where YandexGPT requests are processed."
   },
   "privacyLink": {
     "message": "Политика конфиденциальности",
     "description": "Link to the privacy policy."
   },
   "consentText": {
-    "message": "Я понимаю и согласен, что для перевода выделенный или вручную введённый текст и, для короткого выделения, окружающее предложение будут отправляться напрямую в OpenAI.",
-    "description": "Consent checkbox text."
+    "message": "Я понимаю и согласен, что для перевода выделенный или вручную введённый текст и, для короткого выделения, окружающее предложение будут отправляться напрямую в $PROVIDER$.",
+    "description": "Settings: consent checkbox for one paid service.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "groupConnection": {
-    "message": "Подключение OpenAI",
-    "description": "Settings group: OpenAI connection."
+    "message": "Подключение $PROVIDER$",
+    "description": "Settings: connection section label.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "apiKeyTitle": {
-    "message": "API-ключ OpenAI",
-    "description": "API key row title."
+    "message": "API-ключ $PROVIDER$",
+    "description": "Settings: key field title.",
+    "placeholders": {
+      "provider": {
+        "content": "$1",
+        "example": "DeepSeek"
+      }
+    }
   },
   "apiKeyCaption": {
-    "message": "Хранится только в этом браузере и отправляется только на api.openai.com.",
-    "description": "API key row caption."
+    "message": "Хранится только в этом браузере и отправляется только на $HOST$.",
+    "description": "Settings: where the key goes; HOST is the API host.",
+    "placeholders": {
+      "host": {
+        "content": "$1",
+        "example": "api.deepseek.com"
+      }
+    }
+  },
+  "folderTitle": {
+    "message": "ID каталога Yandex Cloud",
+    "description": "Settings: Yandex folder ID field title."
+  },
+  "folderCaption": {
+    "message": "Указан в консоли Yandex Cloud рядом с названием каталога, начинается с «b1g». Нужен Яндексу, чтобы найти модель и счёт.",
+    "description": "Settings: where to find the folder ID."
   },
   "testKey": {
     "message": "Проверить ключ",

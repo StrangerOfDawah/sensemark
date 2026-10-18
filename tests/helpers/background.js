@@ -77,6 +77,17 @@ function loadBackground(overrides = {}) {
         }
       },
       action: {},
+      // Optional host permissions (DeepSeek, YandexGPT): pass a list of granted
+      // origins to simulate the browser; without it the API is absent.
+      ...(overrides.grantedOrigins
+        ? {
+            permissions: {
+              async contains({ origins }) {
+                return origins.every((origin) => overrides.grantedOrigins.includes(origin));
+              }
+            }
+          }
+        : {}),
       commands: { onCommand: events.command },
       storage: {
         local: {

@@ -74,9 +74,11 @@
   // Keep flags locally so the service worker is not woken on every selection.
   let autoTranslate = false;
   let autoPausedUntil = 0; // auto-translate pause (shared by all tabs), ms
-  // Translation mode: "builtin" is Chrome's free on-device translator,
-  // "openai" is the user's own OpenAI key through the background.
+  // Translation mode: "builtin" is Chrome's free on-device translator; any
+  // other value is a paid service with the user's own key (OpenAI, DeepSeek,
+  // YandexGPT), reached through the background.
   let provider = "builtin";
+  const viaBackground = (value) => Boolean(value) && value !== "builtin";
   // Appearance: theme (match the page / light / dark), translation font and
   // text size as on the page.
   const APPEARANCE_DEFAULTS = { cardTheme: "auto", cardFont: "system", matchPageSize: true };
@@ -93,7 +95,7 @@
   });
 
   function openTranslationPort() {
-    return provider === "openai"
+    return viaBackground(provider)
       ? chrome.runtime.connect({ name: "translate" })
       : Builtin.openLocalPort(builtinEngine);
   }
@@ -112,7 +114,7 @@
   chrome.storage.local.get(STORED_DEFAULTS).then((s) => {
     autoTranslate = s.autoTranslate;
     for (const key of Object.keys(APPEARANCE_DEFAULTS)) appearance[key] = s[key];
-    provider = s.provider === "openai" ? "openai" : "builtin";
+    provider = viaBackground(s.provider) ? s.provider : "builtin";
     autoPausedUntil = Number(s.autoPausedUntil) || 0;
     view = { uiScale: s.uiScale, cardWidth: s.cardWidth, cardHeight: s.cardHeight };
     if (card) applyView();
@@ -122,7 +124,8 @@
     if (area !== "local") return;
     if (changes.autoTranslate) autoTranslate = changes.autoTranslate.newValue;
     if (changes.autoPausedUntil) autoPausedUntil = Number(changes.autoPausedUntil.newValue) || 0;
-    if (changes.provider) provider = changes.provider.newValue === "openai" ? "openai" : "builtin";
+    if (changes.provider)
+      provider = viaBackground(changes.provider.newValue) ? changes.provider.newValue : "builtin";
     for (const key of Object.keys(APPEARANCE_DEFAULTS)) {
       if (changes[key]) appearance[key] = changes[key].newValue ?? APPEARANCE_DEFAULTS[key];
     }

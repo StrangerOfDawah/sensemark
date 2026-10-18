@@ -12,6 +12,7 @@
   },
   "permissions": ["contextMenus", "storage", "scripting", "activeTab"],
   "host_permissions": ["https://api.openai.com/*"],
+  "optional_host_permissions": ["https://api.deepseek.com/*", "https://llm.api.cloud.yandex.net/*"],
   "background": {
     "service_worker": "background.js"
   },

@@ -22,6 +22,14 @@ function safariManifest(chromeManifest) {
   manifest.permissions = [...new Set([...(manifest.permissions || []), "nativeMessaging"])];
   // Chrome-only key; Safari does not know it.
   delete manifest.minimum_chrome_version;
+  // Safari asks the user about every site on its own, so the paid services
+  // that Chrome requests on demand are listed as regular host permissions.
+  if (manifest.optional_host_permissions) {
+    manifest.host_permissions = [
+      ...new Set([...(manifest.host_permissions || []), ...manifest.optional_host_permissions])
+    ];
+    delete manifest.optional_host_permissions;
+  }
   return manifest;
 }
 

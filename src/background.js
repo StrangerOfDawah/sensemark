@@ -1,8 +1,10 @@
-// The service worker: context menus, the toolbar icon menu, OpenAI requests and
-// their cache. Prompts and answer checks are pure modules loaded below.
-importScripts("i18n.js", "background/prompts.js", "background/validation.js");
+// The service worker: context menus, the toolbar icon menu, requests to the
+// user's translation service (OpenAI, DeepSeek or YandexGPT) and their cache.
+// Providers, prompts and answer checks are pure modules loaded below.
+importScripts("i18n.js", "providers.js", "background/prompts.js", "background/validation.js");
 
 const { t } = self.SensemarkI18n;
+const Providers = self.SensemarkProviders;
 const {
   buildTextMessages,
   buildWordMessages,
@@ -14,8 +16,6 @@ const { responseIssue } = self.SensemarkBackgroundValidation;
 
 const MENU_ID = "translate-selection";
 const AUTO_MENU_ID = "toggle-auto-translate";
-const API_URL = "https://api.openai.com/v1/chat/completions";
-const PRIVACY_CONSENT_VERSION = 1;
 
 // The cheapest current OpenAI model (October 2026): $0.10 / $0.50 per 1M tokens.
 const DEFAULT_MODEL = "gpt-6-luna";
@@ -31,12 +31,11 @@ const RETIRED_MODELS = new Set([
 ]);
 
 const DEFAULTS = {
-  apiKey: "",
+  ...Providers.SETTINGS_DEFAULTS,
   model: DEFAULT_MODEL,
   targetLang: t("targetLanguage"),
   // Auto-translate is on by default: select text, get a translation.
-  autoTranslate: true,
-  privacyConsentVersion: 0
+  autoTranslate: true
 };
 
 // Cache of repeat translations, so the same piece never costs money twice.
@@ -100,18 +99,18 @@ chrome.runtime.onInstalled.addListener((details) => {
 
   // Translation mode: users who already entered an OpenAI key keep it;
   // everyone else starts with Chrome's free built-in translator.
-  chrome.storage.local.get({ provider: "", apiKey: "", privacyConsentVersion: 0 }).then((settings) => {
+  chrome.storage.local.get({ ...Providers.SETTINGS_DEFAULTS, provider: "" }).then((settings) => {
     const provider = settings.provider || (settings.apiKey ? "openai" : "builtin");
     if (!settings.provider) chrome.storage.local.set({ provider });
 
     // On install, show the mode choice. On update, settings open only
-    // when OpenAI mode is missing consent.
+    // when a paid mode is missing consent.
     if (details.reason === "install") {
       chrome.runtime.openOptionsPage();
     } else if (
       details.reason === "update" &&
-      provider === "openai" &&
-      settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION
+      Providers.isCloud(provider) &&
+      !Providers.hasConsent({ ...settings, provider })
     ) {
       chrome.runtime.openOptionsPage();
     }
@@ -272,22 +271,15 @@ async function loadFont(font) {
 
 // One-off translation without streaming, used by the "Check key" button.
 async function translate(rawText, context, wordMode = false) {
-  const { settings, cacheKey, messages } = await prepareRequest(rawText, context, wordMode);
+  const { request, cacheKey, messages } = await prepareRequest(rawText, context, wordMode);
 
   const hit = await cacheGet(cacheKey);
   if (hit) return hit;
 
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: requestBody(settings, messages, { text: rawText, wordMode })
-  });
+  const response = await postChat(request, requestBody(request, messages, { text: rawText, wordMode }));
 
   if (!response.ok) {
-    throw new Error(await describeError(response));
+    throw new Error(await describeError(response, request));
   }
 
   const data = await response.json();
@@ -303,24 +295,51 @@ async function prepareRequest(rawText, context, wordMode = false, rawSourceScrip
   const text = (rawText || "").trim();
   if (!text) throw new Error(t("errorNothingSelected"));
 
-  const settings = await chrome.storage.local.get(DEFAULTS);
+  const settings = await chrome.storage.local.get({ ...DEFAULTS, provider: "" });
+  // Settings saved before 1.5 may have no provider: a saved key meant OpenAI.
+  settings.provider = Providers.normalize(settings.provider || (settings.apiKey ? "openai" : ""));
   if (!settings.model || RETIRED_MODELS.has(settings.model)) settings.model = DEFAULT_MODEL;
-  if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-    throw new Error(t("errorConsentRequired"));
+  const label = Providers.get(settings.provider)?.label || Providers.PROVIDERS.openai.label;
+  switch (Providers.settingsIssue(settings)) {
+    case "consent":
+      throw new Error(t("errorConsentRequired", label));
+    case "api-key":
+      throw new Error(t("errorNoApiKey"));
+    case "folder":
+      throw new Error(t("errorNoFolderId"));
   }
-  if (!settings.apiKey) {
-    throw new Error(t("errorNoApiKey"));
+  // Free mode translates in the page itself and never reaches the service worker.
+  if (!Providers.isCloud(settings.provider)) throw new Error(t("errorNoApiKey"));
+  if (!(await hostAllowed(settings.provider))) {
+    throw new Error(t("errorPermissionRequired", label));
   }
 
+  const request = Providers.connection(settings);
   const sourceScripts = normalizeSourceScripts(rawSourceScripts);
   const requestMode = wordMode ? "word" : "text";
   const scriptKey = sourceScripts.join(",");
-  const cacheKey = `${settings.model}|${settings.targetLang}|${requestMode}|${scriptKey}|${context || ""}|${text}`;
+  const cacheKey = `${request.provider}|${request.model}|${settings.targetLang}|${requestMode}|${scriptKey}|${context || ""}|${text}`;
   const messages = wordMode
     ? buildWordMessages(text, context, settings.targetLang, sourceScripts)
     : buildTextMessages(text, settings.targetLang, sourceScripts);
 
-  return { settings, cacheKey, messages, sourceScripts };
+  return { settings, request, cacheKey, messages, sourceScripts };
+}
+
+// DeepSeek and YandexGPT are optional host permissions: Chrome asks for them
+// when the user picks the mode, so nobody else sees a new permission prompt.
+async function hostAllowed(provider) {
+  const entry = Providers.get(provider);
+  if (!entry?.optionalPermission || !chrome.permissions?.contains) return true;
+  try {
+    return await chrome.permissions.contains({ origins: [entry.origin] });
+  } catch {
+    return false;
+  }
+}
+
+function postChat(request, body, signal) {
+  return fetch(request.url, { method: "POST", headers: request.headers, body, signal });
 }
 
 // Streaming: the translation reaches the content script as it is generated,
@@ -352,7 +371,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
   };
 
   try {
-    const { settings, cacheKey, messages, sourceScripts } = await prepareRequest(
+    const { request, cacheKey, messages, sourceScripts } = await prepareRequest(
       rawText,
       context,
       wordMode,
@@ -368,7 +387,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
       }
 
       const repaired = await repairResponse(
-        settings,
+        request,
         messages,
         hit,
         cachedIssue,
@@ -382,18 +401,14 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
       return;
     }
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiKey}`
-      },
-      body: requestBody(settings, messages, { text: rawText, wordMode, stream: true }),
-      signal: abort.signal
-    });
+    const response = await postChat(
+      request,
+      requestBody(request, messages, { text: rawText, wordMode, stream: true }),
+      abort.signal
+    );
 
     if (!response.ok) {
-      throw new Error(await describeError(response));
+      throw new Error(await describeError(response, request));
     }
 
     const reader = response.body.getReader();
@@ -432,7 +447,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
     const issue = responseIssue(full, wordMode, sourceScripts, rawText);
     if (issue) {
       full = await repairResponse(
-        settings,
+        request,
         messages,
         full,
         issue,
@@ -453,7 +468,7 @@ async function streamTranslate(port, rawText, context, wordMode = false, rawSour
 }
 
 async function repairResponse(
-  settings,
+  request,
   messages,
   invalidResponse,
   issue,
@@ -482,17 +497,13 @@ async function repairResponse(
     }
   ];
 
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: requestBody(settings, repairMessages, { text: sourceText, wordMode }),
+  const response = await postChat(
+    request,
+    requestBody(request, repairMessages, { text: sourceText, wordMode }),
     signal
-  });
+  );
 
-  if (!response.ok) throw new Error(await describeError(response));
+  if (!response.ok) throw new Error(await describeError(response, request));
   const data = await response.json();
   const repaired = data?.choices?.[0]?.message?.content?.trim();
   if (!repaired) throw new Error(t("errorEmptyRepair"));
@@ -504,7 +515,7 @@ async function repairResponse(
   return repaired;
 }
 
-async function describeError(response) {
+async function describeError(response, request) {
   let detail = "";
   try {
     const body = await response.json();
@@ -516,12 +527,14 @@ async function describeError(response) {
   switch (response.status) {
     case 401:
       return t("errorApi401");
+    case 402:
+      return t("errorApi402", request?.label || "");
     case 403:
       return t("errorApi403");
     case 404:
       return t("errorApi404", detail);
     case 429:
-      return t("errorApi429");
+      return t("errorApi429", request?.label || "");
     default:
       return t("errorApiStatus", response.status, detail).trim();
   }

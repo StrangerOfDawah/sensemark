@@ -35,10 +35,20 @@
     return Math.min(4096, 300 + Math.ceil(String(text || "").length * 0.8));
   }
 
-  function requestBody(settings, messages, { text, wordMode, stream }) {
+  // DeepSeek "thinks" by default; translation does not need it, and thinking
+  // tokens are billed. YandexGPT takes the classic parameters.
+  function requestParams(provider, model, maxTokens) {
+    if (provider === "deepseek")
+      return { thinking: { type: "disabled" }, temperature: 0.2, max_tokens: maxTokens };
+    if (provider === "yandex") return { temperature: 0.2, max_tokens: maxTokens };
+    return modelParams(model, maxTokens);
+  }
+
+  // `request` is { provider, model }; without a provider it is OpenAI.
+  function requestBody(request, messages, { text, wordMode, stream }) {
     return JSON.stringify({
-      model: settings.model,
-      ...modelParams(settings.model, maxOutputTokens(text, wordMode)),
+      model: request.model,
+      ...requestParams(request.provider, request.model, maxOutputTokens(text, wordMode)),
       ...(stream ? { stream: true } : {}),
       messages
     });
@@ -148,6 +158,7 @@
     isParallelTitleCandidate,
     maxOutputTokens,
     modelParams,
+    requestParams,
     normalizeSourceScripts,
     requestBody
   };

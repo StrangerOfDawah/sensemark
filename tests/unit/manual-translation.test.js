@@ -27,6 +27,25 @@ test("manual translation validates setup before a request", () => {
   assert.equal(settingsIssue({ provider: "builtin", apiKey: "", privacyConsentVersion: 0 }), null);
 });
 
+test("manual translation names the paid service that needs setup", () => {
+  const deepseek = {
+    provider: "deepseek",
+    privacyConsentVersion: PRIVACY_CONSENT_VERSION,
+    deepseekApiKey: "sk"
+  };
+  const consent = settingsIssue(deepseek);
+  assert.equal(consent.code, "consent", "OpenAI consent does not cover DeepSeek");
+  assert.equal(consent.message, t("setupConsent", "DeepSeek"));
+  assert.equal(
+    settingsIssue({ ...deepseek, deepseekApiKey: "", providerConsent: { deepseek: 1 } }).message,
+    t("setupApiKey", "DeepSeek")
+  );
+
+  const yandex = { provider: "yandex", yandexApiKey: "AQVN", providerConsent: { yandex: 1 } };
+  assert.deepEqual(settingsIssue(yandex), { code: "folder", message: t("setupFolder") });
+  assert.equal(settingsIssue({ ...yandex, yandexFolderId: "b1g" }), null);
+});
+
 test("manual request plan rejects empty, oversized, and non-word input", () => {
   assert.equal(createRequestPlan("   ").kind, "error");
   assert.equal(createRequestPlan("• — 123").kind, "error");

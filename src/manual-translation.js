@@ -5,13 +5,15 @@
           language: require("./language-detection.js"),
           textResponse: require("./text-response.js"),
           wordResponse: require("./word-response.js"),
-          i18n: require("./i18n.js")
+          i18n: require("./i18n.js"),
+          providers: require("./providers.js")
         }
       : {
           language: root.SensemarkLanguageDetection,
           textResponse: root.SensemarkTextResponse,
           wordResponse: root.SensemarkWordResponse,
-          i18n: root.SensemarkI18n
+          i18n: root.SensemarkI18n,
+          providers: root.SensemarkProviders
         };
   const api = factory(dependencies);
   if (typeof module === "object" && module.exports) {
@@ -21,15 +23,14 @@
   }
 })(typeof globalThis !== "undefined" ? globalThis : this, (dependencies) => {
   const { t } = dependencies.i18n;
+  const Providers = dependencies.providers;
   const MAX_CHARS = 5000;
-  const PRIVACY_CONSENT_VERSION = 1;
+  const PRIVACY_CONSENT_VERSION = Providers?.CONSENT_VERSION;
   const SETTINGS_DEFAULTS = {
-    provider: "builtin",
-    apiKey: "",
+    ...Providers?.SETTINGS_DEFAULTS,
     model: "gpt-6-luna",
     targetLang: t("targetLanguage"),
-    autoTranslate: true,
-    privacyConsentVersion: 0
+    autoTranslate: true
   };
 
   const detectScripts = dependencies.language?.detectScripts;
@@ -38,7 +39,14 @@
   const parseTextResponse = dependencies.textResponse?.parse;
   const parseWordResponse = dependencies.wordResponse?.parse;
 
-  if (!detectScripts || !hasMultipleScripts || !isRussianOnly || !parseTextResponse || !parseWordResponse) {
+  if (
+    !Providers ||
+    !detectScripts ||
+    !hasMultipleScripts ||
+    !isRussianOnly ||
+    !parseTextResponse ||
+    !parseWordResponse
+  ) {
     throw new Error("Sensemark: manual translation dependencies are unavailable.");
   }
 
@@ -48,21 +56,16 @@
 
   function settingsIssue(settings = {}) {
     // Chrome's free translator runs on the device: it needs neither a key nor
-    // consent to send text.
-    if (settings.provider !== "openai") return null;
-    if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
-      return {
-        code: "consent",
-        message: t("setupConsent")
-      };
-    }
-    if (!String(settings.apiKey || "").trim()) {
-      return {
-        code: "api-key",
-        message: t("setupApiKey")
-      };
-    }
-    return null;
+    // consent to send text. Paid modes need both, and YandexGPT a folder ID.
+    const code = Providers.settingsIssue(settings);
+    if (!code) return null;
+    const label = Providers.get(settings.provider).label;
+    const messages = {
+      consent: t("setupConsent", label),
+      "api-key": t("setupApiKey", label),
+      folder: t("setupFolder")
+    };
+    return { code, message: messages[code] };
   }
 
   function createRequestPlan(rawText, detection = null) {

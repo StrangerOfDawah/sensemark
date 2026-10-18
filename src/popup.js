@@ -44,7 +44,8 @@
       return chrome.i18n?.detectLanguage?.(text);
     }
     function openPort() {
-      if (settings.provider === "openai" || !builtin) {
+      // Paid modes (OpenAI, DeepSeek, YandexGPT) go through the background.
+      if ((settings.provider && settings.provider !== "builtin") || !builtin) {
         return chrome.runtime.connect({ name: "translate" });
       }
       const platform = builtin.platformDeps ? builtin.platformDeps(chrome, window) : null;
