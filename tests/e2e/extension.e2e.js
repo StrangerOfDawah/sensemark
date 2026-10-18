@@ -30,6 +30,7 @@ let worker;
 let extensionId;
 const pages = {};
 const api = { calls: [], reply: null, delayMs: 0 };
+const paidCalls = [];
 const STATUS = "#__sensemark_status_host__ .status";
 
 // ---------- OpenAI stub ----------
@@ -83,6 +84,14 @@ before(async () => {
     }
   });
 
+  // DeepSeek and YandexGPT: any request that reaches them is recorded.
+  for (const host of ["https://api.deepseek.com/**", "https://llm.api.cloud.yandex.net/**"]) {
+    await context.route(host, async (route) => {
+      paidCalls.push(route.request().url());
+      await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+    });
+  }
+
   await context.route(`${SITE}/**`, async (route) => {
     const name = new URL(route.request().url()).pathname.slice(1);
     const page = pages[name] || "";
@@ -120,6 +129,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
+  paidCalls.length = 0;
   api.calls = [];
   api.reply = null;
   api.delayMs = 0;
@@ -389,7 +399,7 @@ test("without consent to send text, no request goes to OpenAI", async () => {
   const page = await openPage("consent", '<p id="p">Please translate this text.</p>');
   await selectAndRelease(page, "#p");
   await page.locator(`${CARD} .err-t`).waitFor();
-  assert.equal(await cardText(page, ".err-t"), t("errorConsentRequired"));
+  assert.equal(await cardText(page, ".err-t"), t("errorConsentRequired", "OpenAI"));
   assert.equal(api.calls.length, 0);
   await page.close();
 });
@@ -638,12 +648,12 @@ test("settings: free mode hides everything about OpenAI, choosing OpenAI shows t
   await page.setViewportSize({ width: 760, height: 1100 });
   await page.goto(`chrome-extension://${extensionId}/options.html`);
   await page.locator('input[value="builtin"]:checked').waitFor();
-  assert.equal(await page.locator("#openaiSettings").isVisible(), false);
+  assert.equal(await page.locator("#providerSettings").isVisible(), false);
   await shot(page, "13-options-free-light");
 
   await page.locator('input[value="openai"]').check();
   await page.locator("#apiKey").waitFor();
-  assert.equal(await page.locator("#openaiSettings").isVisible(), true);
+  assert.equal(await page.locator("#providerSettings").isVisible(), true);
   await page.waitForTimeout(100);
   assert.equal((await settings()).provider, "openai");
   await page.close();
@@ -845,5 +855,34 @@ test("appearance settings: theme, font and size are saved", async () => {
   assert.equal(saved.cardTheme, "dark");
   assert.equal(saved.cardFont, "literata");
   assert.equal(saved.matchPageSize, false);
+  await page.close();
+});
+
+// ---------- DeepSeek and YandexGPT ----------
+
+test("DeepSeek mode without the browser's permission: the card explains, nothing is sent", async () => {
+  await setSettings({ provider: "deepseek", deepseekApiKey: "sk-ds", providerConsent: { deepseek: 1 } });
+  const page = await openPage("deepseek", '<p id="p">Please translate this text.</p>');
+  await selectAndRelease(page, "#p");
+  await page.locator(`${CARD} .err-t`).waitFor();
+  assert.equal(await cardText(page, ".err-t"), t("errorPermissionRequired", "DeepSeek"));
+  assert.deepEqual(paidCalls, []);
+  assert.equal(api.calls.length, 0, "nothing goes to OpenAI either");
+  await page.close();
+});
+
+test("settings: YandexGPT mode shows its own key, folder and privacy text", async () => {
+  await setSettings({ provider: "yandex", apiKey: "sk-openai", yandexApiKey: "", providerConsent: {} });
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 760, height: 1100 });
+  await page.goto(`chrome-extension://${extensionId}/options.html`);
+  await page.locator('input[value="yandex"]:checked').waitFor();
+  assert.equal(await page.locator("#providerSettings").isVisible(), true);
+  assert.equal(await page.locator("#folderRow").isVisible(), true);
+  assert.equal(await page.locator("#modelRow").isVisible(), false);
+  assert.equal(await page.locator("#privacyTitle").textContent(), t("privacyTitle", "YandexGPT"));
+  assert.equal(await page.locator("#apiKey").inputValue(), "", "the OpenAI key is not shown for Yandex");
+  assert.equal(await page.locator("#dataConsent").isChecked(), false);
+  await shot(page, "14-options-yandex-light");
   await page.close();
 });

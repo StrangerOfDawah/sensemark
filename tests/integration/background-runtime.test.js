@@ -55,7 +55,7 @@ function sseResponse(chunks) {
 
 test("request preparation blocks missing consent, key, and empty text", async () => {
   await assert.rejects(loadBackground({ settings: { privacyConsentVersion: 0 } }).prepareRequest("Hello"), {
-    message: t("errorConsentRequired")
+    message: t("errorConsentRequired", "OpenAI")
   });
   await assert.rejects(loadBackground({ settings: { apiKey: "" } }).prepareRequest("Hello"), {
     message: t("errorNoApiKey")
@@ -205,7 +205,9 @@ test("API errors receive actionable descriptions", async () => {
   assert.equal(await background.describeError(jsonResponse("", 401)), t("errorApi401"));
   assert.equal(await background.describeError(jsonResponse("", 403)), t("errorApi403"));
   assert.match(await background.describeError(jsonResponse("", 404, "unknown model")), /unknown model/);
-  assert.equal(await background.describeError(jsonResponse("", 429)), t("errorApi429"));
+  const deepseek = { label: "DeepSeek" };
+  assert.equal(await background.describeError(jsonResponse("", 402), deepseek), t("errorApi402", "DeepSeek"));
+  assert.equal(await background.describeError(jsonResponse("", 429), deepseek), t("errorApi429", "DeepSeek"));
   assert.match(await background.describeError(jsonResponse("", 500, "server")), /500.*server/);
 });
 
@@ -416,4 +418,122 @@ test("Chrome has no native app: native messages answer «unavailable» right awa
   const background = loadBackground();
   const reply = await askBackground(background, { type: "native", payload: { op: "detect", text: "Hi" } });
   assert.deepEqual(JSON.parse(JSON.stringify(reply)), { ok: false, code: "unavailable" });
+});
+
+// ---------- DeepSeek and YandexGPT ----------
+
+const PAID = {
+  apiKey: "sk-openai",
+  deepseekApiKey: "sk-deepseek",
+  yandexApiKey: "AQVN-yandex",
+  yandexFolderId: "b1gfolder",
+  providerConsent: { deepseek: 1, yandex: 1 }
+};
+const GRANTED = ["https://api.deepseek.com/*", "https://llm.api.cloud.yandex.net/*"];
+
+function recordingFetch(answer = `[[text]]\n${RU.helloDot}`) {
+  const calls = [];
+  const fetch = async (url, init) => {
+    calls.push({ url, headers: init.headers, body: JSON.parse(init.body) });
+    return sseResponse([`${sseChunk(answer)}data: [DONE]\n\n`]);
+  };
+  return { calls, fetch };
+}
+
+test("DeepSeek: the stream goes to api.deepseek.com with its own key and without thinking", async () => {
+  const { calls, fetch } = recordingFetch();
+  const background = loadBackground({
+    settings: { ...PAID, provider: "deepseek" },
+    grantedOrigins: GRANTED,
+    fetch
+  });
+  const port = createPort();
+  await background.streamTranslate(port, "Hello.", null, false, ["Latin"]);
+
+  assert.equal(port.messages.at(-1).type, "done");
+  assert.equal(calls.length, 1, "one translation, one request");
+  assert.equal(calls[0].url, "https://api.deepseek.com/chat/completions");
+  assert.equal(calls[0].headers.Authorization, "Bearer sk-deepseek");
+  assert.equal(calls[0].body.model, "deepseek-flash");
+  assert.deepEqual(calls[0].body.thinking, { type: "disabled" });
+  assert.equal(calls[0].body.stream, true);
+});
+
+test("YandexGPT: the folder goes in the header and the model name", async () => {
+  const { calls, fetch } = recordingFetch();
+  const background = loadBackground({
+    settings: { ...PAID, provider: "yandex" },
+    grantedOrigins: GRANTED,
+    fetch
+  });
+  await background.streamTranslate(createPort(), "Hello.", null, false, ["Latin"]);
+
+  assert.equal(calls[0].url, "https://llm.api.cloud.yandex.net/v1/chat/completions");
+  assert.equal(calls[0].headers.Authorization, "Bearer AQVN-yandex");
+  assert.equal(calls[0].headers["OpenAI-Project"], "b1gfolder");
+  assert.equal(calls[0].body.model, "gpt://b1gfolder/yandexgpt-lite/latest");
+  assert.equal(
+    JSON.stringify(calls[0]).includes("sk-openai"),
+    false,
+    "the OpenAI key never leaves for Yandex"
+  );
+});
+
+test("a new provider without its host permission fails before any request", async () => {
+  const { calls, fetch } = recordingFetch();
+  const background = loadBackground({
+    settings: { ...PAID, provider: "deepseek" },
+    grantedOrigins: [],
+    fetch
+  });
+  const port = createPort();
+  await background.streamTranslate(port, "Hello.", null, false, ["Latin"]);
+
+  assert.equal(calls.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(port.messages)), [
+    { type: "error", error: t("errorPermissionRequired", "DeepSeek") }
+  ]);
+});
+
+test("each provider needs its own consent, key and, for YandexGPT, a folder", async () => {
+  const noConsent = loadBackground({
+    settings: { ...PAID, provider: "deepseek", privacyConsentVersion: 1, providerConsent: {} },
+    grantedOrigins: GRANTED
+  });
+  await assert.rejects(noConsent.prepareRequest("Hello"), { message: t("errorConsentRequired", "DeepSeek") });
+
+  const noKey = loadBackground({
+    settings: { ...PAID, provider: "deepseek", deepseekApiKey: "" },
+    grantedOrigins: GRANTED
+  });
+  await assert.rejects(noKey.prepareRequest("Hello"), { message: t("errorNoApiKey") });
+
+  const noFolder = loadBackground({
+    settings: { ...PAID, provider: "yandex", yandexFolderId: " " },
+    grantedOrigins: GRANTED
+  });
+  await assert.rejects(noFolder.prepareRequest("Hello"), { message: t("errorNoFolderId") });
+});
+
+test("switching provider never serves another provider's cached answer", async () => {
+  const { calls, fetch } = recordingFetch();
+  const background = loadBackground({
+    settings: { ...PAID, provider: "deepseek" },
+    grantedOrigins: GRANTED,
+    fetch
+  });
+  await background.streamTranslate(createPort(), "Hello.", null, false, ["Latin"]);
+  background.__settings.provider = "yandex";
+  await background.streamTranslate(createPort(), "Hello.", null, false, ["Latin"]);
+  assert.deepEqual(
+    calls.map((call) => new URL(call.url).host),
+    ["api.deepseek.com", "llm.api.cloud.yandex.net"]
+  );
+});
+
+test("an update opens settings for a paid mode that still needs consent", async () => {
+  const background = loadBackground({ settings: { ...PAID, provider: "yandex", providerConsent: {} } });
+  background.__events.installed.emit({ reason: "update" });
+  await tick();
+  assert.equal(background.__state.optionsOpened, 1);
 });

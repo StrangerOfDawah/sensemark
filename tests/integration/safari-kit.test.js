@@ -21,6 +21,14 @@ test("the Safari manifest adds nativeMessaging and drops Chrome-only keys", () =
   assert.equal(manifest.permissions.includes("nativeMessaging"), false);
 });
 
+test("Safari lists the on-demand paid services as regular host permissions", () => {
+  const safari = safariManifest(manifest);
+  assert.equal("optional_host_permissions" in safari, false);
+  for (const origin of [...manifest.host_permissions, ...manifest.optional_host_permissions]) {
+    assert.ok(safari.host_permissions.includes(origin), origin);
+  }
+});
+
 test("Safari kit ships the native Swift sources, the installer and the guide", () => {
   for (const file of [
     "platforms/safari/native/SafariWebExtensionHandler.swift",

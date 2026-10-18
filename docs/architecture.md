@@ -3,12 +3,14 @@
 ## Purpose
 
 Sensemark is a Manifest V3 browser extension that translates selected or typed
-text into Russian. It has two modes (`provider` in `chrome.storage.local`):
+text into Russian. It has four modes (`provider` in `chrome.storage.local`):
 
 - `builtin` (default): the browser's on-device translator. In Chrome this is the
   Translator API; in Safari it is Apple's translator through the container app.
   No key, no network.
-- `openai`: the user's own OpenAI key. The service worker calls OpenAI directly.
+- `openai`, `deepseek`, `yandex`: a paid service with the user's own key. All
+  three speak the OpenAI Chat Completions format; the service worker calls the
+  chosen one directly ([ADR 0019](adr/0019-openai-compatible-providers.md)).
 
 There is no developer server. Settings stay in local extension storage.
 
@@ -17,7 +19,8 @@ There is no developer server. Settings stay in local extension storage.
 ```text
 src/                     the extension itself; this folder is what ships
   manifest.json
-  background.js          service worker: menus, OpenAI streaming, cache, repair
+  background.js          service worker: menus, provider streaming, cache, repair
+  providers.js           paid services: address, key, model, consent, permission
   background/            prompts and answer validation, loaded with importScripts
   builtin-translator.js  free mode: Translator API or the Apple bridge
   *.js                   shared pure modules (detection, parsing, theme, scale)
@@ -46,7 +49,7 @@ local skip for Russian-only text, limit checks
         ↓
 one prompt and a cache key
         ↓
-background.js → OpenAI streaming API     (or the on-device translator)
+background.js → OpenAI / DeepSeek / YandexGPT streaming API     (or the on-device translator)
         ↓
 protocol and content validation
         ↓
@@ -61,8 +64,9 @@ response parser → on-page card or toolbar popup
 | Messages          | `src/_locales/ru/messages.json`, `src/i18n.js` | Every user-facing string and the Russian words of the model protocol     |
 | Detection         | `src/language-detection.js`                | Scripts, Russian text, small technical Latin inserts                         |
 | Selection text    | `src/selection-text.js`                    | Joining fragments, invisible characters, icon-font glyphs                    |
-| Request & stream  | `src/background.js`                        | Menus, OpenAI requests, SSE, cache, repair, error messages                   |
-| Prompts           | `src/background/prompts.js`                | Instructions, messages, model parameters and the request body                |
+| Providers         | `src/providers.js`                         | Paid services: address, key setting, model, consent, host permission         |
+| Request & stream  | `src/background.js`                        | Menus, provider requests, SSE, cache, repair, error messages                 |
+| Prompts           | `src/background/prompts.js`                | Instructions, messages, per-provider parameters and the request body         |
 | Answer checks     | `src/background/validation.js`             | Format, sections, scripts and copied-instruction checks before showing an answer |
 | Free mode         | `src/builtin-translator.js`                | Translator API or Apple bridge, language packs, local "port"                 |
 | Word answer       | `src/word-response.js`                     | `[[translation]]` and `[[reference]]`                                        |
@@ -76,7 +80,7 @@ response parser → on-page card or toolbar popup
 | Scale             | `src/ui-scale.js`                          | Step, bounds and rate limit                                                  |
 | Manual translate  | `src/manual-translation.js`                | Local request plan and a single result view                                  |
 | Toolbar popup     | `src/popup.html`, `popup.css`, `popup.js`  | Input, debounce, stream, cancel, copy, settings                              |
-| Settings          | `src/options.html`, `options.js`           | Mode, API key, model, consent, auto-translate, appearance                    |
+| Settings          | `src/options.html`, `options.js`           | Mode, per-provider key and consent, model, auto-translate, appearance        |
 | Safari native     | `platforms/safari/native/*.swift`          | Apple translation, language detection, language download window             |
 | Checks & packaging | `tests/`, `scripts/`, `.github/workflows/` | Regressions, coverage, manifest, zip, Safari kit, release assets           |
 
@@ -235,7 +239,11 @@ Closing the card or editing manual input disconnects the port and fires
 
 ## Security boundaries
 
-- Only `https://api.openai.com/*` is a host permission.
+- `https://api.openai.com/*` is the only host permission granted at install.
+  `api.deepseek.com` and `llm.api.cloud.yandex.net` are optional host
+  permissions, requested when the user picks that mode; without the grant a
+  request fails before it is sent.
+- Each key goes only to its own service, and consent is recorded per service.
 - No inline or remote executable code.
 - The API key never goes into the zip, logs, fixtures or GitHub artifacts.
 - Text inside images without a text layer is not sent to the API: there is no

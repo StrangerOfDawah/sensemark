@@ -240,6 +240,33 @@ test("new reasoning models get reasoning_effort none and no temperature", () => 
   });
 });
 
+test("DeepSeek runs without thinking and YandexGPT with classic parameters", () => {
+  const { requestBody, requestParams } = pure();
+  assert.deepEqual(JSON.parse(JSON.stringify(requestParams("deepseek", "deepseek-flash", 300))), {
+    thinking: { type: "disabled" },
+    temperature: 0.2,
+    max_tokens: 300
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(requestParams("yandex", "gpt://f/yandexgpt/latest", 300))), {
+    temperature: 0.2,
+    max_tokens: 300
+  });
+  // OpenAI (also when no provider is given) keeps the per-model rules.
+  assert.deepEqual(requestParams("openai", "gpt-6-luna", 300), requestParams(undefined, "gpt-6-luna", 300));
+
+  const body = JSON.parse(
+    requestBody({ provider: "deepseek", model: "deepseek-flash" }, [{ role: "user", content: "Hi" }], {
+      text: "Hi",
+      wordMode: true,
+      stream: true
+    })
+  );
+  assert.equal(body.model, "deepseek-flash");
+  assert.equal(body.stream, true);
+  assert.deepEqual(body.thinking, { type: "disabled" });
+  assert.equal("reasoning_effort" in body, false);
+});
+
 test("output is capped by the length of the selection", () => {
   const { maxOutputTokens } = pure();
   assert.equal(maxOutputTokens("bank", true), 300);
@@ -251,5 +278,5 @@ test("retired models are switched to the current cheapest model", async () => {
   const { prepareRequest } = loadBackground({ settings: { model: "gpt-4o-mini" } });
   const request = await prepareRequest("Hello there, my friend.", null, false, ["Latin"]);
   assert.equal(request.settings.model, "gpt-6-luna");
-  assert.match(request.cacheKey, /^gpt-6-luna\|/);
+  assert.match(request.cacheKey, /^openai\|gpt-6-luna\|/);
 });

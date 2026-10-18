@@ -1,20 +1,25 @@
 const { t, localize } = globalThis.SensemarkI18n;
+const Providers = globalThis.SensemarkProviders;
 const DEFAULT_MODEL = "gpt-6-luna";
 const DEFAULTS = {
-  provider: "builtin",
-  apiKey: "",
+  ...Providers.SETTINGS_DEFAULTS,
   model: DEFAULT_MODEL,
   targetLang: t("targetLanguage"),
   autoTranslate: true,
-  privacyConsentVersion: 0,
   cardTheme: "auto",
   cardFont: "system",
   matchPageSize: true
 };
-const PRIVACY_CONSENT_VERSION = 1;
+// Where a paid service keeps the data, shown next to what is sent.
+const REGION_NOTES = { deepseek: () => t("privacyRegionDeepseek"), yandex: () => t("privacyRegionYandex") };
+
+// Keys, folder and consent of every paid service, edited in one set of
+// fields: switching the mode swaps what the fields show.
+let stored = { ...Providers.SETTINGS_DEFAULTS };
 
 const fields = {
   apiKey: document.getElementById("apiKey"),
+  folderId: document.getElementById("folderId"),
   model: document.getElementById("model"),
   autoTranslate: document.getElementById("autoTranslate"),
   dataConsent: document.getElementById("dataConsent"),
@@ -30,7 +35,9 @@ const PREVIEW_FONTS = {
   literata: '"Sensemark Literata", Georgia, serif'
 };
 const providerInputs = [...document.querySelectorAll('input[name="provider"]')];
-const openaiSettings = document.getElementById("openaiSettings");
+const providerSettings = document.getElementById("providerSettings");
+const folderRow = document.getElementById("folderRow");
+const modelRow = document.getElementById("modelRow");
 const testBtn = document.getElementById("test");
 const testStatus = document.getElementById("testStatus");
 const toastEl = document.getElementById("toast");
@@ -93,11 +100,11 @@ function init() {
       settings.model = DEFAULT_MODEL;
       chrome.storage.local.set({ model: DEFAULT_MODEL }).catch(() => {});
     }
-    setProvider(settings.provider === "openai" ? "openai" : "builtin");
-    fields.apiKey.value = settings.apiKey;
+    for (const key of Object.keys(Providers.SETTINGS_DEFAULTS)) stored[key] = settings[key];
+    stored.providerConsent = { ...(settings.providerConsent || {}) };
     fields.model.value = settings.model;
     fields.autoTranslate.checked = settings.autoTranslate;
-    fields.dataConsent.checked = settings.privacyConsentVersion === PRIVACY_CONSENT_VERSION;
+    setProvider(Providers.normalize(settings.provider));
     checkValue(themeInputs, settings.cardTheme, "auto");
     checkValue(fontInputs, settings.cardFont, "system");
     fields.matchPageSize.checked = settings.matchPageSize !== false;
@@ -113,6 +120,11 @@ function init() {
   };
   fields.apiKey.addEventListener("input", () => {
     fitKey();
+    remember();
+    scheduleSave();
+  });
+  fields.folderId.addEventListener("input", () => {
+    remember();
     scheduleSave();
   });
   fields.model.addEventListener("change", scheduleSave);
@@ -124,15 +136,13 @@ function init() {
     });
   }
   for (const input of providerInputs) {
-    input.addEventListener("change", () => {
-      setProvider(input.value);
-      save();
-    });
+    input.addEventListener("change", () => chooseProvider(input.value));
   }
   fields.dataConsent.addEventListener("change", () => {
+    remember();
     save();
     if (!fields.dataConsent.checked) {
-      setTestStatus(t("consentRevoked"), "err");
+      setTestStatus(t("consentRevoked", Providers.get(currentProvider()).label), "err");
     } else {
       setTestStatus("");
     }
@@ -149,13 +159,63 @@ function init() {
 }
 
 function currentProvider() {
-  return providerInputs.find((input) => input.checked)?.value === "openai" ? "openai" : "builtin";
+  return Providers.normalize(providerInputs.find((input) => input.checked)?.value);
 }
 
-// OpenAI settings (key, model, consent) are visible only in OpenAI mode.
+// DeepSeek and YandexGPT are optional host permissions: Chrome asks for one
+// when the user picks that mode (a click, so the request is allowed). OpenAI
+// is granted at install.
+async function chooseProvider(provider) {
+  const previous = stored.provider;
+  const entry = Providers.get(provider);
+  if (entry?.optionalPermission && chrome.permissions?.request) {
+    const granted = await chrome.permissions.request({ origins: [entry.origin] }).catch(() => false);
+    if (!granted) {
+      setProvider(Providers.normalize(previous));
+      setTestStatus(t("permissionDenied", entry.label), "err");
+      return;
+    }
+  }
+  setTestStatus("");
+  setProvider(provider);
+  save();
+}
+
+// The connection block shows the fields of the chosen paid service; free
+// mode hides it. Texts name the service, so consent is always to a named
+// company.
 function setProvider(provider) {
+  stored.provider = provider;
   for (const input of providerInputs) input.checked = input.value === provider;
-  openaiSettings.hidden = provider !== "openai";
+  const entry = Providers.get(provider);
+  providerSettings.hidden = !entry;
+  if (!entry) return;
+
+  document.getElementById("privacyTitle").textContent = t("privacyTitle", entry.label);
+  const region = REGION_NOTES[provider] ? ` ${REGION_NOTES[provider]()}` : "";
+  document.getElementById("privacyText").textContent = `${t("privacyText", entry.label)}${region} `;
+  document.getElementById("consentText").textContent = t("consentText", entry.label);
+  document.getElementById("connectionLabel").textContent = t("groupConnection", entry.label);
+  document.getElementById("apiKeyTitle").textContent = t("apiKeyTitle", entry.label);
+  document.getElementById("apiKeyCaption").textContent = t("apiKeyCaption", entry.host);
+
+  fields.apiKey.placeholder = entry.keyPlaceholder;
+  fields.apiKey.value = stored[entry.keySetting] || "";
+  fields.dataConsent.checked = Providers.hasConsent(stored, provider);
+  folderRow.hidden = !entry.folderSetting;
+  if (entry.folderSetting) fields.folderId.value = stored[entry.folderSetting] || "";
+  // Only OpenAI offers a model choice; the others use one fixed model.
+  modelRow.hidden = provider !== "openai";
+  fitKey();
+}
+
+// Copies the visible fields into the chosen service's settings.
+function remember() {
+  const entry = Providers.get(currentProvider());
+  if (!entry) return;
+  stored[entry.keySetting] = fields.apiKey.value.trim();
+  if (entry.folderSetting) stored[entry.folderSetting] = fields.folderId.value.trim();
+  Object.assign(stored, Providers.consentPatch(stored, entry.id, fields.dataConsent.checked));
 }
 
 function checkValue(inputs, value, fallback) {
@@ -176,14 +236,14 @@ function updatePreview() {
 }
 
 function collect() {
+  remember();
   return {
+    ...stored,
     provider: currentProvider(),
-    apiKey: fields.apiKey.value.trim(),
     model: fields.model.value.trim() || DEFAULTS.model,
     // The language is fixed: there is no input, so no arbitrary text reaches the prompt.
     targetLang: DEFAULTS.targetLang,
     autoTranslate: fields.autoTranslate.checked,
-    privacyConsentVersion: fields.dataConsent.checked ? PRIVACY_CONSENT_VERSION : 0,
     cardTheme: checkedValue(themeInputs, "auto"),
     cardFont: checkedValue(fontInputs, "system"),
     matchPageSize: fields.matchPageSize.checked
@@ -214,12 +274,17 @@ function setTestStatus(message, kind = "") {
 
 async function runTest() {
   const settings = collect();
-  if (settings.privacyConsentVersion !== PRIVACY_CONSENT_VERSION) {
+  const issue = Providers.settingsIssue(settings);
+  if (issue === "consent") {
     setTestStatus(t("testNeedsConsent"), "err");
     return;
   }
-  if (!settings.apiKey) {
+  if (issue === "api-key") {
     setTestStatus(t("testNeedsKey"), "err");
+    return;
+  }
+  if (issue === "folder") {
+    setTestStatus(t("setupFolder"), "err");
     return;
   }
 

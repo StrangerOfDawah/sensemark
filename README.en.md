@@ -8,7 +8,7 @@
 
 <div align="center">
 
-[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free or OpenAI · [Privacy](PRIVACY.md)
+[**Download the latest release**](https://github.com/StrangerOfDawah/sensemark/releases/latest) · Chrome · Manifest V3 · free, OpenAI, DeepSeek or YandexGPT · [Privacy](PRIVACY.md)
 
 [![CI](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml/badge.svg)](https://github.com/StrangerOfDawah/sensemark/actions/workflows/pr-build.yml)
 [![Release](https://img.shields.io/github/v/release/StrangerOfDawah/sensemark)](https://github.com/StrangerOfDawah/sensemark/releases/latest)
@@ -82,7 +82,7 @@ The whole card scales, not just the font — padding, buttons and icons grow wit
 
 <img src="docs/images/feature-options.png" alt="Settings: translation mode and card appearance">
 
-The free mode works right after installation — nothing to configure. In the settings you can switch to OpenAI with your own key and choose the card theme, font and size. There is no "Save" button: everything applies immediately.
+The free mode works right after installation — nothing to configure. In the settings you can switch to OpenAI, DeepSeek or YandexGPT with your own key and choose the card theme, font and size. There is no "Save" button: everything applies immediately.
 
 <br>
 
@@ -129,15 +129,21 @@ Release history is in [CHANGELOG.md](CHANGELOG.md); the publication checklist is
 
 <br>
 
-## OpenAI key
+## Paid modes and keys
 
-Sensemark has two modes, chosen in settings. The default is **free**: Chrome's built-in on-device translator (Chrome 138+, desktop, https pages) — no key, no cost, the text never leaves the computer. **OpenAI** is smarter (word sense from context, explanations of names, cleans leftover page noise) and costs about $1 a year with daily use. For OpenAI you need an API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.
+Sensemark has four modes, chosen in settings. The default is **free**: Chrome's built-in on-device translator (Chrome 138+, desktop, https pages) — no key, no cost, the text never leaves the computer. **OpenAI**, **DeepSeek** and **YandexGPT** are smarter (word sense from context, explanations of names, cleans leftover page noise) and cost roughly $1, $2 and $8 a year with daily use. OpenAI is blocked in Russia; YandexGPT works there and takes Russian cards, DeepSeek works there but needs a card issued abroad. The free mode works everywhere, including Russia. For OpenAI you need an API key. This is **not** a ChatGPT Plus subscription — that gives no programmatic access. The API is billed separately, per use.
 
 1. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys) and top up your balance
 2. Click the extension icon, then the settings button in the top-right corner
 3. Choose the **OpenAI** mode, paste the key and hit **Test key**
 
-**On cost.** The default is the cheapest current model, `gpt-6-luna`, with reasoning turned off; instructions are short and in English. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
+**DeepSeek.** Create a key at [platform.deepseek.com](https://platform.deepseek.com), choose **DeepSeek** in settings, allow access to `api.deepseek.com` when Chrome asks, paste the key and give consent. The model is `deepseek-flash` with thinking turned off.
+
+**YandexGPT.** You need a [Yandex AI Studio](https://aistudio.yandex.ru) account, an API key and the folder ID (starts with `b1g`); individuals must be residents of Russia or Kazakhstan. Choose **YandexGPT**, allow access to `llm.api.cloud.yandex.net`, paste the key and the folder ID and give consent. The model is YandexGPT Lite.
+
+Each service has its own key and its own consent: consent for OpenAI does not cover DeepSeek or Yandex.
+
+**On cost.** The OpenAI default is the cheapest current model, `gpt-6-luna`, with reasoning turned off; instructions are short and in English. Pricing depends on OpenAI's current rates. Track spending at [platform.openai.com/usage](https://platform.openai.com/usage), where you can also configure limits.
 
 <br>
 
@@ -177,7 +183,7 @@ You can rebind the shortcut at `chrome://extensions/shortcuts`. If it doesn't wo
 
 Details are in the [architecture overview](docs/architecture.md).
 
-In free mode the text is translated on the device and is not sent anywhere. In OpenAI mode the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to OpenAI. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.md) for details.
+In free mode the text is translated on the device and is not sent anywhere. In the paid modes the key is stored in `chrome.storage.local`, and selected or manually entered text and, for a short selection, its surrounding sentence are sent directly to the chosen service: OpenAI, DeepSeek or Yandex Cloud. The extension has no developer-operated server and no analytics; see the [privacy policy](PRIVACY.md) for details.
 
 Repeat translations of the same fragment come from an in-memory cache in the service worker (last 200) and cost nothing. Selections are capped at 5000 characters so an accidental <kbd>⌘</kbd><kbd>A</kbd> doesn't send a whole page to the API.
 
@@ -198,4 +204,4 @@ If a selection exists only as an image and the page provides no foreign-language
 
 MIT — see [LICENSE](LICENSE).
 
-OpenAI is a trademark of its respective owner. This is an independent project and is not affiliated with or endorsed by OpenAI.
+OpenAI, DeepSeek and YandexGPT are trademarks of their respective owners. This is an independent project and is not affiliated with or endorsed by them.

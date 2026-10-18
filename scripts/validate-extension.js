@@ -23,6 +23,7 @@ const runtimeFiles = [
   "background/prompts.js",
   "background/validation.js",
   "i18n.js",
+  "providers.js",
   "language-detection.js",
   "selection-text.js",
   "word-response.js",
@@ -52,6 +53,9 @@ const runtimeFiles = [
   "icons/icon-32.png",
   "icons/icon-48.png",
   "icons/icon-128.png",
+  "icons/providers/openai.svg",
+  "icons/providers/openai-light.svg",
+  "icons/providers/deepseek.svg",
   "LICENSE",
   "PRIVACY.md"
 ];

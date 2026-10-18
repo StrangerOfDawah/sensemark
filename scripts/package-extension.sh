@@ -24,6 +24,7 @@ zip -q -r "$ARCHIVE" \
   background/prompts.js \
   background/validation.js \
   i18n.js \
+  providers.js \
   language-detection.js \
   selection-text.js \
   word-response.js \

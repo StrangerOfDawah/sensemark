@@ -8,8 +8,9 @@ invariants, test requirements or release process below.
 
 Sensemark is a Manifest V3 browser extension (Chrome, plus a Safari build for
 macOS) that translates selected or typed text from any language into Russian.
-Two modes: a free on-device translator (default) and OpenAI with the user's own
-key. Plain JavaScript, no bundler, no runtime dependencies.
+A free on-device translator (default) and three paid modes with the user's own
+key: OpenAI, DeepSeek and YandexGPT. Plain JavaScript, no bundler, no runtime
+dependencies.
 
 Read before changing anything:
 
@@ -77,8 +78,12 @@ To try the extension, load `src/` via `chrome://extensions` → "Load unpacked".
 - The target language is always Russian; the source language is detected.
 - Free mode (Chrome Translator API, or Apple's translator in Safari,
   [ADR 0017](docs/adr/0017-safari-uses-apple-translation.md)) is the default;
-  OpenAI is optional. Every feature works in both modes or explains to the user
-  why it is OpenAI-only.
+  paid modes are optional. Every feature works in free and paid modes or explains
+  to the user why it needs a paid one.
+- Paid services are listed in `src/providers.js` and share one OpenAI-compatible
+  request path ([ADR 0019](docs/adr/0019-openai-compatible-providers.md)). A new
+  service gets an optional host permission, its own key and consent, a section
+  in `PRIVACY.md` and a `scripts/check-provider.js` run before it is offered.
 - A Russian-only selection is handled locally: no API request, no card.
 - In a mixed selection, Russian is kept and foreign fragments are translated.
   Real multilingual blocks are shown in source order with clear language labels.
@@ -96,9 +101,9 @@ To try the extension, load `src/` via `chrome://extensions` → "Load unpacked".
 - Auto-translate is on by default, but a user who turned it off stays off
   ([ADR 0018](docs/adr/0018-auto-translate-on-by-default.md)). Users who saved an
   OpenAI key keep it and stay in OpenAI mode after an update.
-- The API key and settings stay in `chrome.storage.local`. No analytics, no
-  developer server, no third-party data sharing without an explicit decision by
-  the owner and an updated privacy policy.
+- API keys and settings stay in `chrome.storage.local`; each key goes only to its
+  own service. No analytics, no developer server, no third-party data sharing
+  without an explicit decision by the owner and an updated privacy policy.
 - The default OpenAI model is the cheapest current one. Before changing it, check
   the OpenAI deprecations page and the model's parameters (reasoning models do
   not accept `temperature`).

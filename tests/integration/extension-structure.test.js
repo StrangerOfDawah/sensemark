@@ -24,6 +24,7 @@ test("toolbar action opens the manual popup with only packaged scripts", () => {
       "word-response.js",
       "text-response.js",
       "builtin-translator.js",
+      "providers.js",
       "manual-translation.js",
       "popup.js"
     ]
@@ -90,7 +91,7 @@ test("the service worker loads only packaged modules with importScripts", () => 
   const call = background.match(/importScripts\(([^)]*)\)/);
   assert.ok(call, "background.js imports its modules");
   const files = [...call[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(files, ["i18n.js", "background/prompts.js", "background/validation.js"]);
+  assert.deepEqual(files, ["i18n.js", "providers.js", "background/prompts.js", "background/validation.js"]);
   const packageScript = readRepo("scripts/package-extension.sh");
   for (const file of files) {
     assert.ok(fs.existsSync(path.join(root, file)), `${file} exists`);
@@ -100,9 +101,13 @@ test("the service worker loads only packaged modules with importScripts", () => 
 
 test("privacy disclosures include selected and manually entered text", () => {
   assert.match(readRepo("PRIVACY.md"), /manually types or pastes/);
+  // The texts name the chosen service, so options.js fills them in.
   const options = read("options.html");
-  assert.match(options, /<!--t:privacyText-->/);
-  assert.match(options, /<!--t:consentText-->/);
+  assert.match(options, /id="privacyText"/);
+  assert.match(options, /id="consentText"/);
+  const script = read("options.js");
+  assert.match(script, /t\("privacyText", entry\.label\)/);
+  assert.match(script, /t\("consentText", entry\.label\)/);
 });
 
 test("CI runs locked tests, coverage gates, and archive validation", () => {
@@ -116,4 +121,19 @@ test("CI runs locked tests, coverage gates, and archive validation", () => {
   assert.match(packageJson.scripts["test:coverage"], /test-coverage-lines=90/);
   assert.match(packageJson.scripts["test:coverage"], /test-coverage-branches=75/);
   assert.match(packageJson.scripts["test:coverage"], /test-coverage-functions=95/);
+});
+
+test("host permissions match the provider list: OpenAI at install, the others on demand", () => {
+  const Providers = require("../../src/providers.js");
+  const manifest = JSON.parse(read("manifest.json"));
+  const required = Providers.CLOUD_IDS.filter((id) => !Providers.get(id).optionalPermission);
+  const onDemand = Providers.CLOUD_IDS.filter((id) => Providers.get(id).optionalPermission);
+  assert.deepEqual(
+    manifest.host_permissions,
+    required.map((id) => Providers.get(id).origin)
+  );
+  assert.deepEqual(
+    manifest.optional_host_permissions,
+    onDemand.map((id) => Providers.get(id).origin)
+  );
 });

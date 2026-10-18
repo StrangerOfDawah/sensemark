@@ -5,6 +5,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Two more paid modes with your own key: **DeepSeek** and **YandexGPT**.
+  YandexGPT works from Russia and is paid with a Russian card; DeepSeek works
+  from Russia but needs a foreign card. Both translate in context, like OpenAI.
+  Each mode keeps its own key and its own consent to send text, and Chrome asks
+  for access to the service's server only when you pick that mode.
+- Every translation mode in settings has an icon, and the privacy and connection
+  texts name the service you chose.
+
+### For developers
+
+- `src/providers.js` describes the paid services; one OpenAI-compatible request
+  path serves all of them (ADR 0019). `scripts/check-provider.js` measures a
+  provider on the real prompts before it is offered.
+
 ## [1.6.0] — 2026-10-17
 
 ### Added

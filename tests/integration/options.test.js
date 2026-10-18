@@ -10,6 +10,7 @@ async function setupOptions(overrides = {}) {
   const html = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.html"), "utf8");
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "src", "options.js"), "utf8");
   const i18nSource = fs.readFileSync(path.join(__dirname, "..", "..", "src", "i18n.js"), "utf8");
+  const providersSource = fs.readFileSync(path.join(__dirname, "..", "..", "src", "providers.js"), "utf8");
   const dom = new JSDOM(html, {
     runScripts: "outside-only",
     url: "https://extension.test/options.html"
@@ -31,6 +32,7 @@ async function setupOptions(overrides = {}) {
   for (const key of overrides.omit || []) delete settings[key];
   const writes = [];
   const messages = [];
+  const permissionRequests = [];
   dom.window.chrome = {
     i18n: { getMessage },
     storage: {
@@ -44,6 +46,13 @@ async function setupOptions(overrides = {}) {
         }
       }
     },
+    // Optional host permissions: granted unless a test declines them.
+    permissions: {
+      async request(details) {
+        permissionRequests.push(details);
+        return overrides.permissionGranted !== false;
+      }
+    },
     runtime: {
       async sendMessage(message) {
         messages.push(message);
@@ -53,9 +62,10 @@ async function setupOptions(overrides = {}) {
   };
 
   dom.window.eval(`${i18nSource}\n//# sourceURL=i18n.js`);
+  dom.window.eval(`${providersSource}\n//# sourceURL=providers.js`);
   dom.window.eval(`${source}\n//# sourceURL=options.js`);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return { document: dom.window.document, dom, messages, settings, writes };
+  return { document: dom.window.document, dom, messages, permissionRequests, settings, writes };
 }
 
 test("options page loads saved values and platform shortcut", async () => {
@@ -63,7 +73,7 @@ test("options page loads saved values and platform shortcut", async () => {
   assert.equal(context.document.getElementById("apiKey").value, "saved-key");
   assert.equal(context.document.getElementById("model").value, "gpt-6-luna");
   assert.equal(context.document.querySelector('input[value="openai"]').checked, true);
-  assert.equal(context.document.getElementById("openaiSettings").hidden, false);
+  assert.equal(context.document.getElementById("providerSettings").hidden, false);
   assert.equal(context.document.getElementById("autoTranslate").checked, true);
   assert.equal(context.document.getElementById("dataConsent").checked, true);
   assert.match(context.document.getElementById("kbd").textContent, /⌘⇧Y/);
@@ -114,13 +124,13 @@ test("free mode hides every OpenAI setting and needs no key", async () => {
     settings: { provider: "builtin", apiKey: "", privacyConsentVersion: 0 }
   });
   assert.equal(context.document.querySelector('input[value="builtin"]').checked, true);
-  assert.equal(context.document.getElementById("openaiSettings").hidden, true);
+  assert.equal(context.document.getElementById("providerSettings").hidden, true);
 
   const openai = context.document.querySelector('input[value="openai"]');
   openai.checked = true;
   openai.dispatchEvent(new context.dom.window.Event("change"));
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(context.document.getElementById("openaiSettings").hidden, false);
+  assert.equal(context.document.getElementById("providerSettings").hidden, false);
   assert.equal(context.writes.at(-1).provider, "openai");
 });
 
@@ -155,4 +165,118 @@ test("every text on the settings page comes from messages.json", async () => {
 test("auto-translate switch is on by default for a fresh install", async () => {
   const context = await setupOptions({ omit: ["autoTranslate"] });
   assert.equal(context.document.getElementById("autoTranslate").checked, true);
+});
+
+const tickOptions = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+async function pick(context, provider) {
+  const input = context.document.querySelector(`input[value="${provider}"]`);
+  input.checked = true;
+  input.dispatchEvent(new context.dom.window.Event("change"));
+  await tickOptions();
+}
+
+test("DeepSeek and YandexGPT are offered with an icon, a price and what they need", async () => {
+  const { document } = await setupOptions();
+  const rows = [...document.querySelectorAll('#modeGroup input[name="provider"]')].map(
+    (input) => input.value
+  );
+  assert.deepEqual(rows, ["builtin", "openai", "deepseek", "yandex"]);
+  for (const input of document.querySelectorAll('#modeGroup input[name="provider"]')) {
+    assert.ok(input.closest(".mode").querySelector(".mode-icon"), `${input.value} has an icon`);
+  }
+  const modes = document.getElementById("modeGroup").textContent;
+  for (const key of ["tagPriceDeepseek", "tagPriceYandex", "modeDeepseekCaption", "modeYandexCaption"]) {
+    assert.ok(modes.includes(t(key)), `settings show ${key}`);
+  }
+});
+
+test("choosing DeepSeek asks for its host permission and names DeepSeek everywhere", async () => {
+  const context = await setupOptions();
+  await pick(context, "deepseek");
+  const { document } = context;
+
+  assert.deepEqual(JSON.parse(JSON.stringify(context.permissionRequests)), [
+    { origins: ["https://api.deepseek.com/*"] }
+  ]);
+  assert.equal(context.writes.at(-1).provider, "deepseek");
+  assert.equal(document.getElementById("privacyTitle").textContent, t("privacyTitle", "DeepSeek"));
+  assert.match(document.getElementById("privacyText").textContent, new RegExp(t("privacyRegionDeepseek")));
+  assert.equal(document.getElementById("consentText").textContent, t("consentText", "DeepSeek"));
+  assert.equal(document.getElementById("apiKeyCaption").textContent, t("apiKeyCaption", "api.deepseek.com"));
+  assert.equal(document.getElementById("modelRow").hidden, true, "DeepSeek has one fixed model");
+  assert.equal(document.getElementById("folderRow").hidden, true);
+  // OpenAI's key and consent are not reused for another company.
+  assert.equal(document.getElementById("apiKey").value, "");
+  assert.equal(document.getElementById("dataConsent").checked, false);
+});
+
+test("a declined permission keeps the previous mode", async () => {
+  const context = await setupOptions({ permissionGranted: false });
+  await pick(context, "yandex");
+  assert.equal(context.document.querySelector('input[value="openai"]').checked, true);
+  assert.equal(context.document.getElementById("testStatus").textContent, t("permissionDenied", "YandexGPT"));
+  assert.equal(context.writes.length, 0, "nothing is saved");
+});
+
+test("each service keeps its own key, folder and consent", async () => {
+  const context = await setupOptions();
+  const { document, dom } = context;
+  const key = document.getElementById("apiKey");
+  const consent = document.getElementById("dataConsent");
+
+  await pick(context, "yandex");
+  assert.equal(document.getElementById("folderRow").hidden, false);
+  key.value = " AQVN-yandex ";
+  key.dispatchEvent(new dom.window.Event("input"));
+  const folder = document.getElementById("folderId");
+  folder.value = "b1gfolder";
+  folder.dispatchEvent(new dom.window.Event("input"));
+  consent.checked = true;
+  consent.dispatchEvent(new dom.window.Event("change"));
+  await tickOptions();
+
+  await pick(context, "openai");
+  assert.equal(key.value, "saved-key", "the OpenAI key comes back");
+  assert.equal(consent.checked, true);
+
+  const saved = dom.window.collect();
+  assert.equal(saved.apiKey, "saved-key");
+  assert.equal(saved.yandexApiKey, "AQVN-yandex");
+  assert.equal(saved.yandexFolderId, "b1gfolder");
+  assert.equal(saved.privacyConsentVersion, 1);
+  assert.equal(saved.providerConsent.yandex, 1);
+  assert.equal(saved.providerConsent.deepseek, undefined);
+});
+
+test("checking a YandexGPT key without a folder explains what is missing", async () => {
+  const context = await setupOptions({
+    settings: { provider: "yandex", yandexApiKey: "AQVN", providerConsent: { yandex: 1 } }
+  });
+  context.document.getElementById("test").click();
+  await tickOptions();
+  assert.equal(context.document.getElementById("testStatus").textContent, t("setupFolder"));
+  assert.equal(context.messages.length, 0, "no request without a folder");
+});
+
+test("provider logos are packaged files, with a light OpenAI mark for the dark theme", async () => {
+  const { document } = await setupOptions();
+  const icons = [...document.querySelectorAll("#modeGroup .mode-icon img, #modeGroup .mode-icon source")];
+  const files = icons.map((node) => node.getAttribute("src") || node.getAttribute("srcset"));
+  assert.deepEqual(files.sort(), [
+    "icons/providers/deepseek.svg",
+    "icons/providers/openai-light.svg",
+    "icons/providers/openai.svg"
+  ]);
+  for (const file of files) {
+    const svg = fs.readFileSync(path.join(__dirname, "..", "..", "src", file), "utf8");
+    assert.match(svg, /^<svg[\s>]/, `${file} is an SVG`);
+    assert.doesNotMatch(
+      svg,
+      /<script|\son\w+=|href="https?:/i,
+      `${file} has no scripts or remote references`
+    );
+  }
+  const dark = document.querySelector('#modeGroup source[srcset="icons/providers/openai-light.svg"]');
+  assert.equal(dark.getAttribute("media"), "(prefers-color-scheme: dark)");
 });

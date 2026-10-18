@@ -26,6 +26,7 @@ Records were numbered D-001…D-018 before October 2026; the numbers are unchang
 | [0016](0016-chameleon-card.md) | The "chameleon" card |
 | [0017](0017-safari-uses-apple-translation.md) | Safari uses Apple's translator instead of the Translator API |
 | [0018](0018-auto-translate-on-by-default.md) | Auto-translate is on by default |
+| [0019](0019-openai-compatible-providers.md) | DeepSeek and YandexGPT through one OpenAI-compatible request path |
 
 ## Adding a record
 

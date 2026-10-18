@@ -215,6 +215,27 @@
         accent-color: var(--a2);
         cursor: pointer;
       }
+      .mode-icon {
+        flex: none;
+        width: 30px;
+        height: 30px;
+        margin-top: -3px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        background: var(--field);
+        border: 1px solid var(--panel-border);
+        box-shadow: inset 0 1px 0 var(--edge);
+        color: var(--text);
+        font: 650 14px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+        letter-spacing: 0;
+      }
+      .mode-icon svg { width: 17px; height: 17px; }
+      /* Official logos, shown unchanged (OpenAI brand guidelines). */
+      .mode-icon picture { display: contents; }
+      .mode-icon img { display: block; width: 18px; height: 18px; object-fit: contain; }
+      /* The OpenAI file keeps its prescribed clear space, so it fills the tile. */
+      .mode-icon img[src$="openai.svg"] { width: 30px; height: 30px; }
       .mode-title {
         display: flex;
         align-items: center;
@@ -276,6 +297,7 @@
         letter-spacing: 0.08em;
       }
       #apiKey:focus { width: 100%; }
+      #folderId { width: 240px; max-width: 100%; }
 
       .eye {
         flex: none;
@@ -596,6 +618,9 @@
         <div class="row">
           <label class="mode">
             <input type="radio" name="provider" value="builtin" />
+            <span class="mode-icon" aria-hidden="true">
+              <svg viewBox="0 0 18 18" fill="none"><rect x="2.5" y="3.5" width="13" height="8.5" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M1 14.5h16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </span>
             <span class="row-text">
               <span class="mode-title"><!--t:modeChromeTitle--> <span class="tag free"><!--t:tagFree--></span></span>
               <span class="row-cap" style="display:block">
@@ -607,6 +632,12 @@
         <div class="row">
           <label class="mode">
             <input type="radio" name="provider" value="openai" />
+            <span class="mode-icon" aria-hidden="true">
+              <picture>
+                <source srcset="icons/providers/openai-light.svg" media="(prefers-color-scheme: dark)" />
+                <img src="icons/providers/openai.svg" alt="" />
+              </picture>
+            </span>
             <span class="row-text">
               <span class="mode-title">OpenAI <span class="tag smart"><!--t:tagSmart--></span><span class="tag"><!--t:tagPrice--></span></span>
               <span class="row-cap" style="display:block">
@@ -615,16 +646,40 @@
             </span>
           </label>
         </div>
+        <div class="row">
+          <label class="mode">
+            <input type="radio" name="provider" value="deepseek" />
+            <span class="mode-icon" aria-hidden="true"><img src="icons/providers/deepseek.svg" alt="" /></span>
+            <span class="row-text">
+              <span class="mode-title">DeepSeek <span class="tag smart"><!--t:tagSmart--></span><span class="tag"><!--t:tagPriceDeepseek--></span></span>
+              <span class="row-cap" style="display:block">
+                <!--t:modeDeepseekCaption-->
+              </span>
+            </span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="mode">
+            <input type="radio" name="provider" value="yandex" />
+            <span class="mode-icon" aria-hidden="true">Y</span>
+            <span class="row-text">
+              <span class="mode-title">YandexGPT <span class="tag smart"><!--t:tagSmart--></span><span class="tag"><!--t:tagPriceYandex--></span></span>
+              <span class="row-cap" style="display:block">
+                <!--t:modeYandexCaption-->
+              </span>
+            </span>
+          </label>
+        </div>
       </section>
 
-      <div id="openaiSettings">
+      <div id="providerSettings">
       <div class="group-label"><!--t:groupPrivacy--></div>
       <section class="group">
         <div class="row">
           <div class="row-text">
-            <div class="row-title"><!--t:privacyTitle--></div>
+            <div class="row-title" id="privacyTitle"></div>
             <div class="row-cap">
-              <!--t:privacyText-->
+              <span id="privacyText"></span>
               <a
                 class="text-link"
                 href="https://github.com/StrangerOfDawah/sensemark/blob/main/PRIVACY.md"
@@ -637,19 +692,17 @@
         <div class="row">
           <label class="consent">
             <input id="dataConsent" type="checkbox" />
-            <span class="consent-copy">
-              <!--t:consentText-->
-            </span>
+            <span class="consent-copy" id="consentText"></span>
           </label>
         </div>
       </section>
 
-      <div class="group-label"><!--t:groupConnection--></div>
+      <div class="group-label" id="connectionLabel"></div>
       <section class="group">
         <div class="row col">
           <div class="row-text">
-            <div class="row-title"><!--t:apiKeyTitle--></div>
-            <div class="row-cap"><!--t:apiKeyCaption--></div>
+            <div class="row-title" id="apiKeyTitle"></div>
+            <div class="row-cap" id="apiKeyCaption"></div>
           </div>
           <div class="key-wrap">
             <input id="apiKey" type="password" placeholder="sk-…" autocomplete="off" spellcheck="false" />
@@ -658,13 +711,20 @@
             </button>
           </div>
         </div>
+        <div class="row col" id="folderRow">
+          <div class="row-text">
+            <div class="row-title"><!--t:folderTitle--></div>
+            <div class="row-cap"><!--t:folderCaption--></div>
+          </div>
+          <input id="folderId" type="text" placeholder="b1g…" autocomplete="off" spellcheck="false" />
+        </div>
         <div class="row">
           <button class="link-btn" id="test"><!--t:testKey--></button>
           <span style="flex:1"></span>
           <span class="status" id="testStatus"></span>
         </div>
 
-        <div class="row">
+        <div class="row" id="modelRow">
           <div class="row-text">
             <div class="row-title"><!--t:modelTitle--></div>
             <div class="row-cap"><!--t:modelCaption--></div>
@@ -748,6 +808,7 @@
 
     <div id="toast"></div>
     <script src="i18n.js"></script>
+    <script src="providers.js"></script>
     <script src="options.js"></script>
   </body>
 </html>
